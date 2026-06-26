@@ -16,6 +16,8 @@ import {
   Save,
   Send,
   Trash2,
+  UserPlus,
+  Users,
   X
 } from "lucide-react";
 import { IconLabel } from "@/components/icon-label";
@@ -50,9 +52,26 @@ type SyncLogEntry = {
 type PayItemDraft = {
   hours: string;
   quantity: string;
+  crewMemberIds: string[];
+  crewHours: Record<string, string>;
 };
 
 type DraftsByPayItem = Record<string, PayItemDraft>;
+
+type CrewMember = {
+  id: string;
+  name: string;
+  jobTitle: string;
+};
+
+type CrewMembersByProject = Record<string, CrewMember[]>;
+
+type CrewSummaryRow = {
+  crewMemberId: string;
+  name: string;
+  jobTitle: string;
+  hours: number;
+};
 
 type AuthResponse = {
   user: AuthUser | null;
@@ -74,6 +93,12 @@ type EditingEntry = {
   quantity: string;
 };
 
+type EditingCrewMember = {
+  crewMemberId: string;
+  name: string;
+  jobTitle: string;
+};
+
 type ViewMode = "entry" | "reports";
 
 export function TimeAllocationWorkspace() {
@@ -92,8 +117,12 @@ export function TimeAllocationWorkspace() {
   const [workDate, setWorkDate] = useState(todayInputValue());
   const [entries, setEntries] = useState<AllocationEntry[]>([]);
   const [daySubmissions, setDaySubmissions] = useState<DaySubmissionsByKey>({});
+  const [crewMembersByProject, setCrewMembersByProject] = useState<CrewMembersByProject>({});
+  const [crewMemberName, setCrewMemberName] = useState("");
+  const [crewMemberJobTitle, setCrewMemberJobTitle] = useState("");
   const [draftsByPayItem, setDraftsByPayItem] = useState<DraftsByPayItem>({});
   const [editingEntry, setEditingEntry] = useState<EditingEntry | null>(null);
+  const [editingCrewMember, setEditingCrewMember] = useState<EditingCrewMember | null>(null);
   const [connectionStatus, setConnectionStatus] = useState("Mock data active");
   const [projectLoadError, setProjectLoadError] = useState("");
   const [entryNotice, setEntryNotice] = useState("");
@@ -120,6 +149,8 @@ export function TimeAllocationWorkspace() {
   const visibleEntries = entries.filter(
     (entry) => entry.projectId === selectedProject?.id && entry.date === workDate
   );
+  const selectedProjectCrewMembers = selectedProject ? crewMembersByProject[selectedProject.id] ?? [] : [];
+  const crewSummaryRows = buildCrewSummary(visibleEntries, selectedProjectCrewMembers);
   const currentDaySubmission = daySubmissions[getDayKey(selectedProjectId, workDate)] ?? { status: "draft" };
   const dayIsSubmitted = currentDaySubmission.status === "submitted";
   const totalHours = visibleEntries.reduce((total, entry) => total + entry.hours, 0);
@@ -208,6 +239,7 @@ export function TimeAllocationWorkspace() {
     const savedEntries = window.localStorage.getItem("allocation-entries");
     const savedSubmissions = window.localStorage.getItem("day-submissions");
     const savedSyncLog = window.localStorage.getItem("procore-sync-log");
+    const savedCrewMembers = window.localStorage.getItem("project-crew-members");
 
     if (savedEntries) {
       setEntries(JSON.parse(savedEntries) as AllocationEntry[]);
@@ -220,6 +252,10 @@ export function TimeAllocationWorkspace() {
     if (savedSyncLog) {
       setSyncLog(JSON.parse(savedSyncLog) as SyncLogEntry[]);
     }
+
+    if (savedCrewMembers) {
+      setCrewMembersByProject(JSON.parse(savedCrewMembers) as CrewMembersByProject);
+    }
   }, [currentUser]);
 
   useEffect(() => {
@@ -229,7 +265,8 @@ export function TimeAllocationWorkspace() {
 
     window.localStorage.setItem("allocation-entries", JSON.stringify(entries));
     window.localStorage.setItem("day-submissions", JSON.stringify(daySubmissions));
-  }, [currentUser, daySubmissions, entries]);
+    window.localStorage.setItem("project-crew-members", JSON.stringify(crewMembersByProject));
+  }, [currentUser, crewMembersByProject, daySubmissions, entries]);
 
   useEffect(() => {
     if (!currentUser || projects.length === 0 || entries.length === 0) {
@@ -326,19 +363,196 @@ export function TimeAllocationWorkspace() {
     setSelectedProjectId("");
     setEntries([]);
     setDaySubmissions({});
+    setCrewMembersByProject({});
+    setEditingCrewMember(null);
     setViewMode("entry");
   }
 
-  function updateDraft(payItemId: string, field: keyof PayItemDraft, value: string) {
+  function updateDraft(payItemId: string, field: "hours" | "quantity", value: string) {
     setEntryNotice("");
-    setDraftsByPayItem((current) => ({
+    setDraftsByPayItem((current) => {
+      const draft = getExistingDraft(current[payItemId], payItemId, visibleEntries);
+
+      return {
+        ...current,
+        [payItemId]: normalizeDraftCrewHours({
+          ...draft,
+          [field]: value
+        })
+      };
+    });
+  }
+
+  function addCrewMember() {
+    if (!selectedProject) {
+      return;
+    }
+
+    const name = crewMemberName.trim();
+    const jobTitle = crewMemberJobTitle.trim();
+
+    if (!name || !jobTitle) {
+      setEntryNotice("Enter both crew member name and job title.");
+      return;
+    }
+
+    setCrewMembersByProject((current) => ({
       ...current,
-      [payItemId]: {
-        hours: current[payItemId]?.hours ?? "",
-        quantity: current[payItemId]?.quantity ?? "",
-        [field]: value
-      }
+      [selectedProject.id]: [
+        ...(current[selectedProject.id] ?? []),
+        {
+          id: crypto.randomUUID(),
+          name,
+          jobTitle
+        }
+      ]
     }));
+    setCrewMemberName("");
+    setCrewMemberJobTitle("");
+    setEditingCrewMember(null);
+    setEntryNotice(`${name} added to ${selectedProject.name}.`);
+  }
+
+  function startEditingCrewMember(member: CrewMember) {
+    setEntryNotice("");
+    setEditingCrewMember({
+      crewMemberId: member.id,
+      name: member.name,
+      jobTitle: member.jobTitle
+    });
+  }
+
+  function saveEditedCrewMember() {
+    if (!selectedProject || !editingCrewMember) {
+      return;
+    }
+
+    const name = editingCrewMember.name.trim();
+    const jobTitle = editingCrewMember.jobTitle.trim();
+
+    if (!name || !jobTitle) {
+      setEntryNotice("Enter both crew member name and job title.");
+      return;
+    }
+
+    setCrewMembersByProject((current) => ({
+      ...current,
+      [selectedProject.id]: (current[selectedProject.id] ?? []).map((member) =>
+        member.id === editingCrewMember.crewMemberId
+          ? {
+              ...member,
+              name,
+              jobTitle
+            }
+          : member
+      )
+    }));
+    setEntries((current) =>
+      current.map((entry) => {
+        if (entry.projectId !== selectedProject.id || !entry.crewAllocations?.length) {
+          return entry;
+        }
+
+        return {
+          ...entry,
+          crewAllocations: entry.crewAllocations.map((allocation) =>
+            allocation.crewMemberId === editingCrewMember.crewMemberId
+              ? {
+                  ...allocation,
+                  crewMemberName: name,
+                  jobTitle
+                }
+              : allocation
+          )
+        };
+      })
+    );
+    setEditingCrewMember(null);
+    setEntryNotice(`${name} updated across saved days for ${selectedProject.name}.`);
+  }
+
+  function removeCrewMember(crewMemberId: string) {
+    if (!selectedProject) {
+      return;
+    }
+
+    if (crewMemberHasSavedAllocations(crewMemberId, selectedProject.id, entries)) {
+      setEntryNotice("Crew member is already assigned to saved pay item hours and cannot be deleted.");
+      return;
+    }
+
+    setCrewMembersByProject((current) => ({
+      ...current,
+      [selectedProject.id]: (current[selectedProject.id] ?? []).filter((member) => member.id !== crewMemberId)
+    }));
+    setDraftsByPayItem((current) =>
+      Object.fromEntries(
+        Object.entries(current).map(([payItemId, draft]) => [
+          payItemId,
+          {
+            ...draft,
+            crewMemberIds: draft.crewMemberIds.filter((id) => id !== crewMemberId),
+            crewHours: Object.fromEntries(
+              Object.entries(draft.crewHours).filter(([id]) => id !== crewMemberId)
+            )
+          }
+        ])
+      )
+    );
+    setEditingCrewMember((current) => (current?.crewMemberId === crewMemberId ? null : current));
+  }
+
+  function toggleDraftCrewMember(payItemId: string, crewMemberId: string, checked: boolean) {
+    setEntryNotice("");
+    setDraftsByPayItem((current) => {
+      const draft = getExistingDraft(current[payItemId], payItemId, visibleEntries);
+      const crewMemberIds = checked
+        ? Array.from(new Set([...draft.crewMemberIds, crewMemberId]))
+        : draft.crewMemberIds.filter((id) => id !== crewMemberId);
+      const crewHours = { ...draft.crewHours };
+
+      if (!checked) {
+        delete crewHours[crewMemberId];
+      }
+
+      return {
+        ...current,
+        [payItemId]: normalizeDraftCrewHours({
+          ...draft,
+          crewMemberIds,
+          crewHours
+        })
+      };
+    });
+  }
+
+  function updateDraftCrewHours(payItemId: string, crewMemberId: string, value: string) {
+    setEntryNotice("");
+    setDraftsByPayItem((current) => {
+      const draft = getExistingDraft(current[payItemId], payItemId, visibleEntries);
+
+      return {
+        ...current,
+        [payItemId]: {
+          ...draft,
+          crewHours: {
+            ...draft.crewHours,
+            [crewMemberId]: value
+          }
+        }
+      };
+    });
+  }
+
+  function splitDraftCrewHoursEvenly(payItemId: string) {
+    setDraftsByPayItem((current) => {
+      const draft = getExistingDraft(current[payItemId], payItemId, visibleEntries);
+
+      return {
+        ...current,
+        [payItemId]: splitCrewHoursEvenly(draft)
+      };
+    });
   }
 
   function addSyncLog(entry: Omit<SyncLogEntry, "id" | "createdAt">) {
@@ -504,6 +718,15 @@ export function TimeAllocationWorkspace() {
       return;
     }
 
+    const crewAllocationError = selectedProject.payItems
+      .map((payItem) => getCrewAllocationError(draftsByPayItem[payItem.id], selectedProjectCrewMembers))
+      .find(Boolean);
+
+    if (crewAllocationError) {
+      setEntryNotice(crewAllocationError);
+      return;
+    }
+
     const nextEntries = selectedProject.payItems.flatMap((payItem) => {
       const draft = draftsByPayItem[payItem.id];
       const existingEntry = visibleEntries.find((entry) => entry.payItemId === payItem.id);
@@ -528,6 +751,7 @@ export function TimeAllocationWorkspace() {
           payItemUnitOfMeasure: existingEntry?.payItemUnitOfMeasure ?? payItem.unitOfMeasure.toUpperCase(),
           hours,
           quantityCompleted: quantity,
+          crewAllocations: buildCrewAllocations(draft, selectedProjectCrewMembers, hours),
           savedByUserId: currentUser.id,
           savedByName: formatUserName(currentUser),
           savedAt: new Date().toISOString()
@@ -600,18 +824,21 @@ export function TimeAllocationWorkspace() {
     }
 
     setEntries((current) =>
-      current.map((entry) =>
-        entry.id === editingEntry.entryId
-          ? {
-              ...entry,
-              hours,
-              quantityCompleted: quantity,
-              savedByUserId: currentUser.id,
-              savedByName: formatUserName(currentUser),
-              savedAt: new Date().toISOString()
-            }
-          : entry
-      )
+      current.map((entry) => {
+        if (entry.id !== editingEntry.entryId) {
+          return entry;
+        }
+
+        return {
+          ...entry,
+          hours,
+          quantityCompleted: quantity,
+          crewAllocations: scaleCrewAllocations(entry.crewAllocations ?? [], hours),
+          savedByUserId: currentUser.id,
+          savedByName: formatUserName(currentUser),
+          savedAt: new Date().toISOString()
+        };
+      })
     );
     setEditingEntry(null);
     setEntryNotice("Daily allocation row updated.");
@@ -782,6 +1009,7 @@ export function TimeAllocationWorkspace() {
                 setSelectedProjectId(event.target.value);
                 setMobileSelectedPayItemId("");
                 setEditingEntry(null);
+                setEditingCrewMember(null);
                 setDraftsByPayItem({});
               }}
             >
@@ -803,6 +1031,7 @@ export function TimeAllocationWorkspace() {
                 setSelectedProjectId(value);
                 setMobileSelectedPayItemId("");
                 setEditingEntry(null);
+                setEditingCrewMember(null);
                 setDraftsByPayItem({});
               }}
             />
@@ -854,6 +1083,117 @@ export function TimeAllocationWorkspace() {
               <span>Entries can be edited until the day is submitted.</span>
             )}
           </div>
+
+          <div className="crew-setup">
+            <div className="crew-setup-heading">
+              <h3>Crew Members</h3>
+              <span>{selectedProjectCrewMembers.length}</span>
+            </div>
+            <div className="field-group">
+              <label htmlFor="crew-member-name">Name</label>
+              <input
+                id="crew-member-name"
+                disabled={!selectedProject}
+                value={crewMemberName}
+                onChange={(event) => setCrewMemberName(event.target.value)}
+              />
+            </div>
+            <div className="field-group">
+              <label htmlFor="crew-member-job-title">Job Title</label>
+              <input
+                id="crew-member-job-title"
+                disabled={!selectedProject}
+                value={crewMemberJobTitle}
+                onChange={(event) => setCrewMemberJobTitle(event.target.value)}
+              />
+            </div>
+            <button
+              className="secondary-button crew-add-button"
+              disabled={!selectedProject}
+              onClick={addCrewMember}
+              type="button"
+            >
+              <UserPlus aria-hidden="true" size={18} />
+              Add crew member
+            </button>
+            <div className="crew-list">
+              {selectedProjectCrewMembers.length === 0 ? (
+                <div className="empty-state">No crew members saved to this job.</div>
+              ) : (
+                selectedProjectCrewMembers.map((member) => {
+                  const memberIsUsed = selectedProject
+                    ? crewMemberHasSavedAllocations(member.id, selectedProject.id, entries)
+                    : false;
+
+                  return (
+                    <div className="crew-list-row" key={member.id}>
+                      {editingCrewMember?.crewMemberId === member.id ? (
+                        <div className="crew-edit-form">
+                          <input
+                            aria-label={`Edit name for ${member.name}`}
+                            value={editingCrewMember.name}
+                            onChange={(event) =>
+                              setEditingCrewMember((current) =>
+                                current ? { ...current, name: event.target.value } : current
+                              )
+                            }
+                          />
+                          <input
+                            aria-label={`Edit job title for ${member.name}`}
+                            value={editingCrewMember.jobTitle}
+                            onChange={(event) =>
+                              setEditingCrewMember((current) =>
+                                current ? { ...current, jobTitle: event.target.value } : current
+                              )
+                            }
+                          />
+                          <div className="crew-edit-actions">
+                            <button className="secondary-button" onClick={saveEditedCrewMember} type="button">
+                              Save
+                            </button>
+                            <button className="icon-button" onClick={() => setEditingCrewMember(null)} type="button">
+                              <X aria-hidden="true" size={16} />
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <span>
+                            <strong>{member.name}</strong>
+                            {member.jobTitle}
+                          </span>
+                          <div className="crew-row-actions">
+                            <button
+                              aria-label={`Edit ${member.name}`}
+                              className="icon-button"
+                              onClick={() => startEditingCrewMember(member)}
+                              type="button"
+                            >
+                              <Edit3 aria-hidden="true" size={16} />
+                            </button>
+                            <button
+                              aria-label={`Remove ${member.name}`}
+                              className="icon-button"
+                              disabled={memberIsUsed}
+                              onClick={() => removeCrewMember(member.id)}
+                              title={
+                                memberIsUsed
+                                  ? "This crew member is already assigned to saved pay item hours."
+                                  : undefined
+                              }
+                              type="button"
+                            >
+                              <Trash2 aria-hidden="true" size={16} />
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
         </aside>
 
         {viewMode === "entry" ? (
@@ -882,11 +1222,12 @@ export function TimeAllocationWorkspace() {
                     <span>Budget</span>
                     <span>Saved Hrs</span>
                     <span>Saved Qty</span>
+                    <span>Crew</span>
                     <span>Hours</span>
                     <span>Quantity</span>
                   </div>
                   {selectedProject.payItems.map((item) => {
-                    const draft = draftsByPayItem[item.id] ?? { hours: "", quantity: "" };
+                    const draft = draftsByPayItem[item.id];
                     const savedEntry = visibleEntries.find((entry) => entry.payItemId === item.id);
 
                     return (
@@ -898,6 +1239,16 @@ export function TimeAllocationWorkspace() {
                         </span>
                         <span className="matrix-saved" data-label="Saved Hrs">{savedEntry ? savedEntry.hours.toFixed(2) : "-"}</span>
                         <span className="matrix-saved" data-label="Saved Qty">{savedEntry ? savedEntry.quantityCompleted.toFixed(2) : "-"}</span>
+                        <CrewAllocationEditor
+                          crewMembers={selectedProjectCrewMembers}
+                          dayIsSubmitted={dayIsSubmitted}
+                          draft={draft}
+                          payItemId={item.id}
+                          savedEntry={savedEntry}
+                          onCrewHoursChange={updateDraftCrewHours}
+                          onCrewToggle={toggleDraftCrewMember}
+                          onSplitEvenly={splitDraftCrewHoursEvenly}
+                        />
                         <input
                           aria-label={`Hours for ${item.code}`}
                           className="number-entry"
@@ -908,7 +1259,7 @@ export function TimeAllocationWorkspace() {
                           placeholder="Hours"
                           step="0.25"
                           type="number"
-                          value={draft.hours}
+                          value={draft?.hours ?? ""}
                           onChange={(event) => updateDraft(item.id, "hours", event.target.value)}
                           onWheel={(event) => event.currentTarget.blur()}
                         />
@@ -922,7 +1273,7 @@ export function TimeAllocationWorkspace() {
                           placeholder="Quantity"
                           step="0.01"
                           type="number"
-                          value={draft.quantity}
+                          value={draft?.quantity ?? ""}
                           onChange={(event) => updateDraft(item.id, "quantity", event.target.value)}
                           onWheel={(event) => event.currentTarget.blur()}
                         />
@@ -938,7 +1289,11 @@ export function TimeAllocationWorkspace() {
                   payItems={selectedProject.payItems}
                   savedEntries={visibleEntries}
                   selectedPayItem={mobileSelectedPayItem}
+                  crewMembers={selectedProjectCrewMembers}
                   onDraftChange={updateDraft}
+                  onCrewHoursChange={updateDraftCrewHours}
+                  onCrewToggle={toggleDraftCrewMember}
+                  onSplitEvenly={splitDraftCrewHoursEvenly}
                   onSelectedPayItemChange={setMobileSelectedPayItemId}
                 />
               ) : null}
@@ -966,7 +1321,7 @@ export function TimeAllocationWorkspace() {
                   </button>
                 </div>
               ) : null}
-              {entryNotice ? <div className={entryNotice.includes("Enter both") ? "inline-alert" : "success-alert"}>{entryNotice}</div> : null}
+              {entryNotice ? <div className={entryNoticeIsError(entryNotice) ? "inline-alert" : "success-alert"}>{entryNotice}</div> : null}
             </div>
 
             <div className="panel">
@@ -1045,6 +1400,7 @@ export function TimeAllocationWorkspace() {
                         <>
                           <span>{entry.hours.toFixed(2)} hrs</span>
                           <span>{entry.quantityCompleted.toFixed(2)} qty</span>
+                          <span className="entry-crew">{formatEntryCrew(entry)}</span>
                           <button
                             aria-label={`Edit ${entry.payItemCode}`}
                             className="icon-button"
@@ -1069,6 +1425,28 @@ export function TimeAllocationWorkspace() {
                   ))
                 )}
               </div>
+            </div>
+
+            <div className="panel">
+              <div className="panel-heading">
+                <h2>Crew Hours Summary</h2>
+                <IconLabel icon={Users} text={`${crewSummaryRows.length} crew member${crewSummaryRows.length === 1 ? "" : "s"}`} />
+              </div>
+              {crewSummaryRows.length === 0 ? (
+                <div className="empty-state">No crew hours allocated for this job and date.</div>
+              ) : (
+                <div className="crew-summary-list">
+                  {crewSummaryRows.map((row) => (
+                    <div className="crew-summary-row" key={row.crewMemberId}>
+                      <span>
+                        <strong>{row.name}</strong>
+                        {row.jobTitle}
+                      </span>
+                      <strong>{row.hours.toFixed(2)} hrs</strong>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </section>
         ) : (
@@ -1199,24 +1577,142 @@ function MobileOptionPicker({
   );
 }
 
+function CrewAllocationEditor({
+  crewMembers,
+  dayIsSubmitted,
+  draft,
+  payItemId,
+  savedEntry,
+  onCrewHoursChange,
+  onCrewToggle,
+  onSplitEvenly
+}: {
+  crewMembers: CrewMember[];
+  dayIsSubmitted: boolean;
+  draft: PayItemDraft | undefined;
+  payItemId: string;
+  savedEntry: AllocationEntry | undefined;
+  onCrewHoursChange: (payItemId: string, crewMemberId: string, value: string) => void;
+  onCrewToggle: (payItemId: string, crewMemberId: string, checked: boolean) => void;
+  onSplitEvenly: (payItemId: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const selectedCrewMemberIds = getSelectedCrewMemberIds(draft, savedEntry);
+  const selectedCrewHours = getSelectedCrewHours(draft, savedEntry);
+  const selectedCrewMembers = getSelectedCrewMembers(selectedCrewMemberIds, crewMembers, savedEntry);
+  const allocationTotal = selectedCrewMemberIds.reduce(
+    (total, crewMemberId) => total + Number(selectedCrewHours[crewMemberId] || 0),
+    0
+  );
+  const summaryText =
+    selectedCrewMembers.length === 0
+      ? "Select crew"
+      : selectedCrewMembers.length === 1
+        ? selectedCrewMembers[0].name
+        : `${selectedCrewMembers.length} selected`;
+
+  return (
+    <details className="crew-allocator" open={open}>
+      <summary
+        onClick={(event) => {
+          event.preventDefault();
+          setOpen((current) => !current);
+        }}
+      >
+        <Users aria-hidden="true" size={15} />
+        <span>{summaryText}</span>
+      </summary>
+      <div className="crew-allocator-body">
+        {crewMembers.length === 0 ? (
+          <div className="field-note">Add crew members to this job before allocating hours.</div>
+        ) : (
+          <div className="crew-checkbox-list">
+            {crewMembers.map((member) => (
+              <label className="crew-checkbox" key={member.id}>
+                <input
+                  checked={selectedCrewMemberIds.includes(member.id)}
+                  disabled={dayIsSubmitted}
+                  type="checkbox"
+                  onChange={(event) => onCrewToggle(payItemId, member.id, event.target.checked)}
+                />
+                <span>
+                  <strong>{member.name}</strong>
+                  {member.jobTitle}
+                </span>
+              </label>
+            ))}
+          </div>
+        )}
+
+        {selectedCrewMembers.length > 0 ? (
+          <div className="crew-hour-editor">
+            <div className="crew-hour-editor-heading">
+              <span>Allocated Hours</span>
+              <button
+                className="text-button"
+                disabled={dayIsSubmitted}
+                onClick={() => onSplitEvenly(payItemId)}
+                type="button"
+              >
+                Split evenly
+              </button>
+            </div>
+            {selectedCrewMembers.map((member) => (
+              <label className="crew-hour-row" key={member.id}>
+                <span>{member.name}</span>
+                <input
+                  aria-label={`Allocated hours for ${member.name}`}
+                  className="number-entry"
+                  disabled={dayIsSubmitted}
+                  inputMode="decimal"
+                  min="0"
+                  step="0.25"
+                  type="number"
+                  value={selectedCrewHours[member.id] ?? ""}
+                  onChange={(event) => onCrewHoursChange(payItemId, member.id, event.target.value)}
+                  onWheel={(event) => event.currentTarget.blur()}
+                />
+              </label>
+            ))}
+            <div className="crew-allocation-total">Total allocated: {allocationTotal.toFixed(2)} hrs</div>
+          </div>
+        ) : null}
+        <div className="crew-allocator-actions">
+          <button className="secondary-button" onClick={() => setOpen(false)} type="button">
+            OK
+          </button>
+        </div>
+      </div>
+    </details>
+  );
+}
+
 function MobilePayItemEntry({
+  crewMembers,
   dayIsSubmitted,
   draftsByPayItem,
   payItems,
   savedEntries,
   selectedPayItem,
+  onCrewHoursChange,
+  onCrewToggle,
   onDraftChange,
+  onSplitEvenly,
   onSelectedPayItemChange
 }: {
+  crewMembers: CrewMember[];
   dayIsSubmitted: boolean;
   draftsByPayItem: DraftsByPayItem;
   payItems: Project["payItems"];
   savedEntries: AllocationEntry[];
   selectedPayItem: Project["payItems"][number];
-  onDraftChange: (payItemId: string, field: keyof PayItemDraft, value: string) => void;
+  onCrewHoursChange: (payItemId: string, crewMemberId: string, value: string) => void;
+  onCrewToggle: (payItemId: string, crewMemberId: string, checked: boolean) => void;
+  onDraftChange: (payItemId: string, field: "hours" | "quantity", value: string) => void;
+  onSplitEvenly: (payItemId: string) => void;
   onSelectedPayItemChange: (payItemId: string) => void;
 }) {
-  const draft = draftsByPayItem[selectedPayItem.id] ?? { hours: "", quantity: "" };
+  const draft = draftsByPayItem[selectedPayItem.id];
   const savedEntry = savedEntries.find((entry) => entry.payItemId === selectedPayItem.id);
 
   return (
@@ -1269,7 +1765,7 @@ function MobilePayItemEntry({
             placeholder="Hours"
             step="0.25"
             type="number"
-            value={draft.hours}
+            value={draft?.hours ?? ""}
             onChange={(event) => onDraftChange(selectedPayItem.id, "hours", event.target.value)}
             onWheel={(event) => event.currentTarget.blur()}
           />
@@ -1286,12 +1782,22 @@ function MobilePayItemEntry({
             placeholder="Quantity"
             step="0.01"
             type="number"
-            value={draft.quantity}
+            value={draft?.quantity ?? ""}
             onChange={(event) => onDraftChange(selectedPayItem.id, "quantity", event.target.value)}
             onWheel={(event) => event.currentTarget.blur()}
           />
         </div>
       </div>
+      <CrewAllocationEditor
+        crewMembers={crewMembers}
+        dayIsSubmitted={dayIsSubmitted}
+        draft={draft}
+        payItemId={selectedPayItem.id}
+        savedEntry={savedEntry}
+        onCrewHoursChange={onCrewHoursChange}
+        onCrewToggle={onCrewToggle}
+        onSplitEvenly={onSplitEvenly}
+      />
     </div>
   );
 }
@@ -1635,6 +2141,288 @@ function buildReportProjectOptions(projects: Project[], entries: AllocationEntry
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+function crewMemberHasSavedAllocations(crewMemberId: string, projectId: string, entries: AllocationEntry[]) {
+  return entries.some(
+    (entry) =>
+      entry.projectId === projectId &&
+      entry.crewAllocations?.some((allocation) => allocation.crewMemberId === crewMemberId)
+  );
+}
+
+function getExistingDraft(
+  draft: PayItemDraft | undefined,
+  payItemId: string,
+  visibleEntries: AllocationEntry[]
+): PayItemDraft {
+  if (draft) {
+    return {
+      hours: draft.hours ?? "",
+      quantity: draft.quantity ?? "",
+      crewMemberIds: draft.crewMemberIds ?? [],
+      crewHours: draft.crewHours ?? {}
+    };
+  }
+
+  const existingEntry = visibleEntries.find((entry) => entry.payItemId === payItemId);
+
+  return {
+    hours: "",
+    quantity: "",
+    crewMemberIds: existingEntry?.crewAllocations?.map((allocation) => allocation.crewMemberId) ?? [],
+    crewHours:
+      existingEntry?.crewAllocations?.reduce<Record<string, string>>((hoursByCrewMemberId, allocation) => {
+        hoursByCrewMemberId[allocation.crewMemberId] = String(allocation.hours);
+        return hoursByCrewMemberId;
+      }, {}) ?? {}
+  };
+}
+
+function normalizeDraftCrewHours(draft: PayItemDraft) {
+  const crewHours = Object.fromEntries(
+    Object.entries(draft.crewHours).filter(([crewMemberId]) => draft.crewMemberIds.includes(crewMemberId))
+  );
+  const nextDraft = {
+    ...draft,
+    crewHours
+  };
+
+  if (draft.crewMemberIds.length === 1 && draft.hours !== "") {
+    return {
+      ...nextDraft,
+      crewHours: {
+        [draft.crewMemberIds[0]]: draft.hours
+      }
+    };
+  }
+
+  const totalHours = Number(draft.hours);
+  const allocatedHours = draft.crewMemberIds.reduce((total, crewMemberId) => total + Number(crewHours[crewMemberId] || 0), 0);
+  const hasMissingCrewHours = draft.crewMemberIds.some((crewMemberId) => crewHours[crewMemberId] === undefined || crewHours[crewMemberId] === "");
+
+  if (
+    draft.crewMemberIds.length > 1 &&
+    Number.isFinite(totalHours) &&
+    totalHours > 0 &&
+    (hasMissingCrewHours || allocatedHours === 0 || Math.abs(allocatedHours - totalHours) > 0.01)
+  ) {
+    return splitCrewHoursEvenly(nextDraft);
+  }
+
+  return nextDraft;
+}
+
+function splitCrewHoursEvenly(draft: PayItemDraft) {
+  const totalHours = Number(draft.hours);
+
+  if (!Number.isFinite(totalHours) || draft.crewMemberIds.length === 0) {
+    return draft;
+  }
+
+  const crewHours: Record<string, string> = {};
+  const roundedShare = Math.floor((totalHours / draft.crewMemberIds.length) * 100) / 100;
+  let allocated = 0;
+
+  draft.crewMemberIds.forEach((crewMemberId, index) => {
+    const value = index === draft.crewMemberIds.length - 1 ? totalHours - allocated : roundedShare;
+    allocated += value;
+    crewHours[crewMemberId] = value.toFixed(2);
+  });
+
+  return {
+    ...draft,
+    crewHours
+  };
+}
+
+function getSelectedCrewMemberIds(draft: PayItemDraft | undefined, savedEntry: AllocationEntry | undefined) {
+  return draft?.crewMemberIds ?? savedEntry?.crewAllocations?.map((allocation) => allocation.crewMemberId) ?? [];
+}
+
+function getSelectedCrewHours(draft: PayItemDraft | undefined, savedEntry: AllocationEntry | undefined) {
+  if (draft) {
+    return draft.crewHours;
+  }
+
+  return (
+    savedEntry?.crewAllocations?.reduce<Record<string, string>>((hoursByCrewMemberId, allocation) => {
+      hoursByCrewMemberId[allocation.crewMemberId] = String(allocation.hours);
+      return hoursByCrewMemberId;
+    }, {}) ?? {}
+  );
+}
+
+function getSelectedCrewMembers(
+  selectedCrewMemberIds: string[],
+  crewMembers: CrewMember[],
+  savedEntry: AllocationEntry | undefined
+) {
+  return selectedCrewMemberIds.map((crewMemberId) => {
+    const currentCrewMember = crewMembers.find((member) => member.id === crewMemberId);
+    const savedCrewMember = savedEntry?.crewAllocations?.find((allocation) => allocation.crewMemberId === crewMemberId);
+
+    return {
+      id: crewMemberId,
+      name: currentCrewMember?.name ?? savedCrewMember?.crewMemberName ?? "Unknown crew member",
+      jobTitle: currentCrewMember?.jobTitle ?? savedCrewMember?.jobTitle ?? "-"
+    };
+  });
+}
+
+function getCrewAllocationError(draft: PayItemDraft | undefined, crewMembers: CrewMember[]) {
+  if (!draftIsSaveable(draft)) {
+    return "";
+  }
+
+  const hours = Number(draft.hours);
+
+  if (hours <= 0) {
+    return "";
+  }
+
+  if (crewMembers.length === 0) {
+    return "Add at least one crew member before saving hours.";
+  }
+
+  if (draft.crewMemberIds.length === 0) {
+    return "Select at least one crew member for every row with hours.";
+  }
+
+  const selectedCrewMemberIds = new Set(draft.crewMemberIds);
+
+  if (draft.crewMemberIds.some((crewMemberId) => !crewMembers.some((member) => member.id === crewMemberId))) {
+    return "One selected crew member is no longer saved to this job.";
+  }
+
+  const allocatedHours = draft.crewMemberIds.reduce((total, crewMemberId) => {
+    const value = draft.crewMemberIds.length === 1 && draft.crewHours[crewMemberId] === "" ? hours : Number(draft.crewHours[crewMemberId]);
+    return total + value;
+  }, 0);
+  const hasInvalidAllocation = draft.crewMemberIds.some((crewMemberId) => {
+    const value = Number(draft.crewHours[crewMemberId]);
+    return !Number.isFinite(value) || value < 0;
+  });
+
+  if (hasInvalidAllocation) {
+    return "Enter valid allocated hours for each selected crew member.";
+  }
+
+  if (Array.from(selectedCrewMemberIds).length !== draft.crewMemberIds.length) {
+    return "Remove duplicate crew selections before saving.";
+  }
+
+  if (Math.abs(allocatedHours - hours) > 0.01) {
+    return "Crew allocated hours must equal the pay item hours before saving.";
+  }
+
+  return "";
+}
+
+function buildCrewAllocations(draft: PayItemDraft | undefined, crewMembers: CrewMember[], totalHours: number) {
+  if (!draft || totalHours <= 0 || draft.crewMemberIds.length === 0) {
+    return [];
+  }
+
+  return draft.crewMemberIds.map((crewMemberId) => {
+    const crewMember = crewMembers.find((member) => member.id === crewMemberId);
+    const hours = draft.crewMemberIds.length === 1 ? totalHours : Number(draft.crewHours[crewMemberId]);
+
+    return {
+      crewMemberId,
+      crewMemberName: crewMember?.name ?? "Unknown crew member",
+      jobTitle: crewMember?.jobTitle ?? "-",
+      hours
+    };
+  });
+}
+
+function scaleCrewAllocations(allocations: NonNullable<AllocationEntry["crewAllocations"]>, nextTotalHours: number) {
+  if (allocations.length === 0) {
+    return [];
+  }
+
+  if (allocations.length === 1) {
+    return [
+      {
+        ...allocations[0],
+        hours: nextTotalHours
+      }
+    ];
+  }
+
+  const currentTotalHours = allocations.reduce((total, allocation) => total + allocation.hours, 0);
+
+  if (currentTotalHours <= 0) {
+    const draft = splitCrewHoursEvenly({
+      hours: String(nextTotalHours),
+      quantity: "",
+      crewMemberIds: allocations.map((allocation) => allocation.crewMemberId),
+      crewHours: {}
+    });
+
+    return allocations.map((allocation) => ({
+      ...allocation,
+      hours: Number(draft.crewHours[allocation.crewMemberId] ?? 0)
+    }));
+  }
+
+  let allocated = 0;
+
+  return allocations.map((allocation, index) => {
+    const value =
+      index === allocations.length - 1
+        ? nextTotalHours - allocated
+        : Math.round((allocation.hours / currentTotalHours) * nextTotalHours * 100) / 100;
+
+    allocated += value;
+
+    return {
+      ...allocation,
+      hours: value
+    };
+  });
+}
+
+function buildCrewSummary(entries: AllocationEntry[], crewMembers: CrewMember[]) {
+  const rows = new Map<string, CrewSummaryRow>();
+
+  for (const entry of entries) {
+    if (!entry.crewAllocations?.length) {
+      rows.set("unassigned", {
+        crewMemberId: "unassigned",
+        name: "Unassigned",
+        jobTitle: "No crew selected",
+        hours: (rows.get("unassigned")?.hours ?? 0) + entry.hours
+      });
+      continue;
+    }
+
+    for (const allocation of entry.crewAllocations) {
+      const crewMember = crewMembers.find((member) => member.id === allocation.crewMemberId);
+      const row = rows.get(allocation.crewMemberId) ?? {
+        crewMemberId: allocation.crewMemberId,
+        name: crewMember?.name ?? allocation.crewMemberName,
+        jobTitle: crewMember?.jobTitle ?? allocation.jobTitle,
+        hours: 0
+      };
+
+      row.hours += allocation.hours;
+      rows.set(allocation.crewMemberId, row);
+    }
+  }
+
+  return Array.from(rows.values()).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function formatEntryCrew(entry: AllocationEntry) {
+  if (!entry.crewAllocations?.length) {
+    return "Crew: Unassigned";
+  }
+
+  return `Crew: ${entry.crewAllocations
+    .map((allocation) => `${allocation.crewMemberName} ${allocation.hours.toFixed(2)}h`)
+    .join(", ")}`;
+}
+
 function draftIsSaveable(draft: PayItemDraft | undefined) {
   const hasHoursInput = draft?.hours !== undefined && draft.hours !== "";
   const hasQuantityInput = draft?.quantity !== undefined && draft.quantity !== "";
@@ -1654,6 +2442,19 @@ function draftIsIncomplete(draft: PayItemDraft | undefined) {
   const hasQuantityInput = draft?.quantity !== undefined && draft.quantity !== "";
 
   return hasHoursInput !== hasQuantityInput;
+}
+
+function entryNoticeIsError(message: string) {
+  return [
+    "Add at least",
+    "Crew member is already",
+    "Crew allocated",
+    "Enter both",
+    "Enter valid",
+    "One selected",
+    "Remove duplicate",
+    "Select at least"
+  ].some((prefix) => message.startsWith(prefix));
 }
 
 function getLastProjectStorageKey(userId: string) {

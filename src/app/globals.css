@@ -193,6 +193,7 @@ button {
   display: grid;
   gap: 6px;
   margin-bottom: 14px;
+  min-width: 0;
 }
 
 .field-group label {
@@ -216,6 +217,8 @@ button {
 
 .mobile-picker {
   display: none;
+  min-width: 0;
+  width: 100%;
 }
 
 .mobile-picker-trigger {
@@ -228,16 +231,23 @@ button {
   gap: 10px;
   justify-content: space-between;
   min-height: 42px;
+  min-width: 0;
+  overflow: hidden;
   padding: 9px 10px;
   text-align: left;
   width: 100%;
 }
 
 .mobile-picker-trigger span {
+  display: block;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.mobile-picker-trigger svg {
+  flex: 0 0 auto;
 }
 
 .mobile-picker-overlay {
@@ -511,6 +521,21 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   border-color: #3d5367;
 }
 
+.text-button {
+  background: transparent;
+  border: 0;
+  color: #b8e7ec;
+  font-size: 0.78rem;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.text-button:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
 .allocation-grid {
   display: grid;
   gap: 16px;
@@ -663,7 +688,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   align-items: center;
   display: grid;
   gap: 10px;
-  grid-template-columns: minmax(90px, 0.7fr) minmax(220px, 1.5fr) minmax(100px, 0.7fr) minmax(80px, 0.55fr) minmax(80px, 0.55fr) minmax(90px, 0.65fr) minmax(100px, 0.7fr);
+  grid-template-columns: minmax(90px, 0.7fr) minmax(220px, 1.5fr) minmax(100px, 0.7fr) minmax(80px, 0.55fr) minmax(80px, 0.55fr) minmax(150px, 1fr) minmax(90px, 0.65fr) minmax(100px, 0.7fr);
   padding: 10px 12px;
 }
 
@@ -704,6 +729,242 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .matrix-saved {
   color: var(--muted);
   font-size: 0.9rem;
+}
+
+.crew-setup {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 16px;
+}
+
+.crew-setup-heading {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.crew-setup-heading h3 {
+  font-size: 0.94rem;
+  margin: 0;
+}
+
+.crew-setup-heading span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.crew-add-button {
+  width: 100%;
+}
+
+.crew-list {
+  display: grid;
+  gap: 8px;
+}
+
+.crew-list .empty-state {
+  padding: 12px;
+}
+
+.crew-list-row,
+.crew-summary-row {
+  align-items: center;
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 9px 10px;
+}
+
+.crew-list-row {
+  min-width: 0;
+}
+
+.crew-list-row span,
+.crew-summary-row span {
+  color: var(--muted);
+  display: grid;
+  font-size: 0.78rem;
+  gap: 2px;
+  min-width: 0;
+}
+
+.crew-list-row strong,
+.crew-summary-row strong {
+  color: var(--foreground);
+  font-size: 0.88rem;
+  overflow-wrap: anywhere;
+}
+
+.crew-row-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+
+.crew-edit-form {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+}
+
+.crew-edit-form input {
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--foreground);
+  min-height: 38px;
+  padding: 8px 9px;
+  width: 100%;
+}
+
+.crew-edit-actions {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.crew-edit-actions .secondary-button {
+  min-height: 34px;
+  padding: 6px 10px;
+}
+
+.crew-allocator {
+  min-width: 0;
+  position: relative;
+}
+
+.crew-allocator summary {
+  align-items: center;
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--foreground);
+  cursor: pointer;
+  display: flex;
+  gap: 6px;
+  min-height: 38px;
+  min-width: 0;
+  padding: 8px;
+}
+
+.crew-allocator summary span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crew-allocator-body {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 18px 34px rgba(0, 0, 0, 0.35);
+  display: grid;
+  gap: 10px;
+  margin-top: 6px;
+  max-height: 360px;
+  min-width: min(320px, 80vw);
+  overflow: auto;
+  padding: 10px;
+  position: absolute;
+  z-index: 5;
+}
+
+.crew-checkbox-list {
+  display: grid;
+  gap: 6px;
+}
+
+.crew-checkbox {
+  align-items: start;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.crew-checkbox input {
+  margin-top: 3px;
+}
+
+.crew-checkbox span {
+  color: var(--muted);
+  display: grid;
+  font-size: 0.76rem;
+  gap: 2px;
+}
+
+.crew-checkbox strong {
+  color: var(--foreground);
+  font-size: 0.84rem;
+}
+
+.crew-hour-editor {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 8px;
+  padding-top: 10px;
+}
+
+.crew-hour-editor-heading,
+.crew-hour-row {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) 90px;
+}
+
+.crew-hour-editor-heading span {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.crew-hour-row span {
+  font-size: 0.82rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.crew-hour-row input {
+  min-height: 36px;
+  padding: 7px 8px;
+}
+
+.crew-allocation-total {
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-align: right;
+}
+
+.crew-allocator-actions {
+  border-top: 1px solid var(--line);
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 10px;
+}
+
+.crew-allocator-actions .secondary-button {
+  min-height: 34px;
+  min-width: 72px;
+  padding: 6px 12px;
+}
+
+.entry-crew {
+  color: var(--muted);
+  flex: 1 1 180px;
+  font-size: 0.82rem;
+}
+
+.crew-summary-list {
+  display: grid;
+  gap: 8px;
 }
 
 .pay-item-mobile-entry {
@@ -1019,6 +1280,15 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     display: grid;
   }
 
+  .pay-item-mobile-entry .crew-allocator-body,
+  .matrix-row .crew-allocator-body {
+    box-shadow: none;
+    max-height: none;
+    min-width: 0;
+    position: static;
+    width: 100%;
+  }
+
   .matrix-footer {
     align-items: stretch;
     flex-direction: column;
@@ -1144,6 +1414,11 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
   .entry-row .icon-button {
     justify-self: end;
+  }
+
+  .crew-hour-editor-heading,
+  .crew-hour-row {
+    grid-template-columns: minmax(0, 1fr) 92px;
   }
 }
 

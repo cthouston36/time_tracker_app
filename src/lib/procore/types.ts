@@ -12,6 +12,13 @@ export type Project = {
   payItems: PayItem[];
 };
 
+export type CrewAllocation = {
+  crewMemberId: string;
+  crewMemberName: string;
+  jobTitle: string;
+  hours: number;
+};
+
 export type AllocationEntry = {
   id: string;
   projectId: string;
@@ -24,6 +31,7 @@ export type AllocationEntry = {
   payItemUnitOfMeasure?: string;
   hours: number;
   quantityCompleted: number;
+  crewAllocations?: CrewAllocation[];
   savedByUserId?: string;
   savedByName?: string;
   savedAt?: string;
