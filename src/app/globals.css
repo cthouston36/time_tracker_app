@@ -1,0 +1,249 @@
+:root {
+  --background: #f7f8fa;
+  --foreground: #17202a;
+  --muted: #64707d;
+  --line: #d8dde3;
+  --panel: #ffffff;
+  --accent: #155e75;
+  --accent-strong: #0f4d61;
+  --danger: #b42318;
+  --success: #087443;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+.app-shell {
+  min-height: 100vh;
+}
+
+.top-bar {
+  align-items: center;
+  background: #ffffff;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  justify-content: space-between;
+  min-height: 64px;
+  padding: 14px clamp(16px, 4vw, 40px);
+}
+
+.brand-block h1 {
+  font-size: 1.1rem;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.brand-block p {
+  color: var(--muted);
+  font-size: 0.88rem;
+  margin: 3px 0 0;
+}
+
+.status-pill {
+  align-items: center;
+  background: #e9f7ef;
+  border: 1px solid #b9e4ca;
+  border-radius: 999px;
+  color: var(--success);
+  display: inline-flex;
+  font-size: 0.85rem;
+  gap: 6px;
+  padding: 7px 10px;
+  white-space: nowrap;
+}
+
+.workspace {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: minmax(260px, 360px) minmax(0, 1fr);
+  padding: 24px clamp(16px, 4vw, 40px) 40px;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.panel h2 {
+  font-size: 1rem;
+  margin: 0 0 12px;
+}
+
+.field-group {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.field-group label {
+  color: #364452;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.field-group input,
+.field-group select {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  min-height: 42px;
+  padding: 9px 10px;
+  width: 100%;
+}
+
+.crew-list,
+.entry-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+}
+
+.crew-row,
+.entry-row {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 10px;
+}
+
+.crew-row span,
+.entry-row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.icon-button {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--muted);
+  display: inline-flex;
+  flex: 0 0 auto;
+  height: 34px;
+  justify-content: center;
+  width: 34px;
+}
+
+.icon-button:hover {
+  border-color: var(--line);
+  color: var(--danger);
+}
+
+.primary-button {
+  align-items: center;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  color: #ffffff;
+  display: inline-flex;
+  gap: 8px;
+  justify-content: center;
+  min-height: 42px;
+  padding: 9px 12px;
+}
+
+.primary-button:hover {
+  background: var(--accent-strong);
+}
+
+.secondary-button {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--foreground);
+  display: inline-flex;
+  gap: 8px;
+  justify-content: center;
+  min-height: 42px;
+  padding: 9px 12px;
+}
+
+.allocation-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.entry-form {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(180px, 1.6fr) repeat(2, minmax(110px, 0.7fr)) auto;
+}
+
+.summary-strip {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.metric {
+  background: #f4f6f8;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 12px;
+}
+
+.metric span {
+  color: var(--muted);
+  display: block;
+  font-size: 0.78rem;
+  margin-bottom: 4px;
+}
+
+.metric strong {
+  font-size: 1.2rem;
+}
+
+.empty-state {
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+  color: var(--muted);
+  padding: 18px;
+  text-align: center;
+}
+
+@media (max-width: 860px) {
+  .top-bar {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .entry-form,
+  .summary-strip {
+    grid-template-columns: 1fr;
+  }
+}
