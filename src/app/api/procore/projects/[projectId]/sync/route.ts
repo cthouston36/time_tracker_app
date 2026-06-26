@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getCurrentUser } from "@/lib/auth/session";
 import { readProcoreCache } from "@/lib/procore/cache";
 import { addOrUpdateProjectFromProcore } from "@/lib/procore/projects";
 
@@ -9,6 +10,12 @@ type RouteContext = {
 };
 
 export async function POST(_request: NextRequest, context: RouteContext) {
+  const user = await getCurrentUser();
+
+  if (user?.role !== "admin" && user?.role !== "project_manager") {
+    return NextResponse.json({ error: "Project Manager access is required." }, { status: 403 });
+  }
+
   const { projectId } = await context.params;
 
   try {

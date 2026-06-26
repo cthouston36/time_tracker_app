@@ -1,8 +1,15 @@
 import { NextResponse } from "next/server";
+import { getCurrentUser } from "@/lib/auth/session";
 import { readProcoreCache } from "@/lib/procore/cache";
 import { syncProjectsFromProcore } from "@/lib/procore/projects";
 
 export async function POST() {
+  const user = await getCurrentUser();
+
+  if (user?.role !== "admin") {
+    return NextResponse.json({ error: "Admin access is required." }, { status: 403 });
+  }
+
   try {
     const result = await syncProjectsFromProcore();
     const cache = await readProcoreCache();

@@ -715,15 +715,17 @@ export function TimeAllocationWorkspace() {
           <IconLabel icon={CheckCircle2} text={connectionStatus} />
           {currentUser.role === "project_manager" || currentUser.role === "admin" ? (
             <>
-              <button className="secondary-button" disabled={syncing} onClick={syncProcoreData} type="button">
-                <RefreshCw aria-hidden="true" size={18} />
-                {syncing ? "Syncing..." : "Sync New Projects"}
-              </button>
               {currentUser.role === "admin" ? (
-                <button className="secondary-button" disabled={syncingAll} onClick={syncAllProcoreData} type="button">
-                  <RefreshCw aria-hidden="true" size={18} />
-                  {syncingAll ? "Syncing All..." : "Sync All Projects"}
-                </button>
+                <>
+                  <button className="secondary-button" disabled={syncing} onClick={syncProcoreData} type="button">
+                    <RefreshCw aria-hidden="true" size={18} />
+                    {syncing ? "Syncing..." : "Sync New Projects"}
+                  </button>
+                  <button className="secondary-button" disabled={syncingAll} onClick={syncAllProcoreData} type="button">
+                    <RefreshCw aria-hidden="true" size={18} />
+                    {syncingAll ? "Syncing All..." : "Sync All Projects"}
+                  </button>
+                </>
               ) : null}
               <button
                 className="secondary-button"
