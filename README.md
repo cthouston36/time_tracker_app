@@ -46,3 +46,13 @@ Field supervisors can allocate crew hours and completed quantities to project pa
 2. Store encrypted Procore access and refresh tokens server-side.
 3. Replace mock jobs and pay items with project and budget code calls in `src/lib/procore`.
 4. Persist crew members and daily allocations in an application database.
+
+## Local Procore Values
+
+Keep these in `.env.local`, never in committed source files:
+
+```env
+PROCORE_CLIENT_ID=your_client_id
+PROCORE_CLIENT_SECRET=your_client_secret
+PROCORE_COMPANY_ID=your_company_id
+```

@@ -12,18 +12,19 @@ export type Project = {
   payItems: PayItem[];
 };
 
-export type CrewMember = {
-  id: string;
-  name: string;
-};
-
 export type AllocationEntry = {
   id: string;
   projectId: string;
+  projectName?: string;
   date: string;
   payItemId: string;
   payItemCode: string;
   payItemName: string;
+  payItemBudgetedQuantity?: number;
+  payItemUnitOfMeasure?: string;
   hours: number;
   quantityCompleted: number;
+  savedByUserId?: string;
+  savedByName?: string;
+  savedAt?: string;
 };

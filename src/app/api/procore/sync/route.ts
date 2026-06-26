@@ -1,18 +1,19 @@
 import { NextResponse } from "next/server";
 import { readProcoreCache } from "@/lib/procore/cache";
-import { getProjects } from "@/lib/procore/projects";
+import { syncProjectsFromProcore } from "@/lib/procore/projects";
 
-export async function GET() {
+export async function POST() {
   try {
-    const projects = await getProjects();
+    const result = await syncProjectsFromProcore();
     const cache = await readProcoreCache();
 
     return NextResponse.json({
-      projects,
+      projects: result.projects,
+      summary: result.summary,
       syncedAt: cache?.syncedAt ?? null
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to load Procore projects.";
+    const message = error instanceof Error ? error.message : "Unable to sync Procore data.";
 
     return NextResponse.json(
       {
