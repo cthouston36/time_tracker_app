@@ -709,6 +709,11 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   border-bottom: 1px solid var(--line);
 }
 
+.matrix-row.worked-row {
+  background: #122633;
+  box-shadow: inset 3px 0 0 #2bb8c5;
+}
+
 .matrix-row:last-child {
   border-bottom: 0;
 }
@@ -753,6 +758,20 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .crew-setup-heading span {
   color: var(--muted);
   font-size: 0.82rem;
+}
+
+.crew-existing-picker {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.crew-existing-picker .field-group {
+  margin-bottom: 0;
+}
+
+.crew-existing-picker .secondary-button {
+  width: 100%;
 }
 
 .crew-add-button {
@@ -832,6 +851,35 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .crew-edit-actions .secondary-button {
   min-height: 34px;
   padding: 6px 10px;
+}
+
+.admin-crew-merge {
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  margin-top: 6px;
+  padding: 10px;
+}
+
+.admin-crew-merge-heading {
+  display: grid;
+  gap: 3px;
+}
+
+.admin-crew-merge-heading span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.admin-crew-merge .field-group {
+  margin-bottom: 0;
+}
+
+.admin-crew-merge .secondary-button {
+  width: 100%;
 }
 
 .crew-allocator {
@@ -982,6 +1030,12 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   padding: 12px;
 }
 
+.mobile-pay-item-card.worked-card {
+  background: #122633;
+  border-color: #2f6f78;
+  box-shadow: inset 3px 0 0 #2bb8c5;
+}
+
 .mobile-pay-item-card div {
   min-width: 0;
 }
@@ -1083,6 +1137,241 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   overflow: hidden;
 }
 
+.report-mode-tabs {
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 14px;
+  padding: 4px;
+}
+
+.report-admin-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 14px;
+}
+
+.my-jobs-panel {
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 12px;
+}
+
+.my-jobs-heading {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.my-jobs-heading div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.my-jobs-heading span {
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.my-jobs-actions,
+.job-multi-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.my-jobs-list {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  max-height: 260px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.my-job-row,
+.job-checkbox-row {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--foreground);
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px;
+}
+
+.my-job-row span,
+.job-checkbox-row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.weekly-status-report {
+  display: grid;
+  gap: 14px;
+}
+
+.weekly-status-controls {
+  align-items: start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.week-nav {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.week-range {
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 2px;
+  min-width: 210px;
+  padding: 9px 12px;
+  text-align: center;
+}
+
+.week-range span {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.job-multi-select {
+  min-width: min(360px, 100%);
+  position: relative;
+}
+
+.job-multi-select summary {
+  align-items: center;
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  list-style: none;
+  min-height: 44px;
+  padding: 9px 12px;
+}
+
+.job-multi-select summary::-webkit-details-marker {
+  display: none;
+}
+
+.job-multi-select-panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 10px;
+  margin-top: 6px;
+  max-height: 360px;
+  overflow: auto;
+  padding: 10px;
+  position: absolute;
+  right: 0;
+  width: min(420px, 92vw);
+  z-index: 10;
+}
+
+.job-checkbox-row.emphasized {
+  background: #102f29;
+  border-color: #245f45;
+}
+
+.job-checkbox-list {
+  display: grid;
+  gap: 6px;
+}
+
+.weekly-calendar {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: auto;
+}
+
+.weekly-calendar-row {
+  align-items: stretch;
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 0;
+  grid-template-columns: minmax(240px, 1.4fr) repeat(7, minmax(105px, 0.7fr));
+  min-width: 980px;
+}
+
+.weekly-calendar-row:last-child {
+  border-bottom: 0;
+}
+
+.weekly-calendar-row > span {
+  align-items: center;
+  border-right: 1px solid var(--line);
+  display: flex;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  padding: 10px;
+}
+
+.weekly-calendar-row > span:last-child {
+  border-right: 0;
+}
+
+.weekly-calendar-header {
+  background: var(--field);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.weekly-calendar-job {
+  color: var(--foreground);
+  font-weight: 700;
+}
+
+.status-badge {
+  justify-content: center;
+  text-align: center;
+}
+
+.status-badge.submitted {
+  background: #0f2c22;
+  color: #c8f4da;
+}
+
+.status-badge.draft {
+  background: var(--panel-soft);
+  color: var(--muted);
+}
+
+.report-info-panel {
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: #c8d4df;
+  font-size: 0.86rem;
+  line-height: 1.45;
+  margin-bottom: 14px;
+  padding: 12px;
+}
+
 .report-controls {
   align-items: end;
   display: grid;
@@ -1097,6 +1386,18 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
 .report-clear-button {
   min-width: 120px;
+}
+
+.report-detail-controls {
+  align-items: end;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(220px, 1.1fr) minmax(220px, 1.1fr) repeat(2, minmax(170px, 0.8fr)) auto;
+  margin-bottom: 14px;
+}
+
+.report-detail-controls .field-group {
+  margin-bottom: 0;
 }
 
 .report-row {
@@ -1170,8 +1471,56 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   align-items: center;
   display: grid;
   gap: 10px;
-  grid-template-columns: minmax(100px, 0.6fr) minmax(220px, 1.6fr) repeat(3, minmax(90px, 0.7fr));
+  grid-template-columns: minmax(100px, 0.6fr) minmax(220px, 1.4fr) minmax(170px, 1fr) repeat(4, minmax(90px, 0.7fr));
   padding: 6px 0;
+}
+
+.summary-detail-row {
+  grid-template-columns: minmax(220px, 1.6fr) repeat(4, minmax(90px, 0.7fr));
+}
+
+.detail-analysis-row {
+  grid-template-columns: minmax(180px, 1.25fr) minmax(100px, 0.55fr) minmax(190px, 1.1fr) minmax(160px, 1fr) repeat(4, minmax(90px, 0.65fr));
+}
+
+.crew-performance-row {
+  grid-template-columns: minmax(220px, 1.6fr) repeat(4, minmax(80px, 0.55fr)) minmax(120px, 0.8fr) minmax(110px, 0.75fr);
+}
+
+.crew-performance-detail-row {
+  grid-template-columns: minmax(220px, 1.5fr) repeat(7, minmax(90px, 0.65fr));
+}
+
+.performance-pill {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 0.78rem;
+  justify-content: center;
+  min-width: 92px;
+  padding: 4px 8px;
+}
+
+.performance-pill.strong {
+  background: #0f2c22;
+  border-color: #245f45;
+  color: #c8f4da;
+}
+
+.performance-pill.review {
+  background: var(--warning-bg);
+  border-color: var(--warning-line);
+  color: var(--warning-text);
+}
+
+.performance-pill.limited {
+  background: var(--field);
+  color: var(--muted);
+}
+
+.performance-pill.average {
+  background: var(--panel-soft);
+  color: #c8d4df;
 }
 
 .report-detail-row span {
@@ -1179,6 +1528,10 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   font-size: 0.84rem;
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.report-detail-row span strong {
+  color: var(--foreground);
 }
 
 .report-detail-header span {
@@ -1384,6 +1737,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   }
 
   .report-detail-row span[data-label="Job"],
+  .report-detail-row span[data-label="Crew Member"],
   .report-detail-row span[data-label="Saved By"] {
     grid-column: 1 / -1;
   }
@@ -1398,6 +1752,114 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
   .report-controls {
     grid-template-columns: 1fr;
+  }
+
+  .report-mode-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .report-admin-toolbar,
+  .my-jobs-heading,
+  .weekly-status-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .report-admin-toolbar .secondary-button,
+  .my-jobs-actions .secondary-button,
+  .job-multi-actions .secondary-button {
+    width: 100%;
+  }
+
+  .my-jobs-actions,
+  .job-multi-actions,
+  .week-nav {
+    width: 100%;
+  }
+
+  .week-nav {
+    justify-content: space-between;
+  }
+
+  .week-range,
+  .job-multi-select {
+    width: 100%;
+  }
+
+  .job-multi-select-panel {
+    position: static;
+    width: 100%;
+  }
+
+  .weekly-calendar {
+    border: 0;
+    display: grid;
+    gap: 10px;
+    overflow: visible;
+  }
+
+  .weekly-calendar-header {
+    display: none;
+  }
+
+  .weekly-calendar-row {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    gap: 8px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    min-width: 0;
+    padding: 10px;
+  }
+
+  .weekly-calendar-row > span {
+    border-right: 0;
+    border-radius: 6px;
+    padding: 8px;
+  }
+
+  .weekly-calendar-job {
+    background: transparent;
+    grid-column: 1 / -1;
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .status-badge {
+    align-items: flex-start;
+    display: grid;
+    gap: 3px;
+    justify-content: stretch;
+    min-height: 54px;
+    text-align: left;
+  }
+
+  .status-badge::before {
+    color: var(--muted);
+    content: attr(data-label);
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  .report-detail-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .detail-analysis-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .crew-performance-row,
+  .crew-performance-detail-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .detail-analysis-row span[data-label="Pay Item"],
+  .detail-analysis-row span[data-label="Job"],
+  .detail-analysis-row span[data-label="Crew Member"],
+  .crew-performance-row .report-drilldown-button,
+  .crew-performance-detail-row span[data-label="Pay Item"] {
+    grid-column: 1 / -1;
   }
 
   .daily-actions,

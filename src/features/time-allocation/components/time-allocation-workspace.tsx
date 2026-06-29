@@ -4,11 +4,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BarChart3,
   CalendarDays,
+  ChevronLeft,
   ChevronDown,
   ChevronRight,
   CheckCircle2,
   Download,
   Edit3,
+  Info,
   ListChecks,
   LogOut,
   PlugZap,
@@ -87,6 +89,8 @@ type DaySubmission = {
 
 type DaySubmissionsByKey = Record<string, DaySubmission>;
 
+type MyJobsByUser = Record<string, string[]>;
+
 type EditingEntry = {
   entryId: string;
   hours: string;
@@ -117,9 +121,14 @@ export function TimeAllocationWorkspace() {
   const [workDate, setWorkDate] = useState(todayInputValue());
   const [entries, setEntries] = useState<AllocationEntry[]>([]);
   const [daySubmissions, setDaySubmissions] = useState<DaySubmissionsByKey>({});
+  const [myJobsByUser, setMyJobsByUser] = useState<MyJobsByUser>({});
+  const [crewDirectory, setCrewDirectory] = useState<CrewMember[]>([]);
   const [crewMembersByProject, setCrewMembersByProject] = useState<CrewMembersByProject>({});
   const [crewMemberName, setCrewMemberName] = useState("");
   const [crewMemberJobTitle, setCrewMemberJobTitle] = useState("");
+  const [selectedExistingCrewMemberId, setSelectedExistingCrewMemberId] = useState("");
+  const [mergeSourceCrewMemberId, setMergeSourceCrewMemberId] = useState("");
+  const [mergeTargetCrewMemberId, setMergeTargetCrewMemberId] = useState("");
   const [draftsByPayItem, setDraftsByPayItem] = useState<DraftsByPayItem>({});
   const [editingEntry, setEditingEntry] = useState<EditingEntry | null>(null);
   const [editingCrewMember, setEditingCrewMember] = useState<EditingCrewMember | null>(null);
@@ -149,10 +158,16 @@ export function TimeAllocationWorkspace() {
   const visibleEntries = entries.filter(
     (entry) => entry.projectId === selectedProject?.id && entry.date === workDate
   );
-  const selectedProjectCrewMembers = selectedProject ? crewMembersByProject[selectedProject.id] ?? [] : [];
+  const selectedProjectCrewMembers = selectedProject
+    ? sortCrewMembersByName(crewMembersByProject[selectedProject.id] ?? [])
+    : [];
+  const existingCrewMemberOptions = selectedProject
+    ? crewDirectory.filter((member) => !projectHasCrewMember(selectedProjectCrewMembers, member.id))
+    : [];
   const crewSummaryRows = buildCrewSummary(visibleEntries, selectedProjectCrewMembers);
   const currentDaySubmission = daySubmissions[getDayKey(selectedProjectId, workDate)] ?? { status: "draft" };
   const dayIsSubmitted = currentDaySubmission.status === "submitted";
+  const currentUserMyJobIds = currentUser ? myJobsByUser[currentUser.id] ?? [] : [];
   const totalHours = visibleEntries.reduce((total, entry) => total + entry.hours, 0);
   const draftEntryCount = selectedProject
     ? selectedProject.payItems.filter((item) => draftIsSaveable(draftsByPayItem[item.id])).length
@@ -193,12 +208,13 @@ export function TimeAllocationWorkspace() {
           throw new Error(data.error ?? "Unable to load projects.");
         }
 
+        const sortedProjects = sortProjectsByName(data.projects);
         const lastSelectedProjectId = window.localStorage.getItem(getLastProjectStorageKey(currentUserId));
-        const nextSelectedProjectId = data.projects.some((project) => project.id === lastSelectedProjectId)
+        const nextSelectedProjectId = sortedProjects.some((project) => project.id === lastSelectedProjectId)
           ? lastSelectedProjectId ?? ""
-          : data.projects[0]?.id ?? "";
+          : sortedProjects[0]?.id ?? "";
 
-        setProjects(data.projects);
+        setProjects(sortedProjects);
         setSelectedProjectId(nextSelectedProjectId);
         setSyncedAt(data.syncedAt ?? null);
         setConnectionStatus(data.syncedAt ? "Cached Procore data loaded" : "No cached Procore data");
@@ -240,6 +256,9 @@ export function TimeAllocationWorkspace() {
     const savedSubmissions = window.localStorage.getItem("day-submissions");
     const savedSyncLog = window.localStorage.getItem("procore-sync-log");
     const savedCrewMembers = window.localStorage.getItem("project-crew-members");
+    const savedCrewDirectory = window.localStorage.getItem("crew-member-directory");
+    const savedMyJobs = window.localStorage.getItem("my-jobs-by-user");
+    let parsedCrewMembersByProject: CrewMembersByProject = {};
 
     if (savedEntries) {
       setEntries(JSON.parse(savedEntries) as AllocationEntry[]);
@@ -254,7 +273,23 @@ export function TimeAllocationWorkspace() {
     }
 
     if (savedCrewMembers) {
-      setCrewMembersByProject(JSON.parse(savedCrewMembers) as CrewMembersByProject);
+      parsedCrewMembersByProject = JSON.parse(savedCrewMembers) as CrewMembersByProject;
+      setCrewMembersByProject(parsedCrewMembersByProject);
+    }
+
+    if (savedCrewDirectory) {
+      setCrewDirectory(
+        mergeCrewDirectories(
+          JSON.parse(savedCrewDirectory) as CrewMember[],
+          buildCrewDirectoryFromProjects(parsedCrewMembersByProject)
+        )
+      );
+    } else {
+      setCrewDirectory(buildCrewDirectoryFromProjects(parsedCrewMembersByProject));
+    }
+
+    if (savedMyJobs) {
+      setMyJobsByUser(JSON.parse(savedMyJobs) as MyJobsByUser);
     }
   }, [currentUser]);
 
@@ -265,8 +300,10 @@ export function TimeAllocationWorkspace() {
 
     window.localStorage.setItem("allocation-entries", JSON.stringify(entries));
     window.localStorage.setItem("day-submissions", JSON.stringify(daySubmissions));
+    window.localStorage.setItem("crew-member-directory", JSON.stringify(crewDirectory));
     window.localStorage.setItem("project-crew-members", JSON.stringify(crewMembersByProject));
-  }, [currentUser, crewMembersByProject, daySubmissions, entries]);
+    window.localStorage.setItem("my-jobs-by-user", JSON.stringify(myJobsByUser));
+  }, [currentUser, crewDirectory, crewMembersByProject, daySubmissions, entries, myJobsByUser]);
 
   useEffect(() => {
     if (!currentUser || projects.length === 0 || entries.length === 0) {
@@ -363,9 +400,28 @@ export function TimeAllocationWorkspace() {
     setSelectedProjectId("");
     setEntries([]);
     setDaySubmissions({});
+    setMyJobsByUser({});
+    setCrewDirectory([]);
     setCrewMembersByProject({});
+    setSelectedExistingCrewMemberId("");
+    setMergeSourceCrewMemberId("");
+    setMergeTargetCrewMemberId("");
     setEditingCrewMember(null);
     setViewMode("entry");
+  }
+
+  function setCurrentUserMyJobIds(jobIds: string[]) {
+    if (!currentUser) {
+      return;
+    }
+
+    const availableProjectIds = new Set(projects.map((project) => project.id));
+    const uniqueJobIds = Array.from(new Set(jobIds)).filter((jobId) => availableProjectIds.has(jobId));
+
+    setMyJobsByUser((current) => ({
+      ...current,
+      [currentUser.id]: uniqueJobIds
+    }));
   }
 
   function updateDraft(payItemId: string, field: "hours" | "quantity", value: string) {
@@ -396,21 +452,57 @@ export function TimeAllocationWorkspace() {
       return;
     }
 
+    const matchingCrewMember = crewDirectory.find((member) => normalizeCrewName(member.name) === normalizeCrewName(name));
+
+    if (matchingCrewMember) {
+      setEntryNotice(`A crew member named ${matchingCrewMember.name} already exists. Select them from existing crew instead.`);
+      return;
+    }
+
+    const crewMember = {
+      id: crypto.randomUUID(),
+      name,
+      jobTitle
+    };
+
+    setCrewDirectory((current) => sortCrewMembersByName([...current, crewMember]));
     setCrewMembersByProject((current) => ({
       ...current,
       [selectedProject.id]: [
         ...(current[selectedProject.id] ?? []),
-        {
-          id: crypto.randomUUID(),
-          name,
-          jobTitle
-        }
+        crewMember
       ]
     }));
     setCrewMemberName("");
     setCrewMemberJobTitle("");
+    setSelectedExistingCrewMemberId("");
     setEditingCrewMember(null);
     setEntryNotice(`${name} added to ${selectedProject.name}.`);
+  }
+
+  function addExistingCrewMemberToProject() {
+    if (!selectedProject || !selectedExistingCrewMemberId) {
+      return;
+    }
+
+    const crewMember = crewDirectory.find((member) => member.id === selectedExistingCrewMemberId);
+
+    if (!crewMember) {
+      setEntryNotice("Select an existing crew member to add.");
+      return;
+    }
+
+    if (projectHasCrewMember(selectedProjectCrewMembers, crewMember.id)) {
+      setEntryNotice(`${crewMember.name} is already saved to this job.`);
+      return;
+    }
+
+    setCrewMembersByProject((current) => ({
+      ...current,
+      [selectedProject.id]: sortCrewMembersByName([...(current[selectedProject.id] ?? []), crewMember])
+    }));
+    setSelectedExistingCrewMemberId("");
+    setEntryNotice(`${crewMember.name} added to ${selectedProject.name}.`);
   }
 
   function startEditingCrewMember(member: CrewMember) {
@@ -435,21 +527,50 @@ export function TimeAllocationWorkspace() {
       return;
     }
 
-    setCrewMembersByProject((current) => ({
-      ...current,
-      [selectedProject.id]: (current[selectedProject.id] ?? []).map((member) =>
-        member.id === editingCrewMember.crewMemberId
-          ? {
-              ...member,
-              name,
-              jobTitle
-            }
-          : member
+    const matchingCrewMember = crewDirectory.find(
+      (member) =>
+        member.id !== editingCrewMember.crewMemberId && normalizeCrewName(member.name) === normalizeCrewName(name)
+    );
+
+    if (matchingCrewMember) {
+      setEntryNotice(`A crew member named ${matchingCrewMember.name} already exists. Use that existing crew member instead.`);
+      return;
+    }
+
+    setCrewDirectory((current) =>
+      sortCrewMembersByName(
+        current.map((member) =>
+          member.id === editingCrewMember.crewMemberId
+            ? {
+                ...member,
+                name,
+                jobTitle
+              }
+            : member
+        )
       )
-    }));
+    );
+    setCrewMembersByProject((current) =>
+      Object.fromEntries(
+        Object.entries(current).map(([projectId, crewMembers]) => [
+          projectId,
+          sortCrewMembersByName(
+            crewMembers.map((member) =>
+              member.id === editingCrewMember.crewMemberId
+                ? {
+                    ...member,
+                    name,
+                    jobTitle
+                  }
+                : member
+            )
+          )
+        ])
+      ) as CrewMembersByProject
+    );
     setEntries((current) =>
       current.map((entry) => {
-        if (entry.projectId !== selectedProject.id || !entry.crewAllocations?.length) {
+        if (!entry.crewAllocations?.length) {
           return entry;
         }
 
@@ -468,7 +589,7 @@ export function TimeAllocationWorkspace() {
       })
     );
     setEditingCrewMember(null);
-    setEntryNotice(`${name} updated across saved days for ${selectedProject.name}.`);
+    setEntryNotice(`${name} updated across saved days.`);
   }
 
   function removeCrewMember(crewMemberId: string) {
@@ -500,6 +621,43 @@ export function TimeAllocationWorkspace() {
       )
     );
     setEditingCrewMember((current) => (current?.crewMemberId === crewMemberId ? null : current));
+  }
+
+  function mergeCrewMembers() {
+    if (currentUser?.role !== "admin") {
+      return;
+    }
+
+    const sourceCrewMember = crewDirectory.find((member) => member.id === mergeSourceCrewMemberId);
+    const targetCrewMember = crewDirectory.find((member) => member.id === mergeTargetCrewMemberId);
+
+    if (!sourceCrewMember || !targetCrewMember) {
+      setEntryNotice("Select both crew members before merging.");
+      return;
+    }
+
+    if (sourceCrewMember.id === targetCrewMember.id) {
+      setEntryNotice("Select two different crew members before merging.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Merge ${sourceCrewMember.name} into ${targetCrewMember.name}? This updates saved entries, reports, project crew lists, and draft allocations.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setCrewDirectory((current) => current.filter((member) => member.id !== sourceCrewMember.id));
+    setCrewMembersByProject((current) => mergeProjectCrewMembers(current, sourceCrewMember.id, targetCrewMember));
+    setEntries((current) => current.map((entry) => mergeEntryCrewAllocations(entry, sourceCrewMember.id, targetCrewMember)));
+    setDraftsByPayItem((current) => mergeDraftCrewMembers(current, sourceCrewMember.id, targetCrewMember.id));
+    setSelectedExistingCrewMemberId((current) => (current === sourceCrewMember.id ? "" : current));
+    setEditingCrewMember((current) => (current?.crewMemberId === sourceCrewMember.id ? null : current));
+    setMergeSourceCrewMemberId("");
+    setMergeTargetCrewMemberId(targetCrewMember.id);
+    setEntryNotice(`${sourceCrewMember.name} merged into ${targetCrewMember.name}.`);
   }
 
   function toggleDraftCrewMember(payItemId: string, crewMemberId: string, checked: boolean) {
@@ -583,9 +741,10 @@ export function TimeAllocationWorkspace() {
         throw new Error(data.error ?? "Unable to sync Procore data.");
       }
 
-      setProjects(data.projects);
+      const sortedProjects = sortProjectsByName(data.projects);
+      setProjects(sortedProjects);
       setSelectedProjectId((currentProjectId) =>
-        data.projects.some((project) => project.id === currentProjectId) ? currentProjectId : data.projects[0]?.id ?? ""
+        sortedProjects.some((project) => project.id === currentProjectId) ? currentProjectId : sortedProjects[0]?.id ?? ""
       );
       setSyncedAt(data.syncedAt ?? null);
       setSyncSummary(data.summary ?? null);
@@ -627,9 +786,10 @@ export function TimeAllocationWorkspace() {
         throw new Error(data.error ?? "Unable to sync all Procore projects.");
       }
 
-      setProjects(data.projects);
+      const sortedProjects = sortProjectsByName(data.projects);
+      setProjects(sortedProjects);
       setSelectedProjectId((currentProjectId) =>
-        data.projects.some((project) => project.id === currentProjectId) ? currentProjectId : data.projects[0]?.id ?? ""
+        sortedProjects.some((project) => project.id === currentProjectId) ? currentProjectId : sortedProjects[0]?.id ?? ""
       );
       setSyncedAt(data.syncedAt ?? null);
       setSyncSummary(data.summary ?? null);
@@ -678,9 +838,10 @@ export function TimeAllocationWorkspace() {
         throw new Error(data.error ?? "Unable to add or update project.");
       }
 
-      setProjects(data.projects);
+      const sortedProjects = sortProjectsByName(data.projects);
+      setProjects(sortedProjects);
       setSelectedProjectId((currentProjectId) =>
-        data.projects.some((project) => project.id === trimmedProjectId) ? trimmedProjectId : currentProjectId
+        sortedProjects.some((project) => project.id === trimmedProjectId) ? trimmedProjectId : currentProjectId
       );
       setSyncedAt(data.syncedAt ?? null);
       setConnectionStatus("Project added or updated");
@@ -1010,6 +1171,7 @@ export function TimeAllocationWorkspace() {
                 setMobileSelectedPayItemId("");
                 setEditingEntry(null);
                 setEditingCrewMember(null);
+                setSelectedExistingCrewMemberId("");
                 setDraftsByPayItem({});
               }}
             >
@@ -1032,6 +1194,7 @@ export function TimeAllocationWorkspace() {
                 setMobileSelectedPayItemId("");
                 setEditingEntry(null);
                 setEditingCrewMember(null);
+                setSelectedExistingCrewMemberId("");
                 setDraftsByPayItem({});
               }}
             />
@@ -1089,6 +1252,38 @@ export function TimeAllocationWorkspace() {
               <h3>Crew Members</h3>
               <span>{selectedProjectCrewMembers.length}</span>
             </div>
+            <div className="crew-existing-picker">
+              <div className="field-group">
+                <label htmlFor="existing-crew-member">Add Existing Crew Member</label>
+                <select
+                  id="existing-crew-member"
+                  disabled={!selectedProject || existingCrewMemberOptions.length === 0}
+                  value={selectedExistingCrewMemberId}
+                  onChange={(event) => setSelectedExistingCrewMemberId(event.target.value)}
+                >
+                  <option value="">
+                    {existingCrewMemberOptions.length === 0 ? "No existing crew available" : "Select crew member"}
+                  </option>
+                  {existingCrewMemberOptions.map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {member.name} - {member.jobTitle}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button
+                className="secondary-button"
+                disabled={!selectedProject || !selectedExistingCrewMemberId}
+                onClick={addExistingCrewMemberToProject}
+                type="button"
+              >
+                Add to job
+              </button>
+            </div>
+            <div className="field-note">Create a new crew member only if they are not already in the existing crew list.</div>
+            {entryNotice && entryNoticeIsCrewRelated(entryNotice) ? (
+              <div className={entryNoticeIsError(entryNotice) ? "inline-alert" : "success-alert"}>{entryNotice}</div>
+            ) : null}
             <div className="field-group">
               <label htmlFor="crew-member-name">Name</label>
               <input
@@ -1193,6 +1388,59 @@ export function TimeAllocationWorkspace() {
                 })
               )}
             </div>
+            {currentUser.role === "admin" ? (
+              <div className="admin-crew-merge">
+                <div className="admin-crew-merge-heading">
+                  <strong>Admin Crew Merge</strong>
+                  <span>Use this when the same person was created twice because of spelling or nickname differences.</span>
+                </div>
+                <div className="field-group">
+                  <label htmlFor="merge-source-crew-member">Duplicate Crew Member</label>
+                  <select
+                    id="merge-source-crew-member"
+                    disabled={crewDirectory.length < 2}
+                    value={mergeSourceCrewMemberId}
+                    onChange={(event) => setMergeSourceCrewMemberId(event.target.value)}
+                  >
+                    <option value="">Select duplicate</option>
+                    {sortCrewMembersByName(crewDirectory).map((member) => (
+                      <option key={member.id} value={member.id}>
+                        {member.name} - {member.jobTitle}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field-group">
+                  <label htmlFor="merge-target-crew-member">Keep Crew Member</label>
+                  <select
+                    id="merge-target-crew-member"
+                    disabled={crewDirectory.length < 2}
+                    value={mergeTargetCrewMemberId}
+                    onChange={(event) => setMergeTargetCrewMemberId(event.target.value)}
+                  >
+                    <option value="">Select crew member to keep</option>
+                    {sortCrewMembersByName(crewDirectory).map((member) => (
+                      <option key={member.id} value={member.id}>
+                        {member.name} - {member.jobTitle}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  className="secondary-button"
+                  disabled={
+                    crewDirectory.length < 2 ||
+                    !mergeSourceCrewMemberId ||
+                    !mergeTargetCrewMemberId ||
+                    mergeSourceCrewMemberId === mergeTargetCrewMemberId
+                  }
+                  onClick={mergeCrewMembers}
+                  type="button"
+                >
+                  Merge crew members
+                </button>
+              </div>
+            ) : null}
           </div>
         </aside>
 
@@ -1229,9 +1477,10 @@ export function TimeAllocationWorkspace() {
                   {selectedProject.payItems.map((item) => {
                     const draft = draftsByPayItem[item.id];
                     const savedEntry = visibleEntries.find((entry) => entry.payItemId === item.id);
+                    const rowHasWork = Boolean(savedEntry) || draftHasAnyInput(draft);
 
                     return (
-                      <div className="matrix-row" key={item.id} role="row">
+                      <div className={rowHasWork ? "matrix-row worked-row" : "matrix-row"} key={item.id} role="row">
                         <span className="matrix-code" data-label="Code">{item.code}</span>
                         <span className="matrix-name" data-label="Pay Item">{item.name}</span>
                         <span className="matrix-budget" data-label="Budget">
@@ -1451,11 +1700,15 @@ export function TimeAllocationWorkspace() {
           </section>
         ) : (
           <ReportsView
+            currentUser={currentUser}
+            daySubmissions={daySubmissions}
             entries={entries}
+            myJobIds={currentUserMyJobIds}
             projects={projects}
             reportProjectId={reportProjectId}
             reportStartDate={reportStartDate}
             reportEndDate={reportEndDate}
+            setMyJobIds={setCurrentUserMyJobIds}
             setReportProjectId={setReportProjectId}
             setReportStartDate={setReportStartDate}
             setReportEndDate={setReportEndDate}
@@ -1714,6 +1967,7 @@ function MobilePayItemEntry({
 }) {
   const draft = draftsByPayItem[selectedPayItem.id];
   const savedEntry = savedEntries.find((entry) => entry.payItemId === selectedPayItem.id);
+  const rowHasWork = Boolean(savedEntry) || draftHasAnyInput(draft);
 
   return (
     <div className="pay-item-mobile-entry">
@@ -1731,7 +1985,7 @@ function MobilePayItemEntry({
         />
       </div>
 
-      <div className="mobile-pay-item-card">
+      <div className={rowHasWork ? "mobile-pay-item-card worked-card" : "mobile-pay-item-card"}>
         <div>
           <span>Code</span>
           <strong>{selectedPayItem.code}</strong>
@@ -1812,30 +2066,135 @@ type PayItemReportRow = {
   entryCount: number;
 };
 
+type PayItemReportDetailRow = {
+  id: string;
+  date: string;
+  payItemKey: string;
+  payItemLabel: string;
+  projectName: string;
+  crewMemberId: string;
+  crewMemberName: string;
+  jobTitle: string;
+  hours: number;
+  quantityCompleted: number;
+  hoursPerUnit: number;
+  savedByName?: string;
+};
+
+type PayItemJobRollupRow = {
+  id: string;
+  projectName: string;
+  entryCount: number;
+  hours: number;
+  quantityCompleted: number;
+  hoursPerUnit: number;
+};
+
+type CrewPerformancePayItemRow = {
+  id: string;
+  payItemLabel: string;
+  hours: number;
+  quantityCompleted: number;
+  hoursPerUnit: number;
+  companyHoursPerUnit: number;
+  variance: number;
+  entryCount: number;
+  jobCount: number;
+};
+
+type CrewPerformanceRow = {
+  id: string;
+  crewMemberName: string;
+  jobTitle: string;
+  totalHours: number;
+  totalQuantity: number;
+  entryCount: number;
+  jobCount: number;
+  payItemCount: number;
+  weightedVariance: number;
+  status: "strong" | "average" | "review" | "limited";
+  payItems: CrewPerformancePayItemRow[];
+};
+
+type ReportMode = "summary" | "detail" | "crew" | "weekly_status";
+type DetailGrouping = "crew_day" | "crew_project" | "job_day";
+type DetailSort = "worst_average" | "best_average" | "most_hours" | "most_quantity";
+
+type PayItemDetailAnalysisRow = {
+  id: string;
+  payItemLabel: string;
+  date?: string;
+  projectName: string;
+  crewMemberName?: string;
+  jobTitle?: string;
+  entryCount: number;
+  hours: number;
+  quantityCompleted: number;
+  hoursPerUnit: number;
+};
+
 function ReportsView({
+  currentUser,
+  daySubmissions,
   entries,
+  myJobIds,
   projects,
   reportProjectId,
   reportStartDate,
   reportEndDate,
+  setMyJobIds,
   setReportProjectId,
   setReportStartDate,
   setReportEndDate
 }: {
+  currentUser: AuthUser;
+  daySubmissions: DaySubmissionsByKey;
   entries: AllocationEntry[];
+  myJobIds: string[];
   projects: Project[];
   reportProjectId: string;
   reportStartDate: string;
   reportEndDate: string;
+  setMyJobIds: (jobIds: string[]) => void;
   setReportProjectId: (projectId: string) => void;
   setReportStartDate: (date: string) => void;
   setReportEndDate: (date: string) => void;
 }) {
+  const [reportMode, setReportMode] = useState<ReportMode>("summary");
+  const [detailPayItemQuery, setDetailPayItemQuery] = useState("");
+  const [detailGrouping, setDetailGrouping] = useState<DetailGrouping>("crew_day");
+  const [detailSort, setDetailSort] = useState<DetailSort>("worst_average");
+  const [crewPerformanceInfoOpen, setCrewPerformanceInfoOpen] = useState(false);
+  const [myJobsEditorOpen, setMyJobsEditorOpen] = useState(false);
+  const [weeklyStatusWeekStart, setWeeklyStatusWeekStart] = useState(getWeekStart(todayInputValue()));
+  const [weeklyStatusProjectIds, setWeeklyStatusProjectIds] = useState<string[]>([]);
+  const [weeklyStatusUseMyJobs, setWeeklyStatusUseMyJobs] = useState(false);
   const reportStartInputRef = useRef<HTMLInputElement>(null);
   const reportEndInputRef = useRef<HTMLInputElement>(null);
   const reportProjectOptions = buildReportProjectOptions(projects, entries);
+  const canManageMyJobs = currentUser.role === "project_manager" || currentUser.role === "admin";
+  const reportJobPickerOptions = [
+    {
+      value: "all",
+      label: "All Jobs"
+    },
+    ...(canManageMyJobs && myJobIds.length > 0
+      ? [
+          {
+            value: "my-jobs",
+            label: `My Jobs (${myJobIds.length})`
+          }
+        ]
+      : []),
+    ...reportProjectOptions.map((project) => ({
+      value: project.id,
+      label: project.name
+    }))
+  ];
   const filteredEntries = entries.filter((entry) => {
-    const matchesProject = reportProjectId === "all" || entry.projectId === reportProjectId;
+    const matchesProject =
+      reportProjectId === "all" ||
+      (reportProjectId === "my-jobs" ? myJobIds.includes(entry.projectId) : entry.projectId === reportProjectId);
     const matchesStart = !reportStartDate || entry.date >= reportStartDate;
     const matchesEnd = !reportEndDate || entry.date <= reportEndDate;
 
@@ -1847,100 +2206,388 @@ function ReportsView({
     <section className="allocation-grid">
       <div className="panel">
         <div className="panel-heading">
-          <h2>Pay Item Production Report</h2>
-          <button className="secondary-button" onClick={() => exportReportsToExcel(payItemRows)} type="button">
-            <Download aria-hidden="true" size={18} />
-            Export Excel
-          </button>
-        </div>
-        <div className="report-controls">
-          <div className="field-group">
-            <label htmlFor="report-project">Job</label>
-            <select
-              className="desktop-select"
-              id="report-project"
-              value={reportProjectId}
-              onChange={(event) => setReportProjectId(event.target.value)}
+          <h2>{getReportTitle(reportMode)}</h2>
+          {reportMode === "summary" ? (
+            <button className="secondary-button" onClick={() => exportReportsToExcel(payItemRows)} type="button">
+              <Download aria-hidden="true" size={18} />
+              Export Excel
+            </button>
+          ) : reportMode === "crew" ? (
+            <button
+              aria-expanded={crewPerformanceInfoOpen}
+              className="icon-button"
+              onClick={() => setCrewPerformanceInfoOpen((current) => !current)}
+              title="Crew performance report logic"
+              type="button"
             >
-              <option value="all">All Jobs</option>
-              {reportProjectOptions.map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.name}
-                </option>
-              ))}
-            </select>
-            <MobileOptionPicker
-              label="Report Job"
-              options={[
-                {
-                  value: "all",
-                  label: "All Jobs"
-                },
-                ...reportProjectOptions.map((project) => ({
-                  value: project.id,
-                  label: project.name
-                }))
-              ]}
-              value={reportProjectId}
-              onChange={setReportProjectId}
-            />
-          </div>
-          <div className="field-group">
-            <label htmlFor="report-start-date">From</label>
-            <div className="date-input-wrap">
-              <input
-                id="report-start-date"
-                ref={reportStartInputRef}
-                type="date"
-                value={reportStartDate}
-                onChange={(event) => setReportStartDate(event.target.value)}
-              />
-              <button
-                aria-label="Open report start date picker"
-                className="date-input-button"
-                onClick={() => openDatePicker(reportStartInputRef.current)}
-                type="button"
-              >
-                <CalendarDays aria-hidden="true" size={18} />
-              </button>
-            </div>
-          </div>
-          <div className="field-group">
-            <label htmlFor="report-end-date">To</label>
-            <div className="date-input-wrap">
-              <input
-                id="report-end-date"
-                ref={reportEndInputRef}
-                type="date"
-                value={reportEndDate}
-                onChange={(event) => setReportEndDate(event.target.value)}
-              />
-              <button
-                aria-label="Open report end date picker"
-                className="date-input-button"
-                onClick={() => openDatePicker(reportEndInputRef.current)}
-                type="button"
-              >
-                <CalendarDays aria-hidden="true" size={18} />
-              </button>
-            </div>
-          </div>
+              <Info aria-hidden="true" size={18} />
+            </button>
+          ) : null}
+        </div>
+        <div className="report-mode-tabs" aria-label="Report type">
           <button
-            className="secondary-button report-clear-button"
-            disabled={reportProjectId === "all" && !reportStartDate && !reportEndDate}
-            onClick={() => {
-              setReportProjectId("all");
-              setReportStartDate("");
-              setReportEndDate("");
-            }}
+            className={reportMode === "summary" ? "tab-button active" : "tab-button"}
+            onClick={() => setReportMode("summary")}
             type="button"
           >
-            Clear filters
+            Summary
+          </button>
+          <button
+            className={reportMode === "detail" ? "tab-button active" : "tab-button"}
+            onClick={() => setReportMode("detail")}
+            type="button"
+          >
+            Detailed Analysis
+          </button>
+          <button
+            className={reportMode === "crew" ? "tab-button active" : "tab-button"}
+            onClick={() => setReportMode("crew")}
+            type="button"
+          >
+            Crew Performance
+          </button>
+          <button
+            className={reportMode === "weekly_status" ? "tab-button active" : "tab-button"}
+            onClick={() => setReportMode("weekly_status")}
+            type="button"
+          >
+            Weekly Status
           </button>
         </div>
-        <PayItemReportTable entries={filteredEntries} projects={projects} rows={payItemRows} />
+        {canManageMyJobs ? (
+          <div className="report-admin-toolbar">
+            <button
+              aria-expanded={myJobsEditorOpen}
+              className="secondary-button"
+              onClick={() => setMyJobsEditorOpen((current) => !current)}
+              type="button"
+            >
+              <ListChecks aria-hidden="true" size={18} />
+              Create/Update My Jobs ({myJobIds.length})
+            </button>
+          </div>
+        ) : null}
+        {myJobsEditorOpen ? (
+          <MyJobsManager myJobIds={myJobIds} projects={projects} setMyJobIds={setMyJobIds} />
+        ) : null}
+        {reportMode === "crew" && crewPerformanceInfoOpen ? <CrewPerformanceInfo /> : null}
+        {reportMode !== "weekly_status" ? (
+          <div className="report-controls">
+            <div className="field-group">
+              <label htmlFor="report-project">Job</label>
+              <select
+                className="desktop-select"
+                id="report-project"
+                value={reportProjectId}
+                onChange={(event) => setReportProjectId(event.target.value)}
+              >
+                {reportJobPickerOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <MobileOptionPicker
+                label="Report Job"
+                options={reportJobPickerOptions}
+                value={reportProjectId}
+                onChange={setReportProjectId}
+              />
+            </div>
+            <div className="field-group">
+              <label htmlFor="report-start-date">From</label>
+              <div className="date-input-wrap">
+                <input
+                  id="report-start-date"
+                  ref={reportStartInputRef}
+                  type="date"
+                  value={reportStartDate}
+                  onChange={(event) => setReportStartDate(event.target.value)}
+                />
+                <button
+                  aria-label="Open report start date picker"
+                  className="date-input-button"
+                  onClick={() => openDatePicker(reportStartInputRef.current)}
+                  type="button"
+                >
+                  <CalendarDays aria-hidden="true" size={18} />
+                </button>
+              </div>
+            </div>
+            <div className="field-group">
+              <label htmlFor="report-end-date">To</label>
+              <div className="date-input-wrap">
+                <input
+                  id="report-end-date"
+                  ref={reportEndInputRef}
+                  type="date"
+                  value={reportEndDate}
+                  onChange={(event) => setReportEndDate(event.target.value)}
+                />
+                <button
+                  aria-label="Open report end date picker"
+                  className="date-input-button"
+                  onClick={() => openDatePicker(reportEndInputRef.current)}
+                  type="button"
+                >
+                  <CalendarDays aria-hidden="true" size={18} />
+                </button>
+              </div>
+            </div>
+            <button
+              className="secondary-button report-clear-button"
+              disabled={reportProjectId === "all" && !reportStartDate && !reportEndDate}
+              onClick={() => {
+                setReportProjectId("all");
+                setReportStartDate("");
+                setReportEndDate("");
+              }}
+              type="button"
+            >
+              Clear filters
+            </button>
+          </div>
+        ) : null}
+        {reportMode === "summary" ? (
+          <PayItemReportTable entries={filteredEntries} projects={projects} rows={payItemRows} />
+        ) : reportMode === "detail" ? (
+          <DetailedPayItemReport
+            detailGrouping={detailGrouping}
+            detailPayItemQuery={detailPayItemQuery}
+            detailSort={detailSort}
+            entries={filteredEntries}
+            projects={projects}
+            setDetailGrouping={setDetailGrouping}
+            setDetailPayItemQuery={setDetailPayItemQuery}
+            setDetailSort={setDetailSort}
+          />
+        ) : reportMode === "weekly_status" ? (
+          <WeeklyStatusReport
+            daySubmissions={daySubmissions}
+            myJobIds={myJobIds}
+            projects={projects}
+            selectedProjectIds={weeklyStatusProjectIds}
+            setSelectedProjectIds={setWeeklyStatusProjectIds}
+            setUseMyJobs={setWeeklyStatusUseMyJobs}
+            setWeekStart={setWeeklyStatusWeekStart}
+            useMyJobs={weeklyStatusUseMyJobs}
+            weekStart={weeklyStatusWeekStart}
+          />
+        ) : (
+          <CrewPerformanceReport entries={filteredEntries} projects={projects} />
+        )}
       </div>
     </section>
+  );
+}
+
+function MyJobsManager({
+  myJobIds,
+  projects,
+  setMyJobIds
+}: {
+  myJobIds: string[];
+  projects: Project[];
+  setMyJobIds: (jobIds: string[]) => void;
+}) {
+  const selectedJobIds = new Set(myJobIds);
+  const sortedProjects = sortProjectsByName(projects);
+
+  function toggleJob(projectId: string, checked: boolean) {
+    const nextSelectedJobIds = new Set(selectedJobIds);
+
+    if (checked) {
+      nextSelectedJobIds.add(projectId);
+    } else {
+      nextSelectedJobIds.delete(projectId);
+    }
+
+    setMyJobIds(sortedProjects.filter((project) => nextSelectedJobIds.has(project.id)).map((project) => project.id));
+  }
+
+  return (
+    <div className="my-jobs-panel">
+      <div className="my-jobs-heading">
+        <div>
+          <strong>My Jobs</strong>
+          <span>Tag the jobs you want to filter quickly in reports.</span>
+        </div>
+        <div className="my-jobs-actions">
+          <button className="secondary-button" onClick={() => setMyJobIds(sortedProjects.map((project) => project.id))} type="button">
+            Select all
+          </button>
+          <button className="secondary-button" disabled={myJobIds.length === 0} onClick={() => setMyJobIds([])} type="button">
+            Clear
+          </button>
+        </div>
+      </div>
+      {sortedProjects.length === 0 ? (
+        <div className="empty-state">No jobs are available to tag yet.</div>
+      ) : (
+        <div className="my-jobs-list">
+          {sortedProjects.map((project) => (
+            <label className="my-job-row" key={project.id}>
+              <input
+                checked={selectedJobIds.has(project.id)}
+                onChange={(event) => toggleJob(project.id, event.target.checked)}
+                type="checkbox"
+              />
+              <span>{project.name}</span>
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function WeeklyStatusReport({
+  daySubmissions,
+  myJobIds,
+  projects,
+  selectedProjectIds,
+  setSelectedProjectIds,
+  setUseMyJobs,
+  setWeekStart,
+  useMyJobs,
+  weekStart
+}: {
+  daySubmissions: DaySubmissionsByKey;
+  myJobIds: string[];
+  projects: Project[];
+  selectedProjectIds: string[];
+  setSelectedProjectIds: (projectIds: string[]) => void;
+  setUseMyJobs: (useMyJobs: boolean) => void;
+  setWeekStart: (weekStart: string) => void;
+  useMyJobs: boolean;
+  weekStart: string;
+}) {
+  const sortedProjects = sortProjectsByName(projects);
+  const weekDates = getWeekDates(weekStart);
+  const activeProjectIds = useMyJobs ? myJobIds : selectedProjectIds;
+  const activeProjectIdSet = new Set(activeProjectIds);
+  const visibleProjects = sortedProjects.filter((project) => activeProjectIdSet.has(project.id));
+  const selectedLabel = useMyJobs
+    ? `My Jobs (${myJobIds.length})`
+    : selectedProjectIds.length === 0
+      ? "Select jobs"
+      : `${selectedProjectIds.length} selected`;
+
+  function toggleProject(projectId: string, checked: boolean) {
+    const nextSelectedProjectIds = new Set(selectedProjectIds);
+
+    if (checked) {
+      nextSelectedProjectIds.add(projectId);
+    } else {
+      nextSelectedProjectIds.delete(projectId);
+    }
+
+    setSelectedProjectIds(
+      sortedProjects.filter((project) => nextSelectedProjectIds.has(project.id)).map((project) => project.id)
+    );
+  }
+
+  return (
+    <div className="weekly-status-report">
+      <div className="weekly-status-controls">
+        <div className="week-nav">
+          <button
+            aria-label="Previous week"
+            className="icon-button"
+            onClick={() => setWeekStart(addDaysToInputDate(weekStart, -7))}
+            type="button"
+          >
+            <ChevronLeft aria-hidden="true" size={18} />
+          </button>
+          <div className="week-range">
+            <span>Week</span>
+            <strong>{formatWeekRange(weekDates)}</strong>
+          </div>
+          <button
+            aria-label="Next week"
+            className="icon-button"
+            onClick={() => setWeekStart(addDaysToInputDate(weekStart, 7))}
+            type="button"
+          >
+            <ChevronRight aria-hidden="true" size={18} />
+          </button>
+        </div>
+        <details className="job-multi-select">
+          <summary>
+            <span>{selectedLabel}</span>
+            <ChevronDown aria-hidden="true" size={18} />
+          </summary>
+          <div className="job-multi-select-panel">
+            <label className="job-checkbox-row emphasized">
+              <input
+                checked={useMyJobs}
+                disabled={myJobIds.length === 0}
+                onChange={(event) => setUseMyJobs(event.target.checked)}
+                type="checkbox"
+              />
+              <span>My Jobs{myJobIds.length === 0 ? " (none tagged)" : ""}</span>
+            </label>
+            <div className="job-multi-actions">
+              <button
+                className="secondary-button"
+                disabled={useMyJobs || selectedProjectIds.length === sortedProjects.length}
+                onClick={() => setSelectedProjectIds(sortedProjects.map((project) => project.id))}
+                type="button"
+              >
+                Select all
+              </button>
+              <button
+                className="secondary-button"
+                disabled={useMyJobs || selectedProjectIds.length === 0}
+                onClick={() => setSelectedProjectIds([])}
+                type="button"
+              >
+                Clear
+              </button>
+            </div>
+            <div className="job-checkbox-list">
+              {sortedProjects.map((project) => (
+                <label className="job-checkbox-row" key={project.id}>
+                  <input
+                    checked={!useMyJobs && selectedProjectIds.includes(project.id)}
+                    disabled={useMyJobs}
+                    onChange={(event) => toggleProject(project.id, event.target.checked)}
+                    type="checkbox"
+                  />
+                  <span>{project.name}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        </details>
+      </div>
+      {visibleProjects.length === 0 ? (
+        <div className="empty-state">Select one or more jobs, or tag My Jobs, to view weekly status.</div>
+      ) : (
+        <div className="weekly-calendar">
+          <div className="weekly-calendar-row weekly-calendar-header">
+            <span>Job</span>
+            {weekDates.map((date) => (
+              <span key={date}>{formatWeekDayLabel(date)}</span>
+            ))}
+          </div>
+          {visibleProjects.map((project) => (
+            <div className="weekly-calendar-row" key={project.id}>
+              <span className="weekly-calendar-job">{project.name}</span>
+              {weekDates.map((date) => {
+                const status = daySubmissions[getDayKey(project.id, date)]?.status ?? "draft";
+
+                return (
+                  <span className={`status-badge ${status}`} data-label={formatWeekDayLabel(date)} key={date}>
+                    {status === "submitted" ? "Submitted" : "Draft"}
+                  </span>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1970,10 +2617,11 @@ function PayItemReportTable({
       </div>
       {rows.map((row) => {
         const expanded = expandedPayItemKey === row.key;
-        const detailEntries = expanded
-          ? entries
-              .filter((entry) => getPayItemReportKey(entry) === row.key)
-              .sort((a, b) => `${b.date}-${b.projectId}`.localeCompare(`${a.date}-${a.projectId}`))
+        const jobRollupRows = expanded
+          ? buildPayItemJobRollupRows(
+              entries.filter((entry) => getPayItemReportKey(entry) === row.key),
+              projects
+            )
           : [];
 
         return (
@@ -2000,20 +2648,249 @@ function PayItemReportTable({
             </div>
             {expanded ? (
               <div className="report-detail-panel">
-                <div className="report-detail-row report-detail-header">
-                  <span>Date</span>
+                <div className="report-detail-row report-detail-header summary-detail-row">
                   <span>Job</span>
+                  <span>Entries</span>
                   <span>Hours</span>
                   <span>Quantity</span>
-                  <span>Saved By</span>
+                  <span>Avg Hrs / Unit</span>
                 </div>
-                {detailEntries.map((entry) => (
-                  <div className="report-detail-row" key={entry.id}>
-                    <span data-label="Date">{formatDate(entry.date)}</span>
-                    <span data-label="Job">{getEntryProjectName(entry, projects)}</span>
-                    <span data-label="Hours">{entry.hours.toFixed(2)}</span>
-                    <span data-label="Quantity">{entry.quantityCompleted.toFixed(2)}</span>
-                    <span data-label="Saved By">{entry.savedByName ?? "-"}</span>
+                {jobRollupRows.map((jobRow) => (
+                  <div className="report-detail-row summary-detail-row" key={jobRow.id}>
+                    <span data-label="Job">{jobRow.projectName}</span>
+                    <span data-label="Entries">{jobRow.entryCount}</span>
+                    <span data-label="Hours">{jobRow.hours.toFixed(2)}</span>
+                    <span data-label="Quantity">{jobRow.quantityCompleted.toFixed(2)}</span>
+                    <span data-label="Avg Hrs / Unit">{jobRow.hoursPerUnit.toFixed(3)}</span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function DetailedPayItemReport({
+  detailGrouping,
+  detailPayItemQuery,
+  detailSort,
+  entries,
+  projects,
+  setDetailGrouping,
+  setDetailPayItemQuery,
+  setDetailSort
+}: {
+  detailGrouping: DetailGrouping;
+  detailPayItemQuery: string;
+  detailSort: DetailSort;
+  entries: AllocationEntry[];
+  projects: Project[];
+  setDetailGrouping: (grouping: DetailGrouping) => void;
+  setDetailPayItemQuery: (query: string) => void;
+  setDetailSort: (sort: DetailSort) => void;
+}) {
+  const payItemOptions = buildReportPayItemOptions(entries);
+  const normalizedQuery = detailPayItemQuery.trim().toLowerCase();
+  const matchingEntries = normalizedQuery
+    ? entries.filter((entry) => payItemMatchesQuery(entry, normalizedQuery))
+    : [];
+  const detailRows = normalizedQuery
+    ? buildPayItemDetailAnalysisRows(matchingEntries, projects, detailGrouping, detailSort)
+    : [];
+
+  return (
+    <div className="report-detail-analysis">
+      <div className="report-detail-controls">
+        <div className="field-group">
+          <label htmlFor="detail-pay-item-select">Pay Item</label>
+          <select
+            id="detail-pay-item-select"
+            disabled={payItemOptions.length === 0}
+            value={payItemOptions.some((option) => option.query === detailPayItemQuery) ? detailPayItemQuery : ""}
+            onChange={(event) => setDetailPayItemQuery(event.target.value)}
+          >
+            <option value="">
+              {payItemOptions.length === 0 ? "No pay items with entries" : "Select pay item"}
+            </option>
+            {payItemOptions.map((option) => (
+              <option key={option.key} value={option.query}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="field-group">
+          <label htmlFor="detail-pay-item-search">Pay Item Search</label>
+          <input
+            id="detail-pay-item-search"
+            placeholder="Search code or description"
+            value={detailPayItemQuery}
+            onChange={(event) => setDetailPayItemQuery(event.target.value)}
+          />
+        </div>
+        <div className="field-group">
+          <label htmlFor="detail-grouping">Group By</label>
+          <select
+            id="detail-grouping"
+            value={detailGrouping}
+            onChange={(event) => setDetailGrouping(event.target.value as DetailGrouping)}
+          >
+            <option value="crew_day">Crew member by day</option>
+            <option value="crew_project">Crew member by project</option>
+            <option value="job_day">Job by day</option>
+          </select>
+        </div>
+        <div className="field-group">
+          <label htmlFor="detail-sort">Sort By</label>
+          <select
+            id="detail-sort"
+            value={detailSort}
+            onChange={(event) => setDetailSort(event.target.value as DetailSort)}
+          >
+            <option value="worst_average">Highest hrs/unit</option>
+            <option value="best_average">Lowest hrs/unit</option>
+            <option value="most_hours">Most hours</option>
+            <option value="most_quantity">Most quantity</option>
+          </select>
+        </div>
+        <button
+          className="secondary-button report-clear-button"
+          disabled={!detailPayItemQuery}
+          onClick={() => setDetailPayItemQuery("")}
+          type="button"
+        >
+          Clear search
+        </button>
+      </div>
+
+      {!normalizedQuery ? (
+        <div className="empty-state">Search for a pay item to load detailed crew performance rows.</div>
+      ) : detailRows.length === 0 ? (
+        <div className="empty-state">No saved entries match that pay item search.</div>
+      ) : (
+        <div className="report-table detail-analysis-table">
+          <div className="report-row report-header detail-analysis-row">
+            <span>Pay Item</span>
+            <span>Date</span>
+            <span>Job</span>
+            <span>Crew Member</span>
+            <span>Entries</span>
+            <span>Hours</span>
+            <span>Quantity</span>
+            <span>Avg Hrs / Unit</span>
+          </div>
+          {detailRows.map((row) => (
+            <div className="report-row detail-analysis-row" key={row.id}>
+              <span data-label="Pay Item">{row.payItemLabel}</span>
+              <span data-label="Date">{row.date ? formatDate(row.date) : "All dates"}</span>
+              <span data-label="Job">{row.projectName}</span>
+              <span data-label="Crew Member">
+                {row.crewMemberName ? (
+                  <>
+                    <strong>{row.crewMemberName}</strong>
+                    {row.jobTitle && row.jobTitle !== "-" ? ` - ${row.jobTitle}` : ""}
+                  </>
+                ) : (
+                  "All crew"
+                )}
+              </span>
+              <span data-label="Entries">{row.entryCount}</span>
+              <span data-label="Hours">{row.hours.toFixed(2)}</span>
+              <span data-label="Quantity">{row.quantityCompleted.toFixed(2)}</span>
+              <span data-label="Avg Hrs / Unit">{row.hoursPerUnit.toFixed(3)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CrewPerformanceInfo() {
+  return (
+    <div className="report-info-panel">
+      This report compares each crew member against the company average for the same pay items they worked on. Each
+      pay-item variance is weighted by that crew member&apos;s hours, so larger work samples matter more than small
+      one-off entries. Lower hours per unit is treated as better performance. Rows marked limited data have less than
+      20 hours or fewer than 3 entries.
+    </div>
+  );
+}
+
+function CrewPerformanceReport({ entries, projects }: { entries: AllocationEntry[]; projects: Project[] }) {
+  const [expandedCrewMemberId, setExpandedCrewMemberId] = useState<string | null>(null);
+  const rows = buildCrewPerformanceRows(entries, projects);
+
+  if (rows.length === 0) {
+    return <div className="empty-state">No crew allocation entries are available for crew performance reporting.</div>;
+  }
+
+  return (
+    <div className="report-table crew-performance-table">
+      <div className="report-row report-header crew-performance-row">
+        <span>Crew Member</span>
+        <span>Hours</span>
+        <span>Entries</span>
+        <span>Pay Items</span>
+        <span>Jobs</span>
+        <span>Avg vs Company</span>
+        <span>Status</span>
+      </div>
+      {rows.map((row) => {
+        const expanded = expandedCrewMemberId === row.id;
+
+        return (
+          <div className="report-row-group" key={row.id}>
+            <div className="report-row crew-performance-row">
+              <button
+                className="report-drilldown-button"
+                onClick={() => setExpandedCrewMemberId(expanded ? null : row.id)}
+                type="button"
+              >
+                {expanded ? (
+                  <ChevronDown aria-hidden="true" size={17} />
+                ) : (
+                  <ChevronRight aria-hidden="true" size={17} />
+                )}
+                <span>
+                  <strong>{row.crewMemberName}</strong>
+                  {row.jobTitle !== "-" ? ` - ${row.jobTitle}` : ""}
+                </span>
+              </button>
+              <span data-label="Hours">{row.totalHours.toFixed(2)}</span>
+              <span data-label="Entries">{row.entryCount}</span>
+              <span data-label="Pay Items">{row.payItemCount}</span>
+              <span data-label="Jobs">{row.jobCount}</span>
+              <span data-label="Avg vs Company">{formatVariance(row.weightedVariance)}</span>
+              <span data-label="Status">
+                <span className={`performance-pill ${row.status}`}>{formatCrewPerformanceStatus(row.status)}</span>
+              </span>
+            </div>
+            {expanded ? (
+              <div className="report-detail-panel">
+                <div className="report-detail-row report-detail-header crew-performance-detail-row">
+                  <span>Pay Item</span>
+                  <span>Hours</span>
+                  <span>Quantity</span>
+                  <span>Crew Hrs / Unit</span>
+                  <span>Company Hrs / Unit</span>
+                  <span>Difference</span>
+                  <span>Entries</span>
+                  <span>Jobs</span>
+                </div>
+                {row.payItems.map((payItem) => (
+                  <div className="report-detail-row crew-performance-detail-row" key={payItem.id}>
+                    <span data-label="Pay Item">{payItem.payItemLabel}</span>
+                    <span data-label="Hours">{payItem.hours.toFixed(2)}</span>
+                    <span data-label="Quantity">{payItem.quantityCompleted.toFixed(2)}</span>
+                    <span data-label="Crew Hrs / Unit">{payItem.hoursPerUnit.toFixed(3)}</span>
+                    <span data-label="Company Hrs / Unit">{payItem.companyHoursPerUnit.toFixed(3)}</span>
+                    <span data-label="Difference">{formatVariance(payItem.variance)}</span>
+                    <span data-label="Entries">{payItem.entryCount}</span>
+                    <span data-label="Jobs">{payItem.jobCount}</span>
                   </div>
                 ))}
               </div>
@@ -2119,6 +2996,334 @@ function buildPayItemReport(entries: AllocationEntry[]): PayItemReportRow[] {
   return Array.from(rows.values()).sort((a, b) => b.hoursPerUnit - a.hoursPerUnit);
 }
 
+function buildPayItemJobRollupRows(entries: AllocationEntry[], projects: Project[]): PayItemJobRollupRow[] {
+  const rows = new Map<string, PayItemJobRollupRow>();
+
+  for (const entry of entries) {
+    const current = rows.get(entry.projectId) ?? {
+      id: entry.projectId,
+      projectName: getEntryProjectName(entry, projects),
+      entryCount: 0,
+      hours: 0,
+      quantityCompleted: 0,
+      hoursPerUnit: 0
+    };
+
+    current.entryCount += 1;
+    current.hours += entry.hours;
+    current.quantityCompleted += entry.quantityCompleted;
+    current.hoursPerUnit = current.quantityCompleted > 0 ? current.hours / current.quantityCompleted : 0;
+    rows.set(entry.projectId, current);
+  }
+
+  return Array.from(rows.values()).sort((a, b) => a.projectName.localeCompare(b.projectName));
+}
+
+function buildPayItemReportDetailRows(entries: AllocationEntry[], projects: Project[]): PayItemReportDetailRow[] {
+  return entries.flatMap((entry) => {
+    const projectName = getEntryProjectName(entry, projects);
+    const payItemKey = getPayItemReportKey(entry);
+    const payItemLabel = `${entry.payItemCode} - ${entry.payItemName}`;
+
+    if (!entry.crewAllocations?.length || entry.hours <= 0) {
+      return [
+        {
+          id: `${entry.id}-unassigned`,
+          date: entry.date,
+          payItemKey,
+          payItemLabel,
+          projectName,
+          crewMemberId: "unassigned",
+          crewMemberName: "Unassigned",
+          jobTitle: "-",
+          hours: entry.hours,
+          quantityCompleted: entry.quantityCompleted,
+          hoursPerUnit: entry.quantityCompleted > 0 ? entry.hours / entry.quantityCompleted : 0,
+          savedByName: entry.savedByName
+        }
+      ];
+    }
+
+    return entry.crewAllocations.map((allocation) => {
+      const hourShare = entry.hours > 0 ? allocation.hours / entry.hours : 0;
+
+      return {
+        id: `${entry.id}-${allocation.crewMemberId}`,
+        date: entry.date,
+        payItemKey,
+        payItemLabel,
+        projectName,
+        crewMemberId: allocation.crewMemberId,
+        crewMemberName: allocation.crewMemberName,
+        jobTitle: allocation.jobTitle,
+        hours: allocation.hours,
+        quantityCompleted: entry.quantityCompleted * hourShare,
+        hoursPerUnit: entry.quantityCompleted * hourShare > 0
+          ? allocation.hours / (entry.quantityCompleted * hourShare)
+          : 0,
+        savedByName: entry.savedByName
+      };
+    });
+  });
+}
+
+function buildPayItemDetailAnalysisRows(
+  entries: AllocationEntry[],
+  projects: Project[],
+  grouping: DetailGrouping,
+  sort: DetailSort
+): PayItemDetailAnalysisRow[] {
+  const detailRows = buildPayItemReportDetailRows(entries, projects);
+  const rows = new Map<string, PayItemDetailAnalysisRow>();
+
+  for (const detailRow of detailRows) {
+    const key = getDetailAnalysisKey(detailRow, grouping);
+    const current = rows.get(key) ?? {
+      id: key,
+      payItemLabel: detailRow.payItemLabel,
+      date: grouping === "crew_day" || grouping === "job_day" ? detailRow.date : undefined,
+      projectName: detailRow.projectName,
+      crewMemberName: grouping === "crew_day" || grouping === "crew_project" ? detailRow.crewMemberName : undefined,
+      jobTitle: grouping === "crew_day" || grouping === "crew_project" ? detailRow.jobTitle : undefined,
+      entryCount: 0,
+      hours: 0,
+      quantityCompleted: 0,
+      hoursPerUnit: 0
+    };
+
+    current.entryCount += 1;
+    current.hours += detailRow.hours;
+    current.quantityCompleted += detailRow.quantityCompleted;
+    current.hoursPerUnit = current.quantityCompleted > 0 ? current.hours / current.quantityCompleted : 0;
+    rows.set(key, current);
+  }
+
+  return sortDetailAnalysisRows(Array.from(rows.values()), sort);
+}
+
+function buildCrewPerformanceRows(entries: AllocationEntry[], projects: Project[]): CrewPerformanceRow[] {
+  const detailRows = buildPayItemReportDetailRows(entries, projects).filter(
+    (row) => row.crewMemberId !== "unassigned" && row.quantityCompleted > 0 && row.hours > 0
+  );
+  const companyPayItemStats = new Map<string, { hours: number; quantity: number; hoursPerUnit: number }>();
+
+  for (const row of detailRows) {
+    const current = companyPayItemStats.get(row.payItemKey) ?? {
+      hours: 0,
+      quantity: 0,
+      hoursPerUnit: 0
+    };
+
+    current.hours += row.hours;
+    current.quantity += row.quantityCompleted;
+    current.hoursPerUnit = current.quantity > 0 ? current.hours / current.quantity : 0;
+    companyPayItemStats.set(row.payItemKey, current);
+  }
+
+  const crewPayItemRows = new Map<
+    string,
+    CrewPerformancePayItemRow & { crewMemberName: string; crewMemberId: string; jobTitle: string; jobIds: Set<string> }
+  >();
+
+  for (const row of detailRows) {
+    const companyStats = companyPayItemStats.get(row.payItemKey);
+
+    if (!companyStats || companyStats.hoursPerUnit <= 0) {
+      continue;
+    }
+
+    const key = `${row.crewMemberId}|${row.payItemKey}`;
+    const current = crewPayItemRows.get(key) ?? {
+      id: key,
+      crewMemberId: row.crewMemberId,
+      crewMemberName: row.crewMemberName,
+      jobTitle: row.jobTitle,
+      payItemLabel: row.payItemLabel,
+      hours: 0,
+      quantityCompleted: 0,
+      hoursPerUnit: 0,
+      companyHoursPerUnit: companyStats.hoursPerUnit,
+      variance: 0,
+      entryCount: 0,
+      jobCount: 0,
+      jobIds: new Set<string>()
+    };
+
+    current.hours += row.hours;
+    current.quantityCompleted += row.quantityCompleted;
+    current.entryCount += 1;
+    current.jobIds.add(row.projectName);
+    current.jobCount = current.jobIds.size;
+    current.hoursPerUnit = current.quantityCompleted > 0 ? current.hours / current.quantityCompleted : 0;
+    current.companyHoursPerUnit = companyStats.hoursPerUnit;
+    current.variance =
+      current.companyHoursPerUnit > 0
+        ? (current.hoursPerUnit - current.companyHoursPerUnit) / current.companyHoursPerUnit
+        : 0;
+    crewPayItemRows.set(key, current);
+  }
+
+  const crewRows = new Map<string, CrewPerformanceRow & { jobIds: Set<string> }>();
+
+  for (const payItemRow of crewPayItemRows.values()) {
+    const current = crewRows.get(payItemRow.crewMemberId) ?? {
+      id: payItemRow.crewMemberId,
+      crewMemberName: payItemRow.crewMemberName,
+      jobTitle: payItemRow.jobTitle,
+      totalHours: 0,
+      totalQuantity: 0,
+      entryCount: 0,
+      jobCount: 0,
+      payItemCount: 0,
+      weightedVariance: 0,
+      status: "average",
+      payItems: [],
+      jobIds: new Set<string>()
+    };
+
+    current.totalHours += payItemRow.hours;
+    current.totalQuantity += payItemRow.quantityCompleted;
+    current.entryCount += payItemRow.entryCount;
+    for (const jobId of payItemRow.jobIds) {
+      current.jobIds.add(jobId);
+    }
+    current.payItems.push({
+      id: payItemRow.id,
+      payItemLabel: payItemRow.payItemLabel,
+      hours: payItemRow.hours,
+      quantityCompleted: payItemRow.quantityCompleted,
+      hoursPerUnit: payItemRow.hoursPerUnit,
+      companyHoursPerUnit: payItemRow.companyHoursPerUnit,
+      variance: payItemRow.variance,
+      entryCount: payItemRow.entryCount,
+      jobCount: payItemRow.jobCount
+    });
+    current.jobCount = current.jobIds.size;
+    current.payItemCount = current.payItems.length;
+    current.weightedVariance = getWeightedVariance(current.payItems);
+    current.status = getCrewPerformanceStatus(current);
+    crewRows.set(payItemRow.crewMemberId, current);
+  }
+
+  return Array.from(crewRows.values())
+    .map((row) => ({
+      id: row.id,
+      crewMemberName: row.crewMemberName,
+      jobTitle: row.jobTitle,
+      totalHours: row.totalHours,
+      totalQuantity: row.totalQuantity,
+      entryCount: row.entryCount,
+      jobCount: row.jobCount,
+      payItemCount: row.payItemCount,
+      weightedVariance: row.weightedVariance,
+      status: row.status,
+      payItems: [...row.payItems].sort((a, b) => b.hours - a.hours)
+    }))
+    .sort((a, b) => b.weightedVariance - a.weightedVariance);
+}
+
+function getWeightedVariance(payItems: CrewPerformancePayItemRow[]) {
+  const totalWeight = payItems.reduce((total, row) => total + row.hours, 0);
+
+  if (totalWeight <= 0) {
+    return 0;
+  }
+
+  return payItems.reduce((total, row) => total + row.variance * row.hours, 0) / totalWeight;
+}
+
+function getCrewPerformanceStatus(row: Pick<CrewPerformanceRow, "entryCount" | "totalHours" | "weightedVariance">) {
+  if (row.totalHours < 20 || row.entryCount < 3) {
+    return "limited";
+  }
+
+  if (row.weightedVariance <= -0.15) {
+    return "strong";
+  }
+
+  if (row.weightedVariance >= 0.25) {
+    return "review";
+  }
+
+  return "average";
+}
+
+function getDetailAnalysisKey(row: PayItemReportDetailRow, grouping: DetailGrouping) {
+  if (grouping === "crew_project") {
+    return `${row.payItemKey}|${row.projectName}|${row.crewMemberName}|${row.jobTitle}`;
+  }
+
+  if (grouping === "job_day") {
+    return `${row.payItemKey}|${row.date}|${row.projectName}`;
+  }
+
+  return `${row.payItemKey}|${row.date}|${row.projectName}|${row.crewMemberName}|${row.jobTitle}`;
+}
+
+function sortDetailAnalysisRows(rows: PayItemDetailAnalysisRow[], sort: DetailSort) {
+  return [...rows].sort((a, b) => {
+    if (sort === "best_average") {
+      return a.hoursPerUnit - b.hoursPerUnit;
+    }
+
+    if (sort === "most_hours") {
+      return b.hours - a.hours;
+    }
+
+    if (sort === "most_quantity") {
+      return b.quantityCompleted - a.quantityCompleted;
+    }
+
+    return b.hoursPerUnit - a.hoursPerUnit;
+  });
+}
+
+function payItemMatchesQuery(entry: AllocationEntry, normalizedQuery: string) {
+  return `${entry.payItemCode} ${entry.payItemName}`.toLowerCase().includes(normalizedQuery);
+}
+
+function getReportTitle(reportMode: ReportMode) {
+  if (reportMode === "detail") {
+    return "Detailed Pay Item Analysis";
+  }
+
+  if (reportMode === "crew") {
+    return "Crew Performance Summary";
+  }
+
+  if (reportMode === "weekly_status") {
+    return "Weekly Job Status";
+  }
+
+  return "Pay Item Production Report";
+}
+
+function formatVariance(variance: number) {
+  const percent = Math.abs(variance * 100);
+
+  if (percent < 0.5) {
+    return "At average";
+  }
+
+  return `${percent.toFixed(1)}% ${variance < 0 ? "better" : "worse"}`;
+}
+
+function formatCrewPerformanceStatus(status: CrewPerformanceRow["status"]) {
+  if (status === "strong") {
+    return "Strong";
+  }
+
+  if (status === "review") {
+    return "Needs review";
+  }
+
+  if (status === "limited") {
+    return "Limited data";
+  }
+
+  return "At average";
+}
+
 function getPayItemReportKey(entry: AllocationEntry) {
   return `${entry.payItemCode}-${entry.payItemName}`;
 }
@@ -2139,6 +3344,213 @@ function buildReportProjectOptions(projects: Project[], entries: AllocationEntry
   return Array.from(projectOptions.entries())
     .map(([id, name]) => ({ id, name }))
     .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function buildReportPayItemOptions(entries: AllocationEntry[]) {
+  const payItemOptions = new Map<string, { key: string; label: string; query: string }>();
+
+  for (const entry of entries) {
+    const key = getPayItemReportKey(entry);
+
+    if (!payItemOptions.has(key)) {
+      payItemOptions.set(key, {
+        key,
+        label: `${entry.payItemCode} - ${entry.payItemName}`,
+        query: entry.payItemCode
+      });
+    }
+  }
+
+  return Array.from(payItemOptions.values()).sort((a, b) =>
+    a.label.localeCompare(b.label, undefined, {
+      numeric: true,
+      sensitivity: "base"
+    })
+  );
+}
+
+function sortProjectsByName(projects: Project[]) {
+  return [...projects].sort((a, b) =>
+    a.name.localeCompare(b.name, undefined, {
+      numeric: true,
+      sensitivity: "base"
+    })
+  );
+}
+
+function buildCrewDirectoryFromProjects(crewMembersByProject: CrewMembersByProject) {
+  const crewMembersById = new Map<string, CrewMember>();
+
+  for (const crewMembers of Object.values(crewMembersByProject)) {
+    for (const crewMember of crewMembers) {
+      if (!crewMembersById.has(crewMember.id)) {
+        crewMembersById.set(crewMember.id, crewMember);
+      }
+    }
+  }
+
+  return sortCrewMembersByName(Array.from(crewMembersById.values()));
+}
+
+function mergeCrewDirectories(primaryCrewMembers: CrewMember[], fallbackCrewMembers: CrewMember[]) {
+  const crewMembersById = new Map<string, CrewMember>();
+
+  for (const crewMember of [...fallbackCrewMembers, ...primaryCrewMembers]) {
+    crewMembersById.set(crewMember.id, crewMember);
+  }
+
+  return sortCrewMembersByName(Array.from(crewMembersById.values()));
+}
+
+function sortCrewMembersByName(crewMembers: CrewMember[]) {
+  return [...crewMembers].sort((a, b) =>
+    a.name.localeCompare(b.name, undefined, {
+      numeric: true,
+      sensitivity: "base"
+    })
+  );
+}
+
+function normalizeCrewName(name: string) {
+  return name.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function projectHasCrewMember(crewMembers: CrewMember[], crewMemberId: string) {
+  return crewMembers.some((member) => member.id === crewMemberId);
+}
+
+function mergeProjectCrewMembers(
+  crewMembersByProject: CrewMembersByProject,
+  sourceCrewMemberId: string,
+  targetCrewMember: CrewMember
+) {
+  return Object.fromEntries(
+    Object.entries(crewMembersByProject).map(([projectId, crewMembers]) => {
+      const crewMembersById = new Map<string, CrewMember>();
+
+      for (const crewMember of crewMembers) {
+        if (crewMember.id === sourceCrewMemberId || crewMember.id === targetCrewMember.id) {
+          crewMembersById.set(targetCrewMember.id, targetCrewMember);
+        } else {
+          crewMembersById.set(crewMember.id, crewMember);
+        }
+      }
+
+      return [projectId, sortCrewMembersByName(Array.from(crewMembersById.values()))];
+    })
+  ) as CrewMembersByProject;
+}
+
+function mergeEntryCrewAllocations(
+  entry: AllocationEntry,
+  sourceCrewMemberId: string,
+  targetCrewMember: CrewMember
+): AllocationEntry {
+  if (!entry.crewAllocations?.length) {
+    return entry;
+  }
+
+  const mergedAllocations = new Map<string, NonNullable<AllocationEntry["crewAllocations"]>[number]>();
+  let changed = false;
+
+  for (const allocation of entry.crewAllocations) {
+    const nextAllocation =
+      allocation.crewMemberId === sourceCrewMemberId || allocation.crewMemberId === targetCrewMember.id
+        ? {
+            ...allocation,
+            crewMemberId: targetCrewMember.id,
+            crewMemberName: targetCrewMember.name,
+            jobTitle: targetCrewMember.jobTitle
+          }
+        : allocation;
+    const existingAllocation = mergedAllocations.get(nextAllocation.crewMemberId);
+
+    if (nextAllocation !== allocation) {
+      changed = true;
+    }
+
+    if (existingAllocation) {
+      changed = true;
+      mergedAllocations.set(nextAllocation.crewMemberId, {
+        ...existingAllocation,
+        hours: existingAllocation.hours + nextAllocation.hours
+      });
+    } else {
+      mergedAllocations.set(nextAllocation.crewMemberId, nextAllocation);
+    }
+  }
+
+  if (!changed) {
+    return entry;
+  }
+
+  return {
+    ...entry,
+    crewAllocations: Array.from(mergedAllocations.values())
+  };
+}
+
+function mergeDraftCrewMembers(
+  draftsByPayItem: DraftsByPayItem,
+  sourceCrewMemberId: string,
+  targetCrewMemberId: string
+) {
+  return Object.fromEntries(
+    Object.entries(draftsByPayItem).map(([payItemId, draft]) => {
+      const draftUsesSourceCrewMember =
+        draft.crewMemberIds.includes(sourceCrewMemberId) || draft.crewHours[sourceCrewMemberId] !== undefined;
+
+      if (!draftUsesSourceCrewMember) {
+        return [payItemId, draft];
+      }
+
+      const nextCrewMemberIds = Array.from(
+        new Set(draft.crewMemberIds.map((crewMemberId) => (crewMemberId === sourceCrewMemberId ? targetCrewMemberId : crewMemberId)))
+      );
+      const nextCrewHours: Record<string, string> = {};
+
+      for (const [crewMemberId, hours] of Object.entries(draft.crewHours)) {
+        const nextCrewMemberId = crewMemberId === sourceCrewMemberId ? targetCrewMemberId : crewMemberId;
+
+        nextCrewHours[nextCrewMemberId] =
+          nextCrewHours[nextCrewMemberId] === undefined
+            ? hours
+            : mergeDraftHourValues(nextCrewHours[nextCrewMemberId], hours);
+      }
+
+      return [
+        payItemId,
+        normalizeDraftCrewHours({
+          ...draft,
+          crewMemberIds: nextCrewMemberIds,
+          crewHours: nextCrewHours
+        })
+      ];
+    })
+  ) as DraftsByPayItem;
+}
+
+function mergeDraftHourValues(firstValue: string, secondValue: string) {
+  if (firstValue === "" && secondValue === "") {
+    return "";
+  }
+
+  if (firstValue === "") {
+    return secondValue;
+  }
+
+  if (secondValue === "") {
+    return firstValue;
+  }
+
+  const firstNumber = Number(firstValue);
+  const secondNumber = Number(secondValue);
+
+  if (Number.isFinite(firstNumber) && Number.isFinite(secondNumber)) {
+    return String(Math.round((firstNumber + secondNumber) * 100) / 100);
+  }
+
+  return firstValue || secondValue;
 }
 
 function crewMemberHasSavedAllocations(crewMemberId: string, projectId: string, entries: AllocationEntry[]) {
@@ -2269,7 +3681,7 @@ function getSelectedCrewMembers(
 }
 
 function getCrewAllocationError(draft: PayItemDraft | undefined, crewMembers: CrewMember[]) {
-  if (!draftIsSaveable(draft)) {
+  if (!draft || !draftIsSaveable(draft)) {
     return "";
   }
 
@@ -2444,17 +3856,49 @@ function draftIsIncomplete(draft: PayItemDraft | undefined) {
   return hasHoursInput !== hasQuantityInput;
 }
 
+function draftHasAnyInput(draft: PayItemDraft | undefined) {
+  if (!draft) {
+    return false;
+  }
+
+  return (
+    draft.hours !== "" ||
+    draft.quantity !== "" ||
+    draft.crewMemberIds.length > 0 ||
+    Object.values(draft.crewHours).some((value) => value !== "")
+  );
+}
+
 function entryNoticeIsError(message: string) {
   return [
     "Add at least",
+    "A crew member",
     "Crew member is already",
     "Crew allocated",
     "Enter both",
     "Enter valid",
+    "Select an existing",
     "One selected",
     "Remove duplicate",
-    "Select at least"
-  ].some((prefix) => message.startsWith(prefix));
+    "Select at least",
+    "Select both",
+    "Select two different"
+  ].some((prefix) => message.startsWith(prefix)) || message.includes(" is already saved to this job.");
+}
+
+function entryNoticeIsCrewRelated(message: string) {
+  return (
+    message.startsWith("A crew member") ||
+    message.startsWith("Crew member is already") ||
+    message.startsWith("Enter both crew member") ||
+    message.startsWith("Select an existing") ||
+    message.includes(" is already saved to this job.") ||
+    message.includes(" added to ") ||
+    message.includes(" updated across saved days") ||
+    message.includes(" merged into ") ||
+    message.startsWith("Select both crew members") ||
+    message.startsWith("Select two different crew members")
+  );
 }
 
 function getLastProjectStorageKey(userId: string) {
@@ -2491,6 +3935,60 @@ function buildSyncStatus(prefix: string, summary: ProcoreSyncSummary | undefined
 
 function formatDate(value: string) {
   return new Date(value).toLocaleDateString();
+}
+
+function getWeekStart(value: string) {
+  const date = parseInputDate(value);
+  const dayOfWeek = date.getDay();
+  const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+
+  date.setDate(date.getDate() - daysFromMonday);
+
+  return formatInputDate(date);
+}
+
+function getWeekDates(weekStart: string) {
+  return Array.from({ length: 7 }, (_, index) => addDaysToInputDate(weekStart, index));
+}
+
+function addDaysToInputDate(value: string, days: number) {
+  const date = parseInputDate(value);
+
+  date.setDate(date.getDate() + days);
+
+  return formatInputDate(date);
+}
+
+function parseInputDate(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+
+  return new Date(year, month - 1, day);
+}
+
+function formatInputDate(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function formatWeekRange(weekDates: string[]) {
+  const start = parseInputDate(weekDates[0]);
+  const end = parseInputDate(weekDates[weekDates.length - 1]);
+
+  return `${start.toLocaleDateString(undefined, { month: "short", day: "numeric" })} - ${end.toLocaleDateString(
+    undefined,
+    { month: "short", day: "numeric", year: "numeric" }
+  )}`;
+}
+
+function formatWeekDayLabel(value: string) {
+  return parseInputDate(value).toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "numeric",
+    day: "numeric"
+  });
 }
 
 function exportReportsToExcel(payItemRows: PayItemReportRow[]) {

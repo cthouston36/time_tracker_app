@@ -25,6 +25,13 @@ const users: LocalUser[] = [
     lastName: "User",
     password: process.env.LOCAL_FIELD_PASSWORD,
     role: "standard"
+  },
+  {
+    id: "calebuser",
+    firstName: "Caleb",
+    lastName: "Houston",
+    password: process.env.LOCAL_USER_PASSWORD,
+    role: "standard"
   }
 ];
 
