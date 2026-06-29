@@ -185,7 +185,7 @@ button {
   border-radius: 8px;
   display: grid;
   gap: 4px;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
   margin-bottom: 16px;
   padding: 4px;
 }
@@ -214,6 +214,33 @@ button {
   gap: 6px;
   margin-bottom: 14px;
   min-width: 0;
+}
+
+.my-project-sidebar-tools {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.my-project-sidebar-tools .secondary-button {
+  width: 100%;
+}
+
+.compact-check-row {
+  align-items: center;
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: #c8d4df;
+  display: flex;
+  gap: 8px;
+  min-height: 38px;
+  padding: 8px 10px;
+}
+
+.compact-check-row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .field-group label {
@@ -765,6 +792,20 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   z-index: 2;
 }
 
+.matrix-header > span:first-child,
+.matrix-code {
+  align-items: center;
+  align-self: stretch;
+  display: flex;
+  left: 0;
+  position: sticky;
+}
+
+.matrix-header > span:first-child {
+  background: #0d151d;
+  z-index: 4;
+}
+
 .matrix-row {
   background: var(--panel);
   border-bottom: 1px solid var(--line);
@@ -780,8 +821,14 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 }
 
 .matrix-code {
+  background: var(--panel);
   color: #b8e7ec;
   font-weight: 700;
+  z-index: 1;
+}
+
+.matrix-row.worked-row .matrix-code {
+  background: #122633;
 }
 
 .matrix-name,

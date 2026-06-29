@@ -106,7 +106,7 @@ type EditingCrewMember = {
   jobTitle: string;
 };
 
-type ViewMode = "entry" | "reports";
+type ViewMode = "entry" | "calendar" | "reports";
 
 export function TimeAllocationWorkspace() {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
@@ -118,9 +118,14 @@ export function TimeAllocationWorkspace() {
   const [reportProjectId, setReportProjectId] = useState("all");
   const [reportStartDate, setReportStartDate] = useState("");
   const [reportEndDate, setReportEndDate] = useState("");
+  const [calendarWeekStart, setCalendarWeekStart] = useState(getWeekStart(todayInputValue()));
+  const [calendarProjectIds, setCalendarProjectIds] = useState<string[]>([]);
+  const [calendarUseMyProjects, setCalendarUseMyProjects] = useState(false);
   const [allProjects, setAllProjects] = useState<Project[]>([]);
   const [projectBlacklistById, setProjectBlacklistById] = useState<ProjectBlacklistById>({});
   const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [showOnlyMyProjects, setShowOnlyMyProjects] = useState(false);
+  const [myProjectsEditorOpen, setMyProjectsEditorOpen] = useState(false);
   const [mobileSelectedPayItemId, setMobileSelectedPayItemId] = useState("");
   const [workDate, setWorkDate] = useState(todayInputValue());
   const [entries, setEntries] = useState<AllocationEntry[]>([]);
@@ -178,9 +183,18 @@ export function TimeAllocationWorkspace() {
   const crewSummaryRows = buildCrewSummary(visibleEntries, selectedProjectCrewMembers);
   const currentDaySubmission = daySubmissions[getDayKey(selectedProjectId, workDate)] ?? { status: "draft" };
   const dayIsSubmitted = currentDaySubmission.status === "submitted";
-  const currentUserMyJobIds = currentUser
-    ? (myJobsByUser[currentUser.id] ?? []).filter((projectId) => visibleProjectIds.has(projectId))
-    : [];
+  const currentUserMyJobIds = useMemo(
+    () => (currentUser ? (myJobsByUser[currentUser.id] ?? []).filter((projectId) => visibleProjectIds.has(projectId)) : []),
+    [currentUser, myJobsByUser, visibleProjectIds]
+  );
+  const myProjectIdSet = useMemo(() => new Set(currentUserMyJobIds), [currentUserMyJobIds]);
+  const jobPickerProjects = useMemo(
+    () =>
+      showOnlyMyProjects && currentUserMyJobIds.length > 0
+        ? projects.filter((project) => myProjectIdSet.has(project.id))
+        : projects,
+    [currentUserMyJobIds.length, myProjectIdSet, projects, showOnlyMyProjects]
+  );
   const totalHours = visibleEntries.reduce((total, entry) => total + entry.hours, 0);
   const draftEntryCount = selectedProject
     ? selectedProject.payItems.filter((item) => draftIsSaveable(draftsByPayItem[item.id])).length
@@ -263,6 +277,26 @@ export function TimeAllocationWorkspace() {
       setDraftsByPayItem({});
     }
   }, [currentUser, projects, selectedProjectId]);
+
+  useEffect(() => {
+    if (!currentUser || jobPickerProjects.length === 0) {
+      return;
+    }
+
+    if (!jobPickerProjects.some((project) => project.id === selectedProjectId)) {
+      setSelectedProjectId(jobPickerProjects[0].id);
+      setMobileSelectedPayItemId("");
+      setEditingEntry(null);
+      setEditingCrewMember(null);
+      setDraftsByPayItem({});
+    }
+  }, [currentUser, jobPickerProjects, selectedProjectId]);
+
+  useEffect(() => {
+    if (currentUserMyJobIds.length === 0 && showOnlyMyProjects) {
+      setShowOnlyMyProjects(false);
+    }
+  }, [currentUserMyJobIds.length, showOnlyMyProjects]);
 
   useEffect(() => {
     if (!currentUser || !selectedProjectId) {
@@ -442,6 +476,8 @@ export function TimeAllocationWorkspace() {
     setCurrentUser(null);
     setAllProjects([]);
     setSelectedProjectId("");
+    setShowOnlyMyProjects(false);
+    setMyProjectsEditorOpen(false);
     setEntries([]);
     setDaySubmissions({});
     setMyJobsByUser({});
@@ -1228,15 +1264,23 @@ export function TimeAllocationWorkspace() {
 
       <div className="workspace">
         <aside className="panel">
-          {currentUser.role === "project_manager" || currentUser.role === "admin" ? (
-            <div className="view-tabs" aria-label="View">
-              <button
-                className={viewMode === "entry" ? "tab-button active" : "tab-button"}
-                onClick={() => setViewMode("entry")}
-                type="button"
-              >
-                Entry
-              </button>
+          <div className="view-tabs" aria-label="View">
+            <button
+              className={viewMode === "entry" ? "tab-button active" : "tab-button"}
+              onClick={() => setViewMode("entry")}
+              type="button"
+            >
+              Entry
+            </button>
+            <button
+              className={viewMode === "calendar" ? "tab-button active" : "tab-button"}
+              onClick={() => setViewMode("calendar")}
+              type="button"
+            >
+              <CalendarDays aria-hidden="true" size={16} />
+              Calendar
+            </button>
+            {currentUser.role === "project_manager" || currentUser.role === "admin" ? (
               <button
                 className={viewMode === "reports" ? "tab-button active" : "tab-button"}
                 onClick={() => setViewMode("reports")}
@@ -1245,15 +1289,15 @@ export function TimeAllocationWorkspace() {
                 <BarChart3 aria-hidden="true" size={16} />
                 Reports
               </button>
-            </div>
-          ) : null}
+            ) : null}
+          </div>
           <h2>Job Setup</h2>
           <div className="field-group">
             <label htmlFor="project">Job</label>
             <select
               className="desktop-select"
               id="project"
-              disabled={projects.length === 0}
+              disabled={jobPickerProjects.length === 0}
               value={selectedProjectId}
               onChange={(event) => {
                 setSelectedProjectId(event.target.value);
@@ -1264,16 +1308,16 @@ export function TimeAllocationWorkspace() {
                 setDraftsByPayItem({});
               }}
             >
-              {projects.map((project) => (
+              {jobPickerProjects.map((project) => (
                 <option key={project.id} value={project.id}>
                   {project.name}
                 </option>
               ))}
             </select>
             <MobileOptionPicker
-              disabled={projects.length === 0}
+              disabled={jobPickerProjects.length === 0}
               label="Job"
-              options={projects.map((project) => ({
+              options={jobPickerProjects.map((project) => ({
                 value: project.id,
                 label: project.name
               }))}
@@ -1288,6 +1332,35 @@ export function TimeAllocationWorkspace() {
               }}
             />
           </div>
+          <div className="my-project-sidebar-tools">
+            <button
+              aria-expanded={myProjectsEditorOpen}
+              className="secondary-button"
+              onClick={() => setMyProjectsEditorOpen((current) => !current)}
+              type="button"
+            >
+              <ListChecks aria-hidden="true" size={18} />
+              Create/Update My Projects ({currentUserMyJobIds.length})
+            </button>
+            <label className="compact-check-row">
+              <input
+                checked={showOnlyMyProjects}
+                disabled={currentUserMyJobIds.length === 0}
+                onChange={(event) => setShowOnlyMyProjects(event.target.checked)}
+                type="checkbox"
+              />
+              <span>Show My Projects only</span>
+            </label>
+          </div>
+          {myProjectsEditorOpen ? (
+            <MyJobsManager
+              description="Tag projects you work on so they are easier to find in entry and calendar views."
+              myJobIds={currentUserMyJobIds}
+              projects={projects}
+              setMyJobIds={setCurrentUserMyJobIds}
+              title="My Projects"
+            />
+          ) : null}
           {projects.length === 0 && !projectLoadError ? (
             <div className="empty-state">
               {allProjects.length > 0
@@ -1798,6 +1871,25 @@ export function TimeAllocationWorkspace() {
               )}
             </div>
           </section>
+        ) : viewMode === "calendar" ? (
+          <section className="allocation-grid">
+            <div className="panel">
+              <div className="panel-heading">
+                <h2>Weekly Status Calendar</h2>
+              </div>
+              <WeeklyStatusReport
+                daySubmissions={daySubmissions}
+                myJobIds={currentUserMyJobIds}
+                projects={projects}
+                selectedProjectIds={calendarProjectIds}
+                setSelectedProjectIds={setCalendarProjectIds}
+                setUseMyJobs={setCalendarUseMyProjects}
+                setWeekStart={setCalendarWeekStart}
+                useMyJobs={calendarUseMyProjects}
+                weekStart={calendarWeekStart}
+              />
+            </div>
+          </section>
         ) : (
           <ReportsView
             currentUser={currentUser}
@@ -2282,7 +2374,7 @@ function ReportsView({
       ? [
           {
             value: "my-jobs",
-            label: `My Jobs (${myJobIds.length})`
+            label: `My Projects (${myJobIds.length})`
           }
         ]
       : []),
@@ -2363,7 +2455,7 @@ function ReportsView({
               type="button"
             >
               <ListChecks aria-hidden="true" size={18} />
-              Create/Update My Jobs ({myJobIds.length})
+              Create/Update My Projects ({myJobIds.length})
             </button>
           </div>
         ) : null}
@@ -2482,13 +2574,17 @@ function ReportsView({
 }
 
 function MyJobsManager({
+  description = "Tag projects you want to filter quickly.",
   myJobIds,
   projects,
-  setMyJobIds
+  setMyJobIds,
+  title = "My Projects"
 }: {
+  description?: string;
   myJobIds: string[];
   projects: Project[];
   setMyJobIds: (jobIds: string[]) => void;
+  title?: string;
 }) {
   const selectedJobIds = new Set(myJobIds);
   const sortedProjects = sortProjectsByName(projects);
@@ -2509,8 +2605,8 @@ function MyJobsManager({
     <div className="my-jobs-panel">
       <div className="my-jobs-heading">
         <div>
-          <strong>My Jobs</strong>
-          <span>Tag the jobs you want to filter quickly in reports.</span>
+          <strong>{title}</strong>
+          <span>{description}</span>
         </div>
         <div className="my-jobs-actions">
           <button className="secondary-button" onClick={() => setMyJobIds(sortedProjects.map((project) => project.id))} type="button">
@@ -2568,7 +2664,7 @@ function WeeklyStatusReport({
   const activeProjectIdSet = new Set(activeProjectIds);
   const visibleProjects = sortedProjects.filter((project) => activeProjectIdSet.has(project.id));
   const selectedLabel = useMyJobs
-    ? `My Jobs (${myJobIds.length})`
+    ? `My Projects (${myJobIds.length})`
     : selectedProjectIds.length === 0
       ? "Select jobs"
       : `${selectedProjectIds.length} selected`;
@@ -2625,7 +2721,7 @@ function WeeklyStatusReport({
                 onChange={(event) => setUseMyJobs(event.target.checked)}
                 type="checkbox"
               />
-              <span>My Jobs{myJobIds.length === 0 ? " (none tagged)" : ""}</span>
+              <span>My Projects{myJobIds.length === 0 ? " (none tagged)" : ""}</span>
             </label>
             <div className="job-multi-actions">
               <button
@@ -2662,7 +2758,7 @@ function WeeklyStatusReport({
         </details>
       </div>
       {visibleProjects.length === 0 ? (
-        <div className="empty-state">Select one or more jobs, or tag My Jobs, to view weekly status.</div>
+        <div className="empty-state">Select one or more projects, or tag My Projects, to view weekly status.</div>
       ) : (
         <div className="weekly-calendar">
           <div className="weekly-calendar-row weekly-calendar-header">
