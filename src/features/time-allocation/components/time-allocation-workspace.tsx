@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BarChart3,
@@ -91,6 +92,8 @@ type DaySubmissionsByKey = Record<string, DaySubmission>;
 
 type MyJobsByUser = Record<string, string[]>;
 
+type ProjectBlacklistById = Record<string, true>;
+
 type EditingEntry = {
   entryId: string;
   hours: string;
@@ -115,7 +118,8 @@ export function TimeAllocationWorkspace() {
   const [reportProjectId, setReportProjectId] = useState("all");
   const [reportStartDate, setReportStartDate] = useState("");
   const [reportEndDate, setReportEndDate] = useState("");
-  const [projects, setProjects] = useState<Project[]>([]);
+  const [allProjects, setAllProjects] = useState<Project[]>([]);
+  const [projectBlacklistById, setProjectBlacklistById] = useState<ProjectBlacklistById>({});
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [mobileSelectedPayItemId, setMobileSelectedPayItemId] = useState("");
   const [workDate, setWorkDate] = useState(todayInputValue());
@@ -143,6 +147,13 @@ export function TimeAllocationWorkspace() {
   const [updatingProject, setUpdatingProject] = useState(false);
   const dateInputRef = useRef<HTMLInputElement>(null);
 
+  const projects = useMemo(
+    () => allProjects.filter((project) => !projectBlacklistById[project.id]),
+    [allProjects, projectBlacklistById]
+  );
+  const visibleProjectIds = useMemo(() => new Set(projects.map((project) => project.id)), [projects]);
+  const reportEntries = entries.filter((entry) => visibleProjectIds.has(entry.projectId));
+
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === selectedProjectId) ?? projects[0],
     [projects, selectedProjectId]
@@ -167,7 +178,9 @@ export function TimeAllocationWorkspace() {
   const crewSummaryRows = buildCrewSummary(visibleEntries, selectedProjectCrewMembers);
   const currentDaySubmission = daySubmissions[getDayKey(selectedProjectId, workDate)] ?? { status: "draft" };
   const dayIsSubmitted = currentDaySubmission.status === "submitted";
-  const currentUserMyJobIds = currentUser ? myJobsByUser[currentUser.id] ?? [] : [];
+  const currentUserMyJobIds = currentUser
+    ? (myJobsByUser[currentUser.id] ?? []).filter((projectId) => visibleProjectIds.has(projectId))
+    : [];
   const totalHours = visibleEntries.reduce((total, entry) => total + entry.hours, 0);
   const draftEntryCount = selectedProject
     ? selectedProject.payItems.filter((item) => draftIsSaveable(draftsByPayItem[item.id])).length
@@ -214,7 +227,7 @@ export function TimeAllocationWorkspace() {
           ? lastSelectedProjectId ?? ""
           : sortedProjects[0]?.id ?? "";
 
-        setProjects(sortedProjects);
+        setAllProjects(sortedProjects);
         setSelectedProjectId(nextSelectedProjectId);
         setSyncedAt(data.syncedAt ?? null);
         setConnectionStatus(data.syncedAt ? "Cached Procore data loaded" : "No cached Procore data");
@@ -225,6 +238,31 @@ export function TimeAllocationWorkspace() {
 
     void loadProjects();
   }, [currentUser]);
+
+  useEffect(() => {
+    if (!currentUser) {
+      return;
+    }
+
+    if (projects.length === 0) {
+      if (selectedProjectId) {
+        setSelectedProjectId("");
+        setMobileSelectedPayItemId("");
+        setEditingEntry(null);
+        setEditingCrewMember(null);
+        setDraftsByPayItem({});
+      }
+      return;
+    }
+
+    if (!projects.some((project) => project.id === selectedProjectId)) {
+      setSelectedProjectId(projects[0].id);
+      setMobileSelectedPayItemId("");
+      setEditingEntry(null);
+      setEditingCrewMember(null);
+      setDraftsByPayItem({});
+    }
+  }, [currentUser, projects, selectedProjectId]);
 
   useEffect(() => {
     if (!currentUser || !selectedProjectId) {
@@ -258,6 +296,7 @@ export function TimeAllocationWorkspace() {
     const savedCrewMembers = window.localStorage.getItem("project-crew-members");
     const savedCrewDirectory = window.localStorage.getItem("crew-member-directory");
     const savedMyJobs = window.localStorage.getItem("my-jobs-by-user");
+    const savedProjectBlacklist = window.localStorage.getItem("project-blacklist");
     let parsedCrewMembersByProject: CrewMembersByProject = {};
 
     if (savedEntries) {
@@ -291,6 +330,10 @@ export function TimeAllocationWorkspace() {
     if (savedMyJobs) {
       setMyJobsByUser(JSON.parse(savedMyJobs) as MyJobsByUser);
     }
+
+    if (savedProjectBlacklist) {
+      setProjectBlacklistById(JSON.parse(savedProjectBlacklist) as ProjectBlacklistById);
+    }
   }, [currentUser]);
 
   useEffect(() => {
@@ -303,7 +346,8 @@ export function TimeAllocationWorkspace() {
     window.localStorage.setItem("crew-member-directory", JSON.stringify(crewDirectory));
     window.localStorage.setItem("project-crew-members", JSON.stringify(crewMembersByProject));
     window.localStorage.setItem("my-jobs-by-user", JSON.stringify(myJobsByUser));
-  }, [currentUser, crewDirectory, crewMembersByProject, daySubmissions, entries, myJobsByUser]);
+    window.localStorage.setItem("project-blacklist", JSON.stringify(projectBlacklistById));
+  }, [currentUser, crewDirectory, crewMembersByProject, daySubmissions, entries, myJobsByUser, projectBlacklistById]);
 
   useEffect(() => {
     if (!currentUser || projects.length === 0 || entries.length === 0) {
@@ -396,11 +440,12 @@ export function TimeAllocationWorkspace() {
     });
 
     setCurrentUser(null);
-    setProjects([]);
+    setAllProjects([]);
     setSelectedProjectId("");
     setEntries([]);
     setDaySubmissions({});
     setMyJobsByUser({});
+    setProjectBlacklistById({});
     setCrewDirectory([]);
     setCrewMembersByProject({});
     setSelectedExistingCrewMemberId("");
@@ -422,6 +467,21 @@ export function TimeAllocationWorkspace() {
       ...current,
       [currentUser.id]: uniqueJobIds
     }));
+  }
+
+  function toggleProjectBlacklist(projectId: string, blacklisted: boolean) {
+    setProjectBlacklistById((current) => {
+      if (blacklisted) {
+        return {
+          ...current,
+          [projectId]: true
+        };
+      }
+
+      const nextBlacklist = { ...current };
+      delete nextBlacklist[projectId];
+      return nextBlacklist;
+    });
   }
 
   function updateDraft(payItemId: string, field: "hours" | "quantity", value: string) {
@@ -742,9 +802,12 @@ export function TimeAllocationWorkspace() {
       }
 
       const sortedProjects = sortProjectsByName(data.projects);
-      setProjects(sortedProjects);
+      const visibleSyncedProjects = filterProjectsByBlacklist(sortedProjects, projectBlacklistById);
+      setAllProjects(sortedProjects);
       setSelectedProjectId((currentProjectId) =>
-        sortedProjects.some((project) => project.id === currentProjectId) ? currentProjectId : sortedProjects[0]?.id ?? ""
+        visibleSyncedProjects.some((project) => project.id === currentProjectId)
+          ? currentProjectId
+          : visibleSyncedProjects[0]?.id ?? ""
       );
       setSyncedAt(data.syncedAt ?? null);
       setSyncSummary(data.summary ?? null);
@@ -787,9 +850,12 @@ export function TimeAllocationWorkspace() {
       }
 
       const sortedProjects = sortProjectsByName(data.projects);
-      setProjects(sortedProjects);
+      const visibleSyncedProjects = filterProjectsByBlacklist(sortedProjects, projectBlacklistById);
+      setAllProjects(sortedProjects);
       setSelectedProjectId((currentProjectId) =>
-        sortedProjects.some((project) => project.id === currentProjectId) ? currentProjectId : sortedProjects[0]?.id ?? ""
+        visibleSyncedProjects.some((project) => project.id === currentProjectId)
+          ? currentProjectId
+          : visibleSyncedProjects[0]?.id ?? ""
       );
       setSyncedAt(data.syncedAt ?? null);
       setSyncSummary(data.summary ?? null);
@@ -839,9 +905,10 @@ export function TimeAllocationWorkspace() {
       }
 
       const sortedProjects = sortProjectsByName(data.projects);
-      setProjects(sortedProjects);
+      const visibleSyncedProjects = filterProjectsByBlacklist(sortedProjects, projectBlacklistById);
+      setAllProjects(sortedProjects);
       setSelectedProjectId((currentProjectId) =>
-        sortedProjects.some((project) => project.id === trimmedProjectId) ? trimmedProjectId : currentProjectId
+        visibleSyncedProjects.some((project) => project.id === trimmedProjectId) ? trimmedProjectId : currentProjectId
       );
       setSyncedAt(data.syncedAt ?? null);
       setConnectionStatus("Project added or updated");
@@ -863,6 +930,15 @@ export function TimeAllocationWorkspace() {
     } finally {
       setUpdatingProject(false);
     }
+  }
+
+  function exportAllEntryDetails() {
+    exportEntriesToCsv({
+      daySubmissions,
+      entries,
+      projectBlacklistById,
+      projects: allProjects
+    });
   }
 
   function saveAllocationEntries() {
@@ -1093,8 +1169,17 @@ export function TimeAllocationWorkspace() {
     <main className="app-shell">
       <header className="top-bar">
         <div className="brand-block">
-          <h1>Crew Time Allocation</h1>
-          <p>Assign field hours and installed quantities to project pay items.</p>
+          <Image
+            alt="Chinchor Electric Inc."
+            className="brand-logo"
+            height={908}
+            priority
+            src="/chinchor-logo.png"
+            width={3310}
+          />
+          <div className="brand-copy">
+            <h1>Crew Time Allocation</h1>
+          </div>
         </div>
         <div className="header-actions">
           <span className="user-chip">
@@ -1112,6 +1197,10 @@ export function TimeAllocationWorkspace() {
                   <button className="secondary-button" disabled={syncingAll} onClick={syncAllProcoreData} type="button">
                     <RefreshCw aria-hidden="true" size={18} />
                     {syncingAll ? "Syncing All..." : "Sync All Projects"}
+                  </button>
+                  <button className="secondary-button" disabled={entries.length === 0} onClick={exportAllEntryDetails} type="button">
+                    <Download aria-hidden="true" size={18} />
+                    Export CSV
                   </button>
                 </>
               ) : null}
@@ -1200,7 +1289,11 @@ export function TimeAllocationWorkspace() {
             />
           </div>
           {projects.length === 0 && !projectLoadError ? (
-            <div className="empty-state">No projects with pay items returned from Procore.</div>
+            <div className="empty-state">
+              {allProjects.length > 0
+                ? "All cached projects are currently blacklisted."
+                : "No projects with pay items returned from Procore."}
+            </div>
           ) : null}
           {projectLoadError ? <div className="inline-alert">{projectLoadError}</div> : null}
           {syncSummary ? <SyncSummaryCard summary={syncSummary} /> : null}
@@ -1210,6 +1303,13 @@ export function TimeAllocationWorkspace() {
             <div className="field-note">Use Sync New Projects to load uncached jobs and pay items.</div>
           )}
           {currentUser.role === "admin" ? <SyncLogPanel entries={syncLog} /> : null}
+          {currentUser.role === "admin" ? (
+            <ProjectBlacklistPanel
+              onToggleProject={toggleProjectBlacklist}
+              projectBlacklistById={projectBlacklistById}
+              projects={allProjects}
+            />
+          ) : null}
 
           <div className="field-group">
             <label htmlFor="work-date">Date</label>
@@ -1702,7 +1802,7 @@ export function TimeAllocationWorkspace() {
           <ReportsView
             currentUser={currentUser}
             daySubmissions={daySubmissions}
-            entries={entries}
+            entries={reportEntries}
             myJobIds={currentUserMyJobIds}
             projects={projects}
             reportProjectId={reportProjectId}
@@ -2208,9 +2308,9 @@ function ReportsView({
         <div className="panel-heading">
           <h2>{getReportTitle(reportMode)}</h2>
           {reportMode === "summary" ? (
-            <button className="secondary-button" onClick={() => exportReportsToExcel(payItemRows)} type="button">
+            <button className="secondary-button" onClick={() => exportPayItemSummaryToCsv(payItemRows)} type="button">
               <Download aria-hidden="true" size={18} />
-              Export Excel
+              Export CSV
             </button>
           ) : reportMode === "crew" ? (
             <button
@@ -2971,6 +3071,47 @@ function SyncLogPanel({ entries }: { entries: SyncLogEntry[] }) {
   );
 }
 
+function ProjectBlacklistPanel({
+  onToggleProject,
+  projectBlacklistById,
+  projects
+}: {
+  onToggleProject: (projectId: string, blacklisted: boolean) => void;
+  projectBlacklistById: ProjectBlacklistById;
+  projects: Project[];
+}) {
+  const sortedProjects = sortProjectsByName(projects);
+  const blacklistedProjectCount = sortedProjects.filter((project) => projectBlacklistById[project.id]).length;
+
+  return (
+    <details className="project-blacklist">
+      <summary>
+        <ListChecks aria-hidden="true" size={16} />
+        Project Blacklist ({blacklistedProjectCount})
+      </summary>
+      {sortedProjects.length === 0 ? (
+        <div className="field-note">No cached projects are available to blacklist yet.</div>
+      ) : (
+        <>
+          <div className="field-note">Blacklisted projects stay cached, but are hidden from entry screens and reports.</div>
+          <div className="project-blacklist-list">
+            {sortedProjects.map((project) => (
+              <label className="project-blacklist-row" key={project.id}>
+                <input
+                  checked={Boolean(projectBlacklistById[project.id])}
+                  onChange={(event) => onToggleProject(project.id, event.target.checked)}
+                  type="checkbox"
+                />
+                <span>{project.name}</span>
+              </label>
+            ))}
+          </div>
+        </>
+      )}
+    </details>
+  );
+}
+
 function buildPayItemReport(entries: AllocationEntry[]): PayItemReportRow[] {
   const rows = new Map<string, PayItemReportRow>();
 
@@ -3376,6 +3517,10 @@ function sortProjectsByName(projects: Project[]) {
       sensitivity: "base"
     })
   );
+}
+
+function filterProjectsByBlacklist(projects: Project[], projectBlacklistById: ProjectBlacklistById) {
+  return projects.filter((project) => !projectBlacklistById[project.id]);
 }
 
 function buildCrewDirectoryFromProjects(crewMembersByProject: CrewMembersByProject) {
@@ -3991,58 +4136,184 @@ function formatWeekDayLabel(value: string) {
   });
 }
 
-function exportReportsToExcel(payItemRows: PayItemReportRow[]) {
-  const html = `
-    <html>
-      <body>
-        <h1>Pay Item Production Report</h1>
-        ${buildExcelTable(
-          ["Pay Item", "Entries", "Hours", "Quantity", "Avg Hrs / Unit"],
-          payItemRows.map((row) => [
-            `${row.code} - ${row.name}`,
-            row.entryCount,
-            row.totalHours.toFixed(2),
-            row.totalQuantity.toFixed(2),
-            row.hoursPerUnit.toFixed(3)
-          ])
-        )}
-      </body>
-    </html>
-  `;
-  const blob = new Blob([html], {
-    type: "application/vnd.ms-excel"
+function exportEntriesToCsv({
+  daySubmissions,
+  entries,
+  projectBlacklistById,
+  projects
+}: {
+  daySubmissions: DaySubmissionsByKey;
+  entries: AllocationEntry[];
+  projectBlacklistById: ProjectBlacklistById;
+  projects: Project[];
+}) {
+  const headers = [
+    "entry_id",
+    "project_id",
+    "project_name",
+    "project_blacklisted",
+    "entry_date",
+    "day_status",
+    "submitted_by_user_id",
+    "submitted_by_name",
+    "submitted_at",
+    "pay_item_id",
+    "pay_item_code",
+    "pay_item_name",
+    "pay_item_budgeted_quantity",
+    "pay_item_unit_of_measure",
+    "entry_total_hours",
+    "entry_total_quantity_completed",
+    "entry_hours_per_unit",
+    "crew_member_id",
+    "crew_member_name",
+    "crew_job_title",
+    "crew_hours",
+    "crew_hour_share_percent",
+    "crew_quantity_completed_prorated",
+    "crew_hours_per_unit",
+    "saved_by_user_id",
+    "saved_by_name",
+    "saved_at"
+  ];
+  const projectMap = new Map(projects.map((project) => [project.id, project]));
+  const rows = entries.flatMap((entry) =>
+    buildEntryCsvRows({
+      daySubmission: daySubmissions[getDayKey(entry.projectId, entry.date)],
+      entry,
+      project: projectMap.get(entry.projectId),
+      projectBlacklisted: Boolean(projectBlacklistById[entry.projectId])
+    })
+  );
+  const csv = [headers, ...rows].map((row) => row.map((cell) => escapeCsvCell(String(cell))).join(",")).join("\r\n");
+  const blob = new Blob([csv], {
+    type: "text/csv;charset=utf-8"
   });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
 
   link.href = url;
-  link.download = `time-allocation-report-${todayInputValue()}.xls`;
+  link.download = `time-allocation-entry-detail-${todayInputValue()}.csv`;
   link.click();
   URL.revokeObjectURL(url);
 }
 
-function buildExcelTable(headers: string[], rows: Array<Array<string | number>>) {
-  return `
-    <table border="1">
-      <thead>
-        <tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr>
-      </thead>
-      <tbody>
-        ${rows
-          .map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(String(cell))}</td>`).join("")}</tr>`)
-          .join("")}
-      </tbody>
-    </table>
-  `;
+function buildEntryCsvRows({
+  daySubmission,
+  entry,
+  project,
+  projectBlacklisted
+}: {
+  daySubmission: DaySubmission | undefined;
+  entry: AllocationEntry;
+  project: Project | undefined;
+  projectBlacklisted: boolean;
+}) {
+  const projectName = entry.projectName ?? project?.name ?? "";
+  const baseRow = [
+    entry.id,
+    formatCsvIdentifier(entry.projectId),
+    projectName,
+    projectBlacklisted ? "yes" : "no",
+    entry.date,
+    daySubmission?.status ?? "draft",
+    daySubmission?.submittedByUserId ?? "",
+    daySubmission?.submittedByName ?? "",
+    daySubmission?.submittedAt ?? "",
+    formatCsvIdentifier(entry.payItemId),
+    entry.payItemCode,
+    entry.payItemName,
+    formatCsvNumber(entry.payItemBudgetedQuantity),
+    entry.payItemUnitOfMeasure ?? "",
+    formatCsvNumber(entry.hours),
+    formatCsvNumber(entry.quantityCompleted),
+    formatCsvNumber(entry.quantityCompleted > 0 ? entry.hours / entry.quantityCompleted : undefined)
+  ];
+  const allocationTotalHours = entry.crewAllocations?.reduce((total, allocation) => total + allocation.hours, 0) ?? 0;
+
+  if (!entry.crewAllocations?.length) {
+    return [
+      [
+        ...baseRow,
+        "unassigned",
+        "Unassigned",
+        "",
+        formatCsvNumber(entry.hours),
+        "100.00",
+        formatCsvNumber(entry.quantityCompleted),
+        formatCsvNumber(entry.quantityCompleted > 0 ? entry.hours / entry.quantityCompleted : undefined),
+        entry.savedByUserId ?? "",
+        entry.savedByName ?? "",
+        entry.savedAt ?? ""
+      ]
+    ];
+  }
+
+  return entry.crewAllocations.map((allocation) => {
+    const hourShare = allocationTotalHours > 0 ? allocation.hours / allocationTotalHours : 0;
+    const proratedQuantity = entry.quantityCompleted * hourShare;
+
+    return [
+      ...baseRow,
+      allocation.crewMemberId,
+      allocation.crewMemberName,
+      allocation.jobTitle,
+      formatCsvNumber(allocation.hours),
+      formatCsvNumber(hourShare * 100),
+      formatCsvNumber(proratedQuantity),
+      formatCsvNumber(proratedQuantity > 0 ? allocation.hours / proratedQuantity : undefined),
+      entry.savedByUserId ?? "",
+      entry.savedByName ?? "",
+      entry.savedAt ?? ""
+    ];
+  });
 }
 
-function escapeHtml(value: string) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
+function formatCsvNumber(value: number | undefined) {
+  if (value === undefined || !Number.isFinite(value)) {
+    return "";
+  }
+
+  return String(Math.round(value * 1000000) / 1000000);
+}
+
+function formatCsvIdentifier(value: string) {
+  if (/^\d{12,}$/.test(value)) {
+    return `="${value}"`;
+  }
+
+  return value;
+}
+
+function escapeCsvCell(value: string) {
+  if (/[",\r\n]/.test(value)) {
+    return `"${value.replaceAll('"', '""')}"`;
+  }
+
+  return value;
+}
+
+function exportPayItemSummaryToCsv(payItemRows: PayItemReportRow[]) {
+  const headers = ["pay_item_code", "pay_item_name", "entries", "hours", "quantity", "avg_hours_per_unit"];
+  const rows = payItemRows.map((row) => [
+    row.code,
+    row.name,
+    row.entryCount,
+    row.totalHours.toFixed(2),
+    row.totalQuantity.toFixed(2),
+    row.hoursPerUnit.toFixed(3)
+  ]);
+  const csv = [headers, ...rows].map((row) => row.map((cell) => escapeCsvCell(String(cell))).join(",")).join("\r\n");
+  const blob = new Blob([csv], {
+    type: "text/csv;charset=utf-8"
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = `time-allocation-summary-${todayInputValue()}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 function openDatePicker(input: HTMLInputElement | null) {
