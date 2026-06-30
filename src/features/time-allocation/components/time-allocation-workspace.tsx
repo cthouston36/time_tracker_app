@@ -19,6 +19,7 @@ import {
   Save,
   Send,
   Trash2,
+  UploadCloud,
   UserPlus,
   Users,
   X
@@ -32,6 +33,18 @@ type ProjectsResponse = {
   projects: Project[];
   syncedAt?: string | null;
   summary?: ProcoreSyncSummary;
+  error?: string;
+};
+
+type DailyReportUploadResponse = {
+  fileName?: string;
+  folderPath?: string;
+  procoreFileId?: string;
+  procoreUpload?: {
+    createUploadPath?: string;
+    createFilePath?: string;
+    createFilePayload?: string;
+  };
   error?: string;
 };
 
@@ -81,6 +94,10 @@ type AuthResponse = {
   error?: string;
 };
 
+type ProcoreStatusResponse = {
+  connected: boolean;
+};
+
 type DaySubmission = {
   status: "draft" | "submitted";
   submittedByUserId?: string;
@@ -89,6 +106,77 @@ type DaySubmission = {
 };
 
 type DaySubmissionsByKey = Record<string, DaySubmission>;
+
+type DayEntryNotes = {
+  notes: string;
+  inventory: string;
+};
+
+type DayEntryNotesByKey = Record<string, DayEntryNotes>;
+
+type DailyReportAnswers = {
+  employeeRows: DailyReportEmployeeRow[];
+  payItemRows: DailyReportPayItemRow[];
+  quantitiesTurnedIn: string;
+  inspectorName: string;
+  inspectorQuantityDetails: string;
+  workDescription: string;
+  planSheetNumbers: string;
+  workDetails: string;
+  incidentOccurred: string;
+  incidentDetails: string;
+  accidentReportFiled: string;
+  motSigns: string;
+  conesBarrels: string;
+  typeIISidewalkBarricades: string;
+  typeIIIBarricades: string;
+  lcdCount: string;
+  lcdFootage: string;
+  arrowBoards: string;
+  vmsBoards: string;
+  fdotIndex: string;
+  itsfmAbovegroundEquipment: string;
+  itsfmCabinetEquipment: string;
+};
+
+type DailyReportEmployeeRow = {
+  employeeClassification: string;
+  truckNumber: string;
+  timeIn: string;
+  lunchOut: string;
+  lunchIn: string;
+  timeOut: string;
+  totalHours: string;
+  driver: boolean;
+  passenger: boolean;
+};
+
+type DailyReportTimeField = "timeIn" | "lunchOut" | "lunchIn" | "timeOut";
+
+type DailyReportPayItemRow = {
+  payItemId: string;
+  quantity: string;
+};
+
+type DailyReport = DailyReportAnswers & {
+  projectId: string;
+  date: string;
+  createdByUserId: string;
+  createdByName: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type DailyReportsByKey = Record<string, DailyReport>;
+
+type DailyReportUpload = {
+  fileName: string;
+  folderPath: string;
+  procoreFileId?: string;
+  uploadedAt: string;
+};
+
+type DailyReportUploadsByKey = Record<string, DailyReportUpload>;
 
 type MyJobsByUser = Record<string, string[]>;
 
@@ -108,6 +196,18 @@ type EditingCrewMember = {
 
 type ViewMode = "entry" | "calendar" | "reports";
 
+type CalendarStatusMode = "entry_status" | "daily_reports";
+
+type PendingProcoreReturn = {
+  date?: string;
+  intent?: "connect" | "upload_daily";
+  mobilePayItemId?: string;
+  projectId?: string;
+  viewMode?: ViewMode;
+};
+
+const PENDING_PROCORE_RETURN_KEY = "pending-procore-return";
+
 export function TimeAllocationWorkspace() {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
@@ -120,16 +220,24 @@ export function TimeAllocationWorkspace() {
   const [reportEndDate, setReportEndDate] = useState("");
   const [calendarWeekStart, setCalendarWeekStart] = useState(getWeekStart(todayInputValue()));
   const [calendarProjectIds, setCalendarProjectIds] = useState<string[]>([]);
-  const [calendarUseMyProjects, setCalendarUseMyProjects] = useState(false);
+  const [calendarUseMyProjects, setCalendarUseMyProjects] = useState(true);
   const [allProjects, setAllProjects] = useState<Project[]>([]);
   const [projectBlacklistById, setProjectBlacklistById] = useState<ProjectBlacklistById>({});
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [showOnlyMyProjects, setShowOnlyMyProjects] = useState(false);
   const [myProjectsEditorOpen, setMyProjectsEditorOpen] = useState(false);
+  const [crewSetupExpanded, setCrewSetupExpanded] = useState(false);
   const [mobileSelectedPayItemId, setMobileSelectedPayItemId] = useState("");
   const [workDate, setWorkDate] = useState(todayInputValue());
   const [entries, setEntries] = useState<AllocationEntry[]>([]);
   const [daySubmissions, setDaySubmissions] = useState<DaySubmissionsByKey>({});
+  const [dayEntryNotesByKey, setDayEntryNotesByKey] = useState<DayEntryNotesByKey>({});
+  const [dailyReportsByKey, setDailyReportsByKey] = useState<DailyReportsByKey>({});
+  const [dailyReportUploadsByKey, setDailyReportUploadsByKey] = useState<DailyReportUploadsByKey>({});
+  const [dailyReportDraft, setDailyReportDraft] = useState<DailyReportAnswers>(() => createEmptyDailyReportAnswers());
+  const [dailyReportModalOpen, setDailyReportModalOpen] = useState(false);
+  const [uploadingDailyReport, setUploadingDailyReport] = useState(false);
+  const [dailyReportUploadNotice, setDailyReportUploadNotice] = useState<{ message: string; status: "success" | "error" } | null>(null);
   const [myJobsByUser, setMyJobsByUser] = useState<MyJobsByUser>({});
   const [crewDirectory, setCrewDirectory] = useState<CrewMember[]>([]);
   const [crewMembersByProject, setCrewMembersByProject] = useState<CrewMembersByProject>({});
@@ -142,6 +250,7 @@ export function TimeAllocationWorkspace() {
   const [editingEntry, setEditingEntry] = useState<EditingEntry | null>(null);
   const [editingCrewMember, setEditingCrewMember] = useState<EditingCrewMember | null>(null);
   const [connectionStatus, setConnectionStatus] = useState("Mock data active");
+  const [procoreConnected, setProcoreConnected] = useState(false);
   const [projectLoadError, setProjectLoadError] = useState("");
   const [entryNotice, setEntryNotice] = useState("");
   const [syncSummary, setSyncSummary] = useState<ProcoreSyncSummary | null>(null);
@@ -182,6 +291,10 @@ export function TimeAllocationWorkspace() {
     : [];
   const crewSummaryRows = buildCrewSummary(visibleEntries, selectedProjectCrewMembers);
   const currentDaySubmission = daySubmissions[getDayKey(selectedProjectId, workDate)] ?? { status: "draft" };
+  const currentDayEntryNotes = selectedProject
+    ? dayEntryNotesByKey[getDayKey(selectedProject.id, workDate)] ?? { notes: "", inventory: "" }
+    : { notes: "", inventory: "" };
+  const currentDailyReport = selectedProject ? dailyReportsByKey[getDayKey(selectedProject.id, workDate)] : undefined;
   const dayIsSubmitted = currentDaySubmission.status === "submitted";
   const currentUserMyJobIds = useMemo(
     () => (currentUser ? (myJobsByUser[currentUser.id] ?? []).filter((projectId) => visibleProjectIds.has(projectId)) : []),
@@ -219,12 +332,25 @@ export function TimeAllocationWorkspace() {
 
     const procoreStatus = new URLSearchParams(window.location.search).get("procore");
     if (procoreStatus === "connected") {
+      setProcoreConnected(true);
       setConnectionStatus("Procore connected");
     } else if (procoreStatus) {
+      setProcoreConnected(false);
       setConnectionStatus("Procore connection needs attention");
     }
 
     const currentUserId = currentUser.id;
+
+    async function loadProcoreConnectionStatus() {
+      try {
+        const response = await fetch("/api/procore/status");
+        const data = (await response.json()) as ProcoreStatusResponse;
+
+        setProcoreConnected(data.connected);
+      } catch {
+        setProcoreConnected(false);
+      }
+    }
 
     async function loadProjects() {
       try {
@@ -237,12 +363,35 @@ export function TimeAllocationWorkspace() {
 
         const sortedProjects = sortProjectsByName(data.projects);
         const lastSelectedProjectId = window.localStorage.getItem(getLastProjectStorageKey(currentUserId));
+        const pendingProcoreReturn = readPendingProcoreReturn();
         const nextSelectedProjectId = sortedProjects.some((project) => project.id === lastSelectedProjectId)
           ? lastSelectedProjectId ?? ""
           : sortedProjects[0]?.id ?? "";
+        const restoredProjectId =
+          pendingProcoreReturn?.projectId && sortedProjects.some((project) => project.id === pendingProcoreReturn.projectId)
+            ? pendingProcoreReturn.projectId
+            : nextSelectedProjectId;
 
         setAllProjects(sortedProjects);
-        setSelectedProjectId(nextSelectedProjectId);
+        setSelectedProjectId(restoredProjectId);
+        if (pendingProcoreReturn?.date) {
+          setWorkDate(pendingProcoreReturn.date);
+        }
+        if (pendingProcoreReturn?.viewMode) {
+          setViewMode(pendingProcoreReturn.viewMode);
+        }
+        if (pendingProcoreReturn?.mobilePayItemId) {
+          setMobileSelectedPayItemId(pendingProcoreReturn.mobilePayItemId);
+        }
+        if (pendingProcoreReturn) {
+          window.localStorage.removeItem(PENDING_PROCORE_RETURN_KEY);
+        }
+        if (procoreStatus === "connected" && pendingProcoreReturn?.intent === "upload_daily") {
+          setDailyReportUploadNotice({
+            message: "Procore connected. Click Upload Daily to Procore to finish sending this daily.",
+            status: "success"
+          });
+        }
         setSyncedAt(data.syncedAt ?? null);
         setConnectionStatus(data.syncedAt ? "Cached Procore data loaded" : "No cached Procore data");
       } catch (error) {
@@ -250,6 +399,7 @@ export function TimeAllocationWorkspace() {
       }
     }
 
+    void loadProcoreConnectionStatus();
     void loadProjects();
   }, [currentUser]);
 
@@ -326,6 +476,9 @@ export function TimeAllocationWorkspace() {
 
     const savedEntries = window.localStorage.getItem("allocation-entries");
     const savedSubmissions = window.localStorage.getItem("day-submissions");
+    const savedDayEntryNotes = window.localStorage.getItem("day-entry-notes");
+    const savedDailyReports = window.localStorage.getItem("daily-reports");
+    const savedDailyReportUploads = window.localStorage.getItem("daily-report-uploads");
     const savedSyncLog = window.localStorage.getItem("procore-sync-log");
     const savedCrewMembers = window.localStorage.getItem("project-crew-members");
     const savedCrewDirectory = window.localStorage.getItem("crew-member-directory");
@@ -339,6 +492,18 @@ export function TimeAllocationWorkspace() {
 
     if (savedSubmissions) {
       setDaySubmissions(JSON.parse(savedSubmissions) as DaySubmissionsByKey);
+    }
+
+    if (savedDayEntryNotes) {
+      setDayEntryNotesByKey(JSON.parse(savedDayEntryNotes) as DayEntryNotesByKey);
+    }
+
+    if (savedDailyReports) {
+      setDailyReportsByKey(JSON.parse(savedDailyReports) as DailyReportsByKey);
+    }
+
+    if (savedDailyReportUploads) {
+      setDailyReportUploadsByKey(JSON.parse(savedDailyReportUploads) as DailyReportUploadsByKey);
     }
 
     if (savedSyncLog) {
@@ -377,11 +542,25 @@ export function TimeAllocationWorkspace() {
 
     window.localStorage.setItem("allocation-entries", JSON.stringify(entries));
     window.localStorage.setItem("day-submissions", JSON.stringify(daySubmissions));
+    window.localStorage.setItem("day-entry-notes", JSON.stringify(dayEntryNotesByKey));
+    window.localStorage.setItem("daily-reports", JSON.stringify(dailyReportsByKey));
+    window.localStorage.setItem("daily-report-uploads", JSON.stringify(dailyReportUploadsByKey));
     window.localStorage.setItem("crew-member-directory", JSON.stringify(crewDirectory));
     window.localStorage.setItem("project-crew-members", JSON.stringify(crewMembersByProject));
     window.localStorage.setItem("my-jobs-by-user", JSON.stringify(myJobsByUser));
     window.localStorage.setItem("project-blacklist", JSON.stringify(projectBlacklistById));
-  }, [currentUser, crewDirectory, crewMembersByProject, daySubmissions, entries, myJobsByUser, projectBlacklistById]);
+  }, [
+    currentUser,
+    crewDirectory,
+    crewMembersByProject,
+    dayEntryNotesByKey,
+    daySubmissions,
+    dailyReportUploadsByKey,
+    dailyReportsByKey,
+    entries,
+    myJobsByUser,
+    projectBlacklistById
+  ]);
 
   useEffect(() => {
     if (!currentUser || projects.length === 0 || entries.length === 0) {
@@ -478,8 +657,16 @@ export function TimeAllocationWorkspace() {
     setSelectedProjectId("");
     setShowOnlyMyProjects(false);
     setMyProjectsEditorOpen(false);
+    setCrewSetupExpanded(false);
     setEntries([]);
     setDaySubmissions({});
+    setDayEntryNotesByKey({});
+    setDailyReportsByKey({});
+    setDailyReportUploadsByKey({});
+    setDailyReportModalOpen(false);
+    setDailyReportUploadNotice(null);
+    setUploadingDailyReport(false);
+    setProcoreConnected(false);
     setMyJobsByUser({});
     setProjectBlacklistById({});
     setCrewDirectory([]);
@@ -518,6 +705,252 @@ export function TimeAllocationWorkspace() {
       delete nextBlacklist[projectId];
       return nextBlacklist;
     });
+  }
+
+  function updateDayEntryNotes(field: keyof DayEntryNotes, value: string) {
+    if (!selectedProject || dayIsSubmitted) {
+      return;
+    }
+
+    const dayKey = getDayKey(selectedProject.id, workDate);
+
+    setDayEntryNotesByKey((current) => ({
+      ...current,
+      [dayKey]: {
+        notes: current[dayKey]?.notes ?? "",
+        inventory: current[dayKey]?.inventory ?? "",
+        [field]: value
+      }
+    }));
+  }
+
+  function openDailyEntry(projectId: string, date: string) {
+    if (!projects.some((project) => project.id === projectId)) {
+      return;
+    }
+
+    setSelectedProjectId(projectId);
+    setWorkDate(date);
+    setViewMode("entry");
+    setMobileSelectedPayItemId("");
+    setEditingEntry(null);
+    setEditingCrewMember(null);
+    setDraftsByPayItem({});
+  }
+
+  function openDailyReportModal() {
+    if (!selectedProject) {
+      return;
+    }
+
+    setDailyReportDraft(
+      currentDailyReport
+        ? getDailyReportAnswers(currentDailyReport)
+        : {
+            ...createEmptyDailyReportAnswers(),
+            workDetails: currentDayEntryNotes.notes,
+            itsfmCabinetEquipment: currentDayEntryNotes.inventory
+          }
+    );
+    setDailyReportModalOpen(true);
+  }
+
+  function updateDailyReportDraft(field: keyof DailyReportAnswers, value: string) {
+    setDailyReportDraft((current) => {
+      const updatedDraft = {
+        ...current,
+        [field]: value
+      };
+
+      if (field === "quantitiesTurnedIn" && value !== "yes") {
+        updatedDraft.inspectorName = "";
+        updatedDraft.inspectorQuantityDetails = "";
+      }
+
+      if (field === "incidentOccurred" && value !== "yes") {
+        updatedDraft.accidentReportFiled = "";
+        updatedDraft.incidentDetails = "";
+      }
+
+      return updatedDraft;
+    });
+  }
+
+  function updateDailyReportEmployeeDraft(
+    rowIndex: number,
+    field: keyof DailyReportEmployeeRow,
+    value: string | boolean
+  ) {
+    setDailyReportDraft((current) => ({
+      ...current,
+      employeeRows: current.employeeRows.map((row, index) => {
+        if (index !== rowIndex) {
+          return row;
+        }
+
+        const updatedRow = {
+          ...row,
+          [field]: isDailyReportTimeField(field) && typeof value === "string" ? sanitizeDailyReportTimeInput(value) : value
+        };
+
+        return {
+          ...updatedRow,
+          totalHours: isDailyReportTimeField(field) ? calculateDailyReportTotalHours(updatedRow) : updatedRow.totalHours
+        };
+      })
+    }));
+  }
+
+  function normalizeDailyReportEmployeeTimeDraft(rowIndex: number, field: DailyReportTimeField) {
+    setDailyReportDraft((current) => ({
+      ...current,
+      employeeRows: current.employeeRows.map((row, index) => {
+        if (index !== rowIndex) {
+          return row;
+        }
+
+        const updatedRow = {
+          ...row,
+          [field]: normalizeDailyReportTimeInput(row[field])
+        };
+
+        return {
+          ...updatedRow,
+          totalHours: calculateDailyReportTotalHours(updatedRow)
+        };
+      })
+    }));
+  }
+
+  function updateDailyReportPayItemDraft(rowIndex: number, field: keyof DailyReportPayItemRow, value: string) {
+    setDailyReportDraft((current) => ({
+      ...current,
+      payItemRows: current.payItemRows.map((row, index) =>
+        index === rowIndex
+          ? {
+              ...row,
+              [field]: value
+            }
+          : row
+      )
+    }));
+  }
+
+  function saveDailyReport() {
+    if (!selectedProject || !currentUser) {
+      return;
+    }
+
+    const dayKey = getDayKey(selectedProject.id, workDate);
+    const existingReport = dailyReportsByKey[dayKey];
+    const now = new Date().toISOString();
+
+    const normalizedDraft = normalizeDailyReportAnswersForSave(dailyReportDraft);
+
+    setDailyReportsByKey((current) => ({
+      ...current,
+      [dayKey]: {
+        ...(existingReport ?? {
+          projectId: selectedProject.id,
+          date: workDate,
+          createdByUserId: currentUser.id,
+          createdByName: formatUserName(currentUser),
+          createdAt: now
+        }),
+        ...normalizedDraft,
+        updatedAt: now
+      }
+    }));
+    setDailyReportUploadsByKey((current) => {
+      if (!current[dayKey]) {
+        return current;
+      }
+
+      const remainingUploads = { ...current };
+      delete remainingUploads[dayKey];
+
+      return remainingUploads;
+    });
+    setDailyReportModalOpen(false);
+    setDailyReportUploadNotice(null);
+    setEntryNotice("Daily report saved.");
+  }
+
+  async function uploadDailyReportToProcoreDocuments() {
+    if (!selectedProject || !currentDailyReport) {
+      setDailyReportUploadNotice({
+        message: "Create and save a daily report before uploading to Procore.",
+        status: "error"
+      });
+      return;
+    }
+
+    if (!procoreConnected) {
+      connectProcore("upload_daily");
+      return;
+    }
+
+    setUploadingDailyReport(true);
+    setDailyReportUploadNotice(null);
+
+    try {
+      const response = await fetch("/api/procore/daily-reports/upload", {
+        body: JSON.stringify({
+          date: workDate,
+          dayNotes: currentDayEntryNotes,
+          project: selectedProject,
+          report: currentDailyReport
+        }),
+        headers: {
+          "Content-Type": "application/json"
+        },
+        method: "POST"
+      });
+      const data = (await response.json()) as DailyReportUploadResponse;
+
+      if (!response.ok) {
+        if (response.status === 401 || data.error?.toLowerCase().includes("connect procore")) {
+          setProcoreConnected(false);
+        }
+
+        throw new Error(data.error ?? "Unable to upload daily report to Procore.");
+      }
+
+      setDailyReportUploadsByKey((current) => ({
+        ...current,
+        [getDayKey(selectedProject.id, workDate)]: {
+          fileName: data.fileName ?? "daily report",
+          folderPath: data.folderPath ?? "Daily Reports",
+          procoreFileId: data.procoreFileId,
+          uploadedAt: new Date().toISOString()
+        }
+      }));
+      setDailyReportUploadNotice({
+        message: `Uploaded ${data.fileName ?? "daily report"} to ${data.folderPath ?? "Procore Documents"}.`,
+        status: "success"
+      });
+    } catch (error) {
+      setDailyReportUploadNotice({
+        message: error instanceof Error ? error.message : "Unable to upload daily report to Procore.",
+        status: "error"
+      });
+    } finally {
+      setUploadingDailyReport(false);
+    }
+  }
+
+  function connectProcore(intent: PendingProcoreReturn["intent"] = "connect") {
+    window.localStorage.setItem(
+      PENDING_PROCORE_RETURN_KEY,
+      JSON.stringify({
+        date: workDate,
+        intent,
+        mobilePayItemId: mobileSelectedPayItemId,
+        projectId: selectedProject?.id ?? selectedProjectId,
+        viewMode
+      } satisfies PendingProcoreReturn)
+    );
+    window.location.assign("/api/procore/oauth/login");
   }
 
   function updateDraft(payItemId: string, field: "hours" | "quantity", value: string) {
@@ -970,6 +1403,7 @@ export function TimeAllocationWorkspace() {
 
   function exportAllEntryDetails() {
     exportEntriesToCsv({
+      dayEntryNotesByKey,
       daySubmissions,
       entries,
       projectBlacklistById,
@@ -1249,10 +1683,10 @@ export function TimeAllocationWorkspace() {
                 <RefreshCw aria-hidden="true" size={18} />
                 {updatingProject ? "Updating..." : "Add/Update Project"}
               </button>
-              <a className="primary-button" href="/api/procore/oauth/login">
+              <button className="primary-button" onClick={() => connectProcore("connect")} type="button">
                 <PlugZap aria-hidden="true" size={18} />
                 Connect Procore
-              </a>
+              </button>
             </>
           ) : null}
           <button className="secondary-button" onClick={logout} type="button">
@@ -1421,197 +1855,210 @@ export function TimeAllocationWorkspace() {
           </div>
 
           <div className="crew-setup">
-            <div className="crew-setup-heading">
-              <h3>Crew Members</h3>
-              <span>{selectedProjectCrewMembers.length}</span>
-            </div>
-            <div className="crew-existing-picker">
-              <div className="field-group">
-                <label htmlFor="existing-crew-member">Add Existing Crew Member</label>
-                <select
-                  id="existing-crew-member"
-                  disabled={!selectedProject || existingCrewMemberOptions.length === 0}
-                  value={selectedExistingCrewMemberId}
-                  onChange={(event) => setSelectedExistingCrewMemberId(event.target.value)}
-                >
-                  <option value="">
-                    {existingCrewMemberOptions.length === 0 ? "No existing crew available" : "Select crew member"}
-                  </option>
-                  {existingCrewMemberOptions.map((member) => (
-                    <option key={member.id} value={member.id}>
-                      {member.name} - {member.jobTitle}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <button
-                className="secondary-button"
-                disabled={!selectedProject || !selectedExistingCrewMemberId}
-                onClick={addExistingCrewMemberToProject}
-                type="button"
-              >
-                Add to job
-              </button>
-            </div>
-            <div className="field-note">Create a new crew member only if they are not already in the existing crew list.</div>
-            {entryNotice && entryNoticeIsCrewRelated(entryNotice) ? (
-              <div className={entryNoticeIsError(entryNotice) ? "inline-alert" : "success-alert"}>{entryNotice}</div>
-            ) : null}
-            <div className="field-group">
-              <label htmlFor="crew-member-name">Name</label>
-              <input
-                id="crew-member-name"
-                disabled={!selectedProject}
-                value={crewMemberName}
-                onChange={(event) => setCrewMemberName(event.target.value)}
-              />
-            </div>
-            <div className="field-group">
-              <label htmlFor="crew-member-job-title">Job Title</label>
-              <input
-                id="crew-member-job-title"
-                disabled={!selectedProject}
-                value={crewMemberJobTitle}
-                onChange={(event) => setCrewMemberJobTitle(event.target.value)}
-              />
-            </div>
             <button
-              className="secondary-button crew-add-button"
-              disabled={!selectedProject}
-              onClick={addCrewMember}
+              aria-controls="crew-setup-body"
+              aria-expanded={crewSetupExpanded}
+              className="crew-setup-heading"
+              onClick={() => setCrewSetupExpanded((current) => !current)}
               type="button"
             >
-              <UserPlus aria-hidden="true" size={18} />
-              Add crew member
+              <span className="crew-setup-title">Crew Members</span>
+              <span className="crew-setup-meta">
+                <span>{selectedProjectCrewMembers.length}</span>
+                <ChevronDown aria-hidden="true" className="crew-setup-chevron" size={18} />
+              </span>
             </button>
-            <div className="crew-list">
-              {selectedProjectCrewMembers.length === 0 ? (
-                <div className="empty-state">No crew members saved to this job.</div>
-              ) : (
-                selectedProjectCrewMembers.map((member) => {
-                  const memberIsUsed = selectedProject
-                    ? crewMemberHasSavedAllocations(member.id, selectedProject.id, entries)
-                    : false;
-
-                  return (
-                    <div className="crew-list-row" key={member.id}>
-                      {editingCrewMember?.crewMemberId === member.id ? (
-                        <div className="crew-edit-form">
-                          <input
-                            aria-label={`Edit name for ${member.name}`}
-                            value={editingCrewMember.name}
-                            onChange={(event) =>
-                              setEditingCrewMember((current) =>
-                                current ? { ...current, name: event.target.value } : current
-                              )
-                            }
-                          />
-                          <input
-                            aria-label={`Edit job title for ${member.name}`}
-                            value={editingCrewMember.jobTitle}
-                            onChange={(event) =>
-                              setEditingCrewMember((current) =>
-                                current ? { ...current, jobTitle: event.target.value } : current
-                              )
-                            }
-                          />
-                          <div className="crew-edit-actions">
-                            <button className="secondary-button" onClick={saveEditedCrewMember} type="button">
-                              Save
-                            </button>
-                            <button className="icon-button" onClick={() => setEditingCrewMember(null)} type="button">
-                              <X aria-hidden="true" size={16} />
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <>
-                          <span>
-                            <strong>{member.name}</strong>
-                            {member.jobTitle}
-                          </span>
-                          <div className="crew-row-actions">
-                            <button
-                              aria-label={`Edit ${member.name}`}
-                              className="icon-button"
-                              onClick={() => startEditingCrewMember(member)}
-                              type="button"
-                            >
-                              <Edit3 aria-hidden="true" size={16} />
-                            </button>
-                            <button
-                              aria-label={`Remove ${member.name}`}
-                              className="icon-button"
-                              disabled={memberIsUsed}
-                              onClick={() => removeCrewMember(member.id)}
-                              title={
-                                memberIsUsed
-                                  ? "This crew member is already assigned to saved pay item hours."
-                                  : undefined
-                              }
-                              type="button"
-                            >
-                              <Trash2 aria-hidden="true" size={16} />
-                            </button>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  );
-                })
-              )}
-            </div>
-            {currentUser.role === "admin" ? (
-              <div className="admin-crew-merge">
-                <div className="admin-crew-merge-heading">
-                  <strong>Admin Crew Merge</strong>
-                  <span>Use this when the same person was created twice because of spelling or nickname differences.</span>
+            {crewSetupExpanded ? (
+              <div className="crew-setup-body" id="crew-setup-body">
+                <div className="crew-existing-picker">
+                  <div className="field-group">
+                    <label htmlFor="existing-crew-member">Add Existing Crew Member</label>
+                    <select
+                      id="existing-crew-member"
+                      disabled={!selectedProject || existingCrewMemberOptions.length === 0}
+                      value={selectedExistingCrewMemberId}
+                      onChange={(event) => setSelectedExistingCrewMemberId(event.target.value)}
+                    >
+                      <option value="">
+                        {existingCrewMemberOptions.length === 0 ? "No existing crew available" : "Select crew member"}
+                      </option>
+                      {existingCrewMemberOptions.map((member) => (
+                        <option key={member.id} value={member.id}>
+                          {member.name} - {member.jobTitle}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <button
+                    className="secondary-button"
+                    disabled={!selectedProject || !selectedExistingCrewMemberId}
+                    onClick={addExistingCrewMemberToProject}
+                    type="button"
+                  >
+                    Add to job
+                  </button>
+                </div>
+                <div className="field-note">Create a new crew member only if they are not already in the existing crew list.</div>
+                {entryNotice && entryNoticeIsCrewRelated(entryNotice) ? (
+                  <div className={entryNoticeIsError(entryNotice) ? "inline-alert" : "success-alert"}>{entryNotice}</div>
+                ) : null}
+                <div className="field-group">
+                  <label htmlFor="crew-member-name">Name</label>
+                  <input
+                    id="crew-member-name"
+                    disabled={!selectedProject}
+                    value={crewMemberName}
+                    onChange={(event) => setCrewMemberName(event.target.value)}
+                  />
                 </div>
                 <div className="field-group">
-                  <label htmlFor="merge-source-crew-member">Duplicate Crew Member</label>
-                  <select
-                    id="merge-source-crew-member"
-                    disabled={crewDirectory.length < 2}
-                    value={mergeSourceCrewMemberId}
-                    onChange={(event) => setMergeSourceCrewMemberId(event.target.value)}
-                  >
-                    <option value="">Select duplicate</option>
-                    {sortCrewMembersByName(crewDirectory).map((member) => (
-                      <option key={member.id} value={member.id}>
-                        {member.name} - {member.jobTitle}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="field-group">
-                  <label htmlFor="merge-target-crew-member">Keep Crew Member</label>
-                  <select
-                    id="merge-target-crew-member"
-                    disabled={crewDirectory.length < 2}
-                    value={mergeTargetCrewMemberId}
-                    onChange={(event) => setMergeTargetCrewMemberId(event.target.value)}
-                  >
-                    <option value="">Select crew member to keep</option>
-                    {sortCrewMembersByName(crewDirectory).map((member) => (
-                      <option key={member.id} value={member.id}>
-                        {member.name} - {member.jobTitle}
-                      </option>
-                    ))}
-                  </select>
+                  <label htmlFor="crew-member-job-title">Job Title</label>
+                  <input
+                    id="crew-member-job-title"
+                    disabled={!selectedProject}
+                    value={crewMemberJobTitle}
+                    onChange={(event) => setCrewMemberJobTitle(event.target.value)}
+                  />
                 </div>
                 <button
-                  className="secondary-button"
-                  disabled={
-                    crewDirectory.length < 2 ||
-                    !mergeSourceCrewMemberId ||
-                    !mergeTargetCrewMemberId ||
-                    mergeSourceCrewMemberId === mergeTargetCrewMemberId
-                  }
-                  onClick={mergeCrewMembers}
+                  className="secondary-button crew-add-button"
+                  disabled={!selectedProject}
+                  onClick={addCrewMember}
                   type="button"
                 >
-                  Merge crew members
+                  <UserPlus aria-hidden="true" size={18} />
+                  Add crew member
                 </button>
+                <div className="crew-list">
+                  {selectedProjectCrewMembers.length === 0 ? (
+                    <div className="empty-state">No crew members saved to this job.</div>
+                  ) : (
+                    selectedProjectCrewMembers.map((member) => {
+                      const memberIsUsed = selectedProject
+                        ? crewMemberHasSavedAllocations(member.id, selectedProject.id, entries)
+                        : false;
+
+                      return (
+                        <div className="crew-list-row" key={member.id}>
+                          {editingCrewMember?.crewMemberId === member.id ? (
+                            <div className="crew-edit-form">
+                              <input
+                                aria-label={`Edit name for ${member.name}`}
+                                value={editingCrewMember.name}
+                                onChange={(event) =>
+                                  setEditingCrewMember((current) =>
+                                    current ? { ...current, name: event.target.value } : current
+                                  )
+                                }
+                              />
+                              <input
+                                aria-label={`Edit job title for ${member.name}`}
+                                value={editingCrewMember.jobTitle}
+                                onChange={(event) =>
+                                  setEditingCrewMember((current) =>
+                                    current ? { ...current, jobTitle: event.target.value } : current
+                                  )
+                                }
+                              />
+                              <div className="crew-edit-actions">
+                                <button className="secondary-button" onClick={saveEditedCrewMember} type="button">
+                                  Save
+                                </button>
+                                <button className="icon-button" onClick={() => setEditingCrewMember(null)} type="button">
+                                  <X aria-hidden="true" size={16} />
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <span>
+                                <strong>{member.name}</strong>
+                                {member.jobTitle}
+                              </span>
+                              <div className="crew-row-actions">
+                                <button
+                                  aria-label={`Edit ${member.name}`}
+                                  className="icon-button"
+                                  onClick={() => startEditingCrewMember(member)}
+                                  type="button"
+                                >
+                                  <Edit3 aria-hidden="true" size={16} />
+                                </button>
+                                <button
+                                  aria-label={`Remove ${member.name}`}
+                                  className="icon-button"
+                                  disabled={memberIsUsed}
+                                  onClick={() => removeCrewMember(member.id)}
+                                  title={
+                                    memberIsUsed
+                                      ? "This crew member is already assigned to saved pay item hours."
+                                      : undefined
+                                  }
+                                  type="button"
+                                >
+                                  <Trash2 aria-hidden="true" size={16} />
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+                {currentUser.role === "admin" ? (
+                  <div className="admin-crew-merge">
+                    <div className="admin-crew-merge-heading">
+                      <strong>Admin Crew Merge</strong>
+                      <span>Use this when the same person was created twice because of spelling or nickname differences.</span>
+                    </div>
+                    <div className="field-group">
+                      <label htmlFor="merge-source-crew-member">Duplicate Crew Member</label>
+                      <select
+                        id="merge-source-crew-member"
+                        disabled={crewDirectory.length < 2}
+                        value={mergeSourceCrewMemberId}
+                        onChange={(event) => setMergeSourceCrewMemberId(event.target.value)}
+                      >
+                        <option value="">Select duplicate</option>
+                        {sortCrewMembersByName(crewDirectory).map((member) => (
+                          <option key={member.id} value={member.id}>
+                            {member.name} - {member.jobTitle}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="field-group">
+                      <label htmlFor="merge-target-crew-member">Keep Crew Member</label>
+                      <select
+                        id="merge-target-crew-member"
+                        disabled={crewDirectory.length < 2}
+                        value={mergeTargetCrewMemberId}
+                        onChange={(event) => setMergeTargetCrewMemberId(event.target.value)}
+                      >
+                        <option value="">Select crew member to keep</option>
+                        {sortCrewMembersByName(crewDirectory).map((member) => (
+                          <option key={member.id} value={member.id}>
+                            {member.name} - {member.jobTitle}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <button
+                      className="secondary-button"
+                      disabled={
+                        crewDirectory.length < 2 ||
+                        !mergeSourceCrewMemberId ||
+                        !mergeTargetCrewMemberId ||
+                        mergeSourceCrewMemberId === mergeTargetCrewMemberId
+                      }
+                      onClick={mergeCrewMembers}
+                      type="button"
+                    >
+                      Merge crew members
+                    </button>
+                  </div>
+                ) : null}
               </div>
             ) : null}
           </div>
@@ -1870,6 +2317,93 @@ export function TimeAllocationWorkspace() {
                 </div>
               )}
             </div>
+
+            <div className="panel">
+              <div className="panel-heading">
+                <h2>Job Notes</h2>
+              </div>
+              <div className="day-note-grid">
+                <div className="field-group">
+                  <label htmlFor="day-notes">Notes</label>
+                  <textarea
+                    disabled={dayIsSubmitted || !selectedProject}
+                    id="day-notes"
+                    placeholder="Enter job-specific notes for this day."
+                    value={currentDayEntryNotes.notes}
+                    onChange={(event) => updateDayEntryNotes("notes", event.target.value)}
+                  />
+                </div>
+                <div className="field-group">
+                  <label htmlFor="day-inventory">Inventory</label>
+                  <textarea
+                    disabled={dayIsSubmitted || !selectedProject}
+                    id="day-inventory"
+                    placeholder="Enter inventory notes, material usage, or deliveries."
+                    value={currentDayEntryNotes.inventory}
+                    onChange={(event) => updateDayEntryNotes("inventory", event.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="field-note">
+                Notes and inventory are saved to the selected job and date.
+              </div>
+            </div>
+
+            <div className="panel">
+              <div className="panel-heading">
+                <h2>Daily Report</h2>
+                <button className="primary-button" disabled={!selectedProject} onClick={openDailyReportModal} type="button">
+                  <Edit3 aria-hidden="true" size={18} />
+                  Create Daily Report
+                </button>
+              </div>
+              {currentDailyReport ? (
+                <div className="daily-report-summary">
+                  <div>
+                    <span>Status</span>
+                    <strong>Saved</strong>
+                  </div>
+                  <div>
+                    <span>Updated</span>
+                    <strong>{new Date(currentDailyReport.updatedAt).toLocaleString()}</strong>
+                  </div>
+                  <div>
+                    <span>Inspector Quantities</span>
+                    <strong>{formatYesNoAnswer(currentDailyReport.quantitiesTurnedIn)}</strong>
+                  </div>
+                  <div>
+                    <span>Incidents</span>
+                    <strong>{formatYesNoAnswer(currentDailyReport.incidentOccurred)}</strong>
+                  </div>
+                </div>
+              ) : (
+                <div className="empty-state">No daily report has been created for this job and date.</div>
+              )}
+              <div className="daily-report-upload-actions">
+                <button
+                  className="primary-button"
+                  disabled={!selectedProject || !currentDailyReport || uploadingDailyReport}
+                  onClick={uploadDailyReportToProcoreDocuments}
+                  type="button"
+                >
+                  <UploadCloud aria-hidden="true" size={18} />
+                  {uploadingDailyReport
+                    ? "Uploading..."
+                    : procoreConnected
+                      ? "Upload Daily to Procore"
+                      : "Connect Procore to Upload"}
+                </button>
+                {dailyReportUploadNotice ? (
+                  <div className={dailyReportUploadNotice.status === "error" ? "inline-alert" : "success-alert"}>
+                    {dailyReportUploadNotice.message}
+                  </div>
+                ) : (
+                  <div className="field-note">
+                    Upload creates a Daily Reports folder in Procore Documents when needed.
+                  </div>
+                )}
+              </div>
+            </div>
           </section>
         ) : viewMode === "calendar" ? (
           <section className="allocation-grid">
@@ -1878,8 +2412,11 @@ export function TimeAllocationWorkspace() {
                 <h2>Weekly Status Calendar</h2>
               </div>
               <WeeklyStatusReport
+                dailyReportUploadsByKey={dailyReportUploadsByKey}
+                dailyReportsByKey={dailyReportsByKey}
                 daySubmissions={daySubmissions}
                 myJobIds={currentUserMyJobIds}
+                onOpenDay={openDailyEntry}
                 projects={projects}
                 selectedProjectIds={calendarProjectIds}
                 setSelectedProjectIds={setCalendarProjectIds}
@@ -1893,9 +2430,12 @@ export function TimeAllocationWorkspace() {
         ) : (
           <ReportsView
             currentUser={currentUser}
+            dailyReportUploadsByKey={dailyReportUploadsByKey}
+            dailyReportsByKey={dailyReportsByKey}
             daySubmissions={daySubmissions}
             entries={reportEntries}
             myJobIds={currentUserMyJobIds}
+            onOpenDay={openDailyEntry}
             projects={projects}
             reportProjectId={reportProjectId}
             reportStartDate={reportStartDate}
@@ -1907,6 +2447,20 @@ export function TimeAllocationWorkspace() {
           />
         )}
       </div>
+      {dailyReportModalOpen && selectedProject ? (
+        <DailyReportModal
+          date={workDate}
+          draft={dailyReportDraft}
+          payItems={selectedProject.payItems}
+          projectName={selectedProject.name}
+          onChange={updateDailyReportDraft}
+          onEmployeeChange={updateDailyReportEmployeeDraft}
+          onEmployeeTimeBlur={normalizeDailyReportEmployeeTimeDraft}
+          onPayItemChange={updateDailyReportPayItemDraft}
+          onClose={() => setDailyReportModalOpen(false)}
+          onSave={saveDailyReport}
+        />
+      ) : null}
     </main>
   );
 }
@@ -1916,14 +2470,399 @@ type MobileOption = {
   label: string;
 };
 
+function DailyReportModal({
+  date,
+  draft,
+  payItems,
+  projectName,
+  onChange,
+  onEmployeeChange,
+  onEmployeeTimeBlur,
+  onPayItemChange,
+  onClose,
+  onSave
+}: {
+  date: string;
+  draft: DailyReportAnswers;
+  payItems: Project["payItems"];
+  projectName: string;
+  onChange: (field: keyof DailyReportAnswers, value: string) => void;
+  onEmployeeChange: (rowIndex: number, field: keyof DailyReportEmployeeRow, value: string | boolean) => void;
+  onEmployeeTimeBlur: (rowIndex: number, field: DailyReportTimeField) => void;
+  onPayItemChange: (rowIndex: number, field: keyof DailyReportPayItemRow, value: string) => void;
+  onClose: () => void;
+  onSave: () => void;
+}) {
+  const inspectorQuantitiesTurnedIn = draft.quantitiesTurnedIn === "yes";
+  const incidentOccurred = draft.incidentOccurred === "yes";
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <div aria-modal="true" className="modal-panel daily-report-modal" role="dialog">
+        <div className="modal-heading">
+          <div>
+            <h2>Create Daily Report</h2>
+            <span>
+              {projectName} - {formatDate(date)}
+            </span>
+          </div>
+          <button aria-label="Close daily report" className="icon-button" onClick={onClose} type="button">
+            <X aria-hidden="true" size={18} />
+          </button>
+        </div>
+
+        <div className="daily-report-form">
+          <section>
+            <h3>Employee Time on Site</h3>
+            <div className="daily-labor-table" role="table" aria-label="Employee time on site">
+              <div className="daily-labor-row daily-labor-header" role="row">
+                <span>#</span>
+                <span>Employee Name - Classification</span>
+                <span>Truck #</span>
+                <span>Time In</span>
+                <span>Lunch Out</span>
+                <span>Lunch In</span>
+                <span>Time Out</span>
+                <span>Total Hours</span>
+                <span>Driver</span>
+                <span>Passenger</span>
+              </div>
+              {draft.employeeRows.map((row, index) => (
+                <div className="daily-labor-row" key={index} role="row">
+                  <span className="daily-labor-index">{index + 1}</span>
+                  <input
+                    aria-label={`Employee name and classification row ${index + 1}`}
+                    value={row.employeeClassification}
+                    onChange={(event) => onEmployeeChange(index, "employeeClassification", event.target.value)}
+                  />
+                  <input
+                    aria-label={`Truck number row ${index + 1}`}
+                    value={row.truckNumber}
+                    onChange={(event) => onEmployeeChange(index, "truckNumber", event.target.value)}
+                  />
+                  <input
+                    aria-label={`Time in row ${index + 1}`}
+                    inputMode="numeric"
+                    maxLength={5}
+                    placeholder="7:00"
+                    value={row.timeIn}
+                    onChange={(event) => onEmployeeChange(index, "timeIn", event.target.value)}
+                    onBlur={() => onEmployeeTimeBlur(index, "timeIn")}
+                  />
+                  <input
+                    aria-label={`Lunch out row ${index + 1}`}
+                    inputMode="numeric"
+                    maxLength={5}
+                    placeholder="12:00"
+                    value={row.lunchOut}
+                    onChange={(event) => onEmployeeChange(index, "lunchOut", event.target.value)}
+                    onBlur={() => onEmployeeTimeBlur(index, "lunchOut")}
+                  />
+                  <input
+                    aria-label={`Lunch in row ${index + 1}`}
+                    inputMode="numeric"
+                    maxLength={5}
+                    placeholder="12:30"
+                    value={row.lunchIn}
+                    onChange={(event) => onEmployeeChange(index, "lunchIn", event.target.value)}
+                    onBlur={() => onEmployeeTimeBlur(index, "lunchIn")}
+                  />
+                  <input
+                    aria-label={`Time out row ${index + 1}`}
+                    inputMode="numeric"
+                    maxLength={5}
+                    placeholder="5:00"
+                    value={row.timeOut}
+                    onChange={(event) => onEmployeeChange(index, "timeOut", event.target.value)}
+                    onBlur={() => onEmployeeTimeBlur(index, "timeOut")}
+                  />
+                  <input
+                    aria-label={`Total hours row ${index + 1}`}
+                    readOnly
+                    tabIndex={-1}
+                    value={row.totalHours}
+                  />
+                  <label className="daily-labor-check">
+                    <input
+                      checked={row.driver}
+                      type="checkbox"
+                      onChange={(event) => onEmployeeChange(index, "driver", event.target.checked)}
+                    />
+                    <span className="sr-only">Driver row {index + 1}</span>
+                  </label>
+                  <label className="daily-labor-check">
+                    <input
+                      checked={row.passenger}
+                      type="checkbox"
+                      onChange={(event) => onEmployeeChange(index, "passenger", event.target.checked)}
+                    />
+                    <span className="sr-only">Passenger row {index + 1}</span>
+                  </label>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section>
+            <h3>Inspector / Quantities</h3>
+            <div className="daily-report-grid two">
+              <div className="field-group">
+                <label htmlFor="daily-quantities-turned-in">Did you turn quantities into the inspector today?</label>
+                <select
+                  id="daily-quantities-turned-in"
+                  value={draft.quantitiesTurnedIn}
+                  onChange={(event) => onChange("quantitiesTurnedIn", event.target.value)}
+                >
+                  <option value="">Select</option>
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                </select>
+              </div>
+              {inspectorQuantitiesTurnedIn ? (
+                <div className="field-group">
+                  <label htmlFor="daily-inspector-name">Inspector Name</label>
+                  <input
+                    id="daily-inspector-name"
+                    value={draft.inspectorName}
+                    onChange={(event) => onChange("inspectorName", event.target.value)}
+                  />
+                </div>
+              ) : null}
+            </div>
+            {inspectorQuantitiesTurnedIn ? (
+              <div className="field-group">
+                <label htmlFor="daily-inspector-quantity-details">Quantities and items turned into the inspector</label>
+                <textarea
+                  id="daily-inspector-quantity-details"
+                  value={draft.inspectorQuantityDetails}
+                  onChange={(event) => onChange("inspectorQuantityDetails", event.target.value)}
+                />
+              </div>
+            ) : null}
+          </section>
+
+          <section>
+            <h3>Work Performed</h3>
+            <div className="daily-pay-item-table" role="table" aria-label="Daily report pay item quantities">
+              <div className="daily-pay-item-row daily-pay-item-header" role="row">
+                <span>#</span>
+                <span>Pay Item # / Description</span>
+                <span>Quantity</span>
+              </div>
+              {draft.payItemRows.map((row, index) => {
+                const selectedPayItem = payItems.find((payItem) => payItem.id === row.payItemId);
+
+                return (
+                  <div className="daily-pay-item-row" key={index} role="row">
+                    <span className="daily-labor-index">{index + 1}</span>
+                    <select
+                      aria-label={`Pay item row ${index + 1}`}
+                      value={row.payItemId}
+                      onChange={(event) => onPayItemChange(index, "payItemId", event.target.value)}
+                    >
+                      <option value="">Select pay item</option>
+                      {payItems.map((payItem) => (
+                        <option key={payItem.id} value={payItem.id}>
+                          {payItem.code} - {payItem.name}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="daily-pay-item-quantity">
+                      <input
+                        aria-label={`Quantity row ${index + 1}`}
+                        inputMode="decimal"
+                        min="0"
+                        type="number"
+                        value={row.quantity}
+                        onChange={(event) => onPayItemChange(index, "quantity", event.target.value)}
+                        onWheel={(event) => event.currentTarget.blur()}
+                      />
+                      <span>{selectedPayItem?.unitOfMeasure.toUpperCase() ?? ""}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="daily-report-grid two">
+              <div className="field-group">
+                <label htmlFor="daily-work-description">Description of Work Provided</label>
+                <textarea
+                  id="daily-work-description"
+                  value={draft.workDescription}
+                  onChange={(event) => onChange("workDescription", event.target.value)}
+                />
+              </div>
+              <div className="field-group">
+                <label htmlFor="daily-plan-sheets">Plan Sheet Numbers</label>
+                <textarea
+                  id="daily-plan-sheets"
+                  value={draft.planSheetNumbers}
+                  onChange={(event) => onChange("planSheetNumbers", event.target.value)}
+                />
+              </div>
+            </div>
+            <div className="field-group">
+              <label htmlFor="daily-work-details">
+                Details of work performed today, including station number, corner, area, and partial items
+              </label>
+              <textarea
+                id="daily-work-details"
+                value={draft.workDetails}
+                onChange={(event) => onChange("workDetails", event.target.value)}
+              />
+            </div>
+          </section>
+
+          <section>
+            <h3>Incidents / Accidents</h3>
+            <div className="daily-report-grid two">
+              <div className="field-group">
+                <label htmlFor="daily-incident-occurred">Were there any incidents or accidents today?</label>
+                <select
+                  id="daily-incident-occurred"
+                  value={draft.incidentOccurred}
+                  onChange={(event) => onChange("incidentOccurred", event.target.value)}
+                >
+                  <option value="">Select</option>
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                </select>
+              </div>
+              {incidentOccurred ? (
+                <div className="field-group">
+                  <label htmlFor="daily-accident-report-filed">Accident report filed?</label>
+                  <select
+                    id="daily-accident-report-filed"
+                    value={draft.accidentReportFiled}
+                    onChange={(event) => onChange("accidentReportFiled", event.target.value)}
+                  >
+                    <option value="">Select</option>
+                    <option value="yes">Yes</option>
+                    <option value="no">No</option>
+                  </select>
+                </div>
+              ) : null}
+            </div>
+            {incidentOccurred ? (
+              <div className="field-group">
+                <label htmlFor="daily-incident-details">Incident / Accident Details</label>
+                <textarea
+                  id="daily-incident-details"
+                  value={draft.incidentDetails}
+                  onChange={(event) => onChange("incidentDetails", event.target.value)}
+                />
+              </div>
+            ) : null}
+          </section>
+
+          <section>
+            <h3>MOT Quantities</h3>
+            <div className="daily-report-grid four">
+              <DailyReportNumberField field="motSigns" label="Total MOT Signs" onChange={onChange} value={draft.motSigns} />
+              <DailyReportNumberField field="conesBarrels" label="Cones / Barrels" onChange={onChange} value={draft.conesBarrels} />
+              <DailyReportNumberField
+                field="typeIISidewalkBarricades"
+                label="Type II Sidewalk Closed Barricades / Signs"
+                onChange={onChange}
+                value={draft.typeIISidewalkBarricades}
+              />
+              <DailyReportNumberField
+                field="typeIIIBarricades"
+                label="Type III Barricades"
+                onChange={onChange}
+                value={draft.typeIIIBarricades}
+              />
+              <DailyReportNumberField field="lcdCount" label="LCD Count" onChange={onChange} value={draft.lcdCount} />
+              <DailyReportNumberField field="lcdFootage" label="LCD Total Footage" onChange={onChange} value={draft.lcdFootage} />
+              <DailyReportNumberField field="arrowBoards" label="Arrow Boards" onChange={onChange} value={draft.arrowBoards} />
+              <DailyReportNumberField field="vmsBoards" label="VMS Boards" onChange={onChange} value={draft.vmsBoards} />
+            </div>
+            <div className="field-group">
+              <label htmlFor="daily-fdot-index">FDOT Index Used</label>
+              <input
+                id="daily-fdot-index"
+                value={draft.fdotIndex}
+                onChange={(event) => onChange("fdotIndex", event.target.value)}
+              />
+            </div>
+          </section>
+
+          <section>
+            <h3>ITSFM Itemized List</h3>
+            <div className="daily-report-grid two">
+              <div className="field-group">
+                <label htmlFor="daily-aboveground-equipment">Aboveground Equipment</label>
+                <textarea
+                  id="daily-aboveground-equipment"
+                  placeholder="Model, serial number, and location"
+                  value={draft.itsfmAbovegroundEquipment}
+                  onChange={(event) => onChange("itsfmAbovegroundEquipment", event.target.value)}
+                />
+              </div>
+              <div className="field-group">
+                <label htmlFor="daily-cabinet-equipment">Cabinet Equipment</label>
+                <textarea
+                  id="daily-cabinet-equipment"
+                  placeholder="Model, serial number, and location"
+                  value={draft.itsfmCabinetEquipment}
+                  onChange={(event) => onChange("itsfmCabinetEquipment", event.target.value)}
+                />
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div className="modal-actions">
+          <button className="secondary-button" onClick={onClose} type="button">
+            Cancel
+          </button>
+          <button className="primary-button" onClick={onSave} type="button">
+            <Save aria-hidden="true" size={18} />
+            Save Daily Report
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DailyReportNumberField({
+  field,
+  label,
+  onChange,
+  value
+}: {
+  field: keyof DailyReportAnswers;
+  label: string;
+  onChange: (field: keyof DailyReportAnswers, value: string) => void;
+  value: string;
+}) {
+  return (
+    <div className="field-group">
+      <label htmlFor={`daily-${field}`}>{label}</label>
+      <input
+        id={`daily-${field}`}
+        inputMode="decimal"
+        min="0"
+        type="number"
+        value={value}
+        onChange={(event) => onChange(field, event.target.value)}
+        onWheel={(event) => event.currentTarget.blur()}
+      />
+    </div>
+  );
+}
+
 function MobileOptionPicker({
   disabled = false,
+  id,
   label,
   options,
   value,
   onChange
 }: {
   disabled?: boolean;
+  id?: string;
   label: string;
   options: MobileOption[];
   value: string;
@@ -1965,6 +2904,7 @@ function MobileOptionPicker({
         aria-haspopup="listbox"
         className="mobile-picker-trigger"
         disabled={disabled || options.length === 0}
+        id={id}
         onClick={() => setOpen(true)}
         type="button"
       >
@@ -2166,7 +3106,7 @@ function MobilePayItemEntry({
       <div className="field-group">
         <label htmlFor="mobile-pay-item">Pay Item</label>
         <MobileOptionPicker
-          disabled={dayIsSubmitted}
+          id="mobile-pay-item"
           label="Pay Item"
           options={payItems.map((payItem) => ({
             value: payItem.id,
@@ -2327,9 +3267,12 @@ type PayItemDetailAnalysisRow = {
 
 function ReportsView({
   currentUser,
+  dailyReportUploadsByKey,
+  dailyReportsByKey,
   daySubmissions,
   entries,
   myJobIds,
+  onOpenDay,
   projects,
   reportProjectId,
   reportStartDate,
@@ -2340,9 +3283,12 @@ function ReportsView({
   setReportEndDate
 }: {
   currentUser: AuthUser;
+  dailyReportUploadsByKey: DailyReportUploadsByKey;
+  dailyReportsByKey: DailyReportsByKey;
   daySubmissions: DaySubmissionsByKey;
   entries: AllocationEntry[];
   myJobIds: string[];
+  onOpenDay: (projectId: string, date: string) => void;
   projects: Project[];
   reportProjectId: string;
   reportStartDate: string;
@@ -2360,7 +3306,7 @@ function ReportsView({
   const [myJobsEditorOpen, setMyJobsEditorOpen] = useState(false);
   const [weeklyStatusWeekStart, setWeeklyStatusWeekStart] = useState(getWeekStart(todayInputValue()));
   const [weeklyStatusProjectIds, setWeeklyStatusProjectIds] = useState<string[]>([]);
-  const [weeklyStatusUseMyJobs, setWeeklyStatusUseMyJobs] = useState(false);
+  const [weeklyStatusUseMyJobs, setWeeklyStatusUseMyJobs] = useState(true);
   const reportStartInputRef = useRef<HTMLInputElement>(null);
   const reportEndInputRef = useRef<HTMLInputElement>(null);
   const reportProjectOptions = buildReportProjectOptions(projects, entries);
@@ -2555,8 +3501,11 @@ function ReportsView({
           />
         ) : reportMode === "weekly_status" ? (
           <WeeklyStatusReport
+            dailyReportUploadsByKey={dailyReportUploadsByKey}
+            dailyReportsByKey={dailyReportsByKey}
             daySubmissions={daySubmissions}
             myJobIds={myJobIds}
+            onOpenDay={onOpenDay}
             projects={projects}
             selectedProjectIds={weeklyStatusProjectIds}
             setSelectedProjectIds={setWeeklyStatusProjectIds}
@@ -2638,8 +3587,11 @@ function MyJobsManager({
 }
 
 function WeeklyStatusReport({
+  dailyReportUploadsByKey,
+  dailyReportsByKey,
   daySubmissions,
   myJobIds,
+  onOpenDay,
   projects,
   selectedProjectIds,
   setSelectedProjectIds,
@@ -2648,8 +3600,11 @@ function WeeklyStatusReport({
   useMyJobs,
   weekStart
 }: {
+  dailyReportUploadsByKey: DailyReportUploadsByKey;
+  dailyReportsByKey: DailyReportsByKey;
   daySubmissions: DaySubmissionsByKey;
   myJobIds: string[];
+  onOpenDay: (projectId: string, date: string) => void;
   projects: Project[];
   selectedProjectIds: string[];
   setSelectedProjectIds: (projectIds: string[]) => void;
@@ -2658,6 +3613,7 @@ function WeeklyStatusReport({
   useMyJobs: boolean;
   weekStart: string;
 }) {
+  const [calendarStatusMode, setCalendarStatusMode] = useState<CalendarStatusMode>("entry_status");
   const sortedProjects = sortProjectsByName(projects);
   const weekDates = getWeekDates(weekStart);
   const activeProjectIds = useMyJobs ? myJobIds : selectedProjectIds;
@@ -2717,7 +3673,7 @@ function WeeklyStatusReport({
             <label className="job-checkbox-row emphasized">
               <input
                 checked={useMyJobs}
-                disabled={myJobIds.length === 0}
+                disabled={myJobIds.length === 0 && !useMyJobs}
                 onChange={(event) => setUseMyJobs(event.target.checked)}
                 type="checkbox"
               />
@@ -2756,6 +3712,22 @@ function WeeklyStatusReport({
             </div>
           </div>
         </details>
+        <div className="calendar-status-toggle" aria-label="Calendar status type">
+          <button
+            className={calendarStatusMode === "entry_status" ? "active" : ""}
+            onClick={() => setCalendarStatusMode("entry_status")}
+            type="button"
+          >
+            Entry Status
+          </button>
+          <button
+            className={calendarStatusMode === "daily_reports" ? "active" : ""}
+            onClick={() => setCalendarStatusMode("daily_reports")}
+            type="button"
+          >
+            Daily Reports
+          </button>
+        </div>
       </div>
       {visibleProjects.length === 0 ? (
         <div className="empty-state">Select one or more projects, or tag My Projects, to view weekly status.</div>
@@ -2771,12 +3743,23 @@ function WeeklyStatusReport({
             <div className="weekly-calendar-row" key={project.id}>
               <span className="weekly-calendar-job">{project.name}</span>
               {weekDates.map((date) => {
-                const status = daySubmissions[getDayKey(project.id, date)]?.status ?? "draft";
+                const dayKey = getDayKey(project.id, date);
+                const status =
+                  calendarStatusMode === "daily_reports"
+                    ? getDailyReportCalendarStatus(Boolean(dailyReportsByKey[dayKey]), Boolean(dailyReportUploadsByKey[dayKey]))
+                    : getEntryCalendarStatus(daySubmissions[dayKey]);
 
                 return (
-                  <span className={`status-badge ${status}`} data-label={formatWeekDayLabel(date)} key={date}>
-                    {status === "submitted" ? "Submitted" : "Draft"}
-                  </span>
+                  <button
+                    aria-label={`Open ${project.name} entry for ${formatWeekDayLabel(date)}. Status: ${status.label}`}
+                    className={`status-badge ${status.className}`}
+                    data-label={formatWeekDayLabel(date)}
+                    key={date}
+                    onClick={() => onOpenDay(project.id, date)}
+                    type="button"
+                  >
+                    {status.label}
+                  </button>
                 );
               })}
             </div>
@@ -2785,6 +3768,41 @@ function WeeklyStatusReport({
       )}
     </div>
   );
+}
+
+function getEntryCalendarStatus(daySubmission: DaySubmission | undefined) {
+  if (daySubmission?.status === "submitted") {
+    return {
+      className: "submitted",
+      label: "Submitted"
+    };
+  }
+
+  return {
+    className: "draft",
+    label: "Draft"
+  };
+}
+
+function getDailyReportCalendarStatus(hasDailyReport: boolean, hasUploadedDailyReport: boolean) {
+  if (hasUploadedDailyReport) {
+    return {
+      className: "uploaded",
+      label: "Uploaded"
+    };
+  }
+
+  if (hasDailyReport) {
+    return {
+      className: "created",
+      label: "Created"
+    };
+  }
+
+  return {
+    className: "missing",
+    label: "Missing"
+  };
 }
 
 function PayItemReportTable({
@@ -4142,6 +5160,255 @@ function entryNoticeIsCrewRelated(message: string) {
   );
 }
 
+function isDailyReportTimeField(field: keyof DailyReportEmployeeRow): field is DailyReportTimeField {
+  return field === "timeIn" || field === "lunchOut" || field === "lunchIn" || field === "timeOut";
+}
+
+function sanitizeDailyReportTimeInput(value: string) {
+  const cleaned = value.replace(/[^\d:]/g, "");
+
+  if (!cleaned.includes(":")) {
+    return cleaned.slice(0, 4);
+  }
+
+  const [hours = "", minutes = ""] = cleaned.split(":");
+
+  return `${hours.slice(0, 2)}:${minutes.slice(0, 2)}`;
+}
+
+function normalizeDailyReportTimeInput(value: string) {
+  const cleaned = sanitizeDailyReportTimeInput(value);
+
+  if (!cleaned) {
+    return "";
+  }
+
+  let hourText = "";
+  let minuteText = "";
+
+  if (cleaned.includes(":")) {
+    const [hours = "", minutes = ""] = cleaned.split(":");
+
+    hourText = hours;
+    minuteText = minutes.padEnd(2, "0").slice(0, 2);
+  } else if (cleaned.length <= 2) {
+    hourText = cleaned;
+    minuteText = "00";
+  } else if (cleaned.length === 3) {
+    hourText = cleaned.slice(0, 1);
+    minuteText = cleaned.slice(1);
+  } else {
+    hourText = cleaned.slice(0, 2);
+    minuteText = cleaned.slice(2);
+  }
+
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+
+  if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+    return "";
+  }
+
+  return `${hour}:${String(minute).padStart(2, "0")}`;
+}
+
+function parseDailyReportTimeToMinutes(value: string) {
+  const normalized = normalizeDailyReportTimeInput(value);
+
+  if (!normalized) {
+    return null;
+  }
+
+  const [hours, minutes] = normalized.split(":").map(Number);
+
+  return hours * 60 + minutes;
+}
+
+function calculateDailyReportDurationMinutes(start: number, end: number) {
+  let duration = end - start;
+
+  if (duration < 0) {
+    duration += 12 * 60;
+  }
+
+  return duration > 12 * 60 ? null : duration;
+}
+
+function calculateDailyReportTotalHours(row: DailyReportEmployeeRow) {
+  const timeIn = parseDailyReportTimeToMinutes(row.timeIn);
+  const timeOut = parseDailyReportTimeToMinutes(row.timeOut);
+
+  if (timeIn === null || timeOut === null) {
+    return "";
+  }
+
+  const workMinutes = calculateDailyReportDurationMinutes(timeIn, timeOut);
+
+  if (workMinutes === null) {
+    return "";
+  }
+
+  const lunchOut = parseDailyReportTimeToMinutes(row.lunchOut);
+  const lunchIn = parseDailyReportTimeToMinutes(row.lunchIn);
+  let lunchMinutes = 0;
+
+  if (lunchOut !== null && lunchIn !== null) {
+    const calculatedLunchMinutes = calculateDailyReportDurationMinutes(lunchOut, lunchIn);
+
+    if (calculatedLunchMinutes === null) {
+      return "";
+    }
+
+    lunchMinutes = calculatedLunchMinutes;
+  }
+
+  const totalMinutes = workMinutes - lunchMinutes;
+
+  if (totalMinutes < 0 || totalMinutes > 12 * 60) {
+    return "";
+  }
+
+  return (totalMinutes / 60).toFixed(2);
+}
+
+function createEmptyDailyReportAnswers(): DailyReportAnswers {
+  return {
+    employeeRows: createEmptyDailyReportEmployeeRows(),
+    payItemRows: createEmptyDailyReportPayItemRows(),
+    quantitiesTurnedIn: "",
+    inspectorName: "",
+    inspectorQuantityDetails: "",
+    workDescription: "",
+    planSheetNumbers: "",
+    workDetails: "",
+    incidentOccurred: "",
+    incidentDetails: "",
+    accidentReportFiled: "",
+    motSigns: "",
+    conesBarrels: "",
+    typeIISidewalkBarricades: "",
+    typeIIIBarricades: "",
+    lcdCount: "",
+    lcdFootage: "",
+    arrowBoards: "",
+    vmsBoards: "",
+    fdotIndex: "",
+    itsfmAbovegroundEquipment: "",
+    itsfmCabinetEquipment: ""
+  };
+}
+
+function getDailyReportAnswers(report: DailyReport): DailyReportAnswers {
+  return {
+    employeeRows: normalizeDailyReportEmployeeRows(report.employeeRows),
+    payItemRows: normalizeDailyReportPayItemRows(report.payItemRows),
+    quantitiesTurnedIn: report.quantitiesTurnedIn ?? "",
+    inspectorName: report.inspectorName ?? "",
+    inspectorQuantityDetails: report.inspectorQuantityDetails ?? "",
+    workDescription: report.workDescription ?? "",
+    planSheetNumbers: report.planSheetNumbers ?? "",
+    workDetails: report.workDetails ?? "",
+    incidentOccurred: report.incidentOccurred ?? "",
+    incidentDetails: report.incidentDetails ?? "",
+    accidentReportFiled: report.accidentReportFiled ?? "",
+    motSigns: report.motSigns ?? "",
+    conesBarrels: report.conesBarrels ?? "",
+    typeIISidewalkBarricades: report.typeIISidewalkBarricades ?? "",
+    typeIIIBarricades: report.typeIIIBarricades ?? "",
+    lcdCount: report.lcdCount ?? "",
+    lcdFootage: report.lcdFootage ?? "",
+    arrowBoards: report.arrowBoards ?? "",
+    vmsBoards: report.vmsBoards ?? "",
+    fdotIndex: report.fdotIndex ?? "",
+    itsfmAbovegroundEquipment: report.itsfmAbovegroundEquipment ?? "",
+    itsfmCabinetEquipment: report.itsfmCabinetEquipment ?? ""
+  };
+}
+
+function normalizeDailyReportAnswersForSave(report: DailyReportAnswers): DailyReportAnswers {
+  return {
+    ...report,
+    accidentReportFiled: report.incidentOccurred === "yes" ? report.accidentReportFiled : "",
+    incidentDetails: report.incidentOccurred === "yes" ? report.incidentDetails : "",
+    inspectorName: report.quantitiesTurnedIn === "yes" ? report.inspectorName : "",
+    inspectorQuantityDetails: report.quantitiesTurnedIn === "yes" ? report.inspectorQuantityDetails : ""
+  };
+}
+
+function createEmptyDailyReportPayItemRows() {
+  return Array.from({ length: 8 }, () => ({
+    payItemId: "",
+    quantity: ""
+  }));
+}
+
+function normalizeDailyReportPayItemRows(rows: DailyReportPayItemRow[] | undefined) {
+  const emptyRows = createEmptyDailyReportPayItemRows();
+
+  return emptyRows.map((emptyRow, index) => ({
+    ...emptyRow,
+    ...(rows?.[index] ?? {})
+  }));
+}
+
+function createEmptyDailyReportEmployeeRows() {
+  return Array.from({ length: 10 }, () => ({
+    employeeClassification: "",
+    truckNumber: "",
+    timeIn: "",
+    lunchOut: "",
+    lunchIn: "",
+    timeOut: "",
+    totalHours: "",
+    driver: false,
+    passenger: false
+  }));
+}
+
+function normalizeDailyReportEmployeeRows(rows: DailyReportEmployeeRow[] | undefined) {
+  const emptyRows = createEmptyDailyReportEmployeeRows();
+
+  return emptyRows.map((emptyRow, index) => ({
+    ...emptyRow,
+    ...(rows?.[index] ?? {})
+  }));
+}
+
+function formatYesNoAnswer(value: string) {
+  if (value === "yes") {
+    return "Yes";
+  }
+
+  if (value === "no") {
+    return "No";
+  }
+
+  return "Not answered";
+}
+
+function readPendingProcoreReturn(): PendingProcoreReturn | null {
+  const value = window.localStorage.getItem(PENDING_PROCORE_RETURN_KEY);
+
+  if (!value) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(value) as PendingProcoreReturn;
+
+    return {
+      date: parsed.date,
+      intent: parsed.intent === "upload_daily" ? "upload_daily" : "connect",
+      mobilePayItemId: parsed.mobilePayItemId,
+      projectId: parsed.projectId,
+      viewMode: parsed.viewMode === "calendar" || parsed.viewMode === "reports" ? parsed.viewMode : "entry"
+    };
+  } catch {
+    window.localStorage.removeItem(PENDING_PROCORE_RETURN_KEY);
+    return null;
+  }
+}
+
 function getLastProjectStorageKey(userId: string) {
   return `last-selected-project-${userId}`;
 }
@@ -4233,11 +5500,13 @@ function formatWeekDayLabel(value: string) {
 }
 
 function exportEntriesToCsv({
+  dayEntryNotesByKey,
   daySubmissions,
   entries,
   projectBlacklistById,
   projects
 }: {
+  dayEntryNotesByKey: DayEntryNotesByKey;
   daySubmissions: DaySubmissionsByKey;
   entries: AllocationEntry[];
   projectBlacklistById: ProjectBlacklistById;
@@ -4250,6 +5519,8 @@ function exportEntriesToCsv({
     "project_blacklisted",
     "entry_date",
     "day_status",
+    "day_notes",
+    "day_inventory",
     "submitted_by_user_id",
     "submitted_by_name",
     "submitted_at",
@@ -4276,6 +5547,7 @@ function exportEntriesToCsv({
   const rows = entries.flatMap((entry) =>
     buildEntryCsvRows({
       daySubmission: daySubmissions[getDayKey(entry.projectId, entry.date)],
+      dayEntryNotes: dayEntryNotesByKey[getDayKey(entry.projectId, entry.date)],
       entry,
       project: projectMap.get(entry.projectId),
       projectBlacklisted: Boolean(projectBlacklistById[entry.projectId])
@@ -4295,11 +5567,13 @@ function exportEntriesToCsv({
 }
 
 function buildEntryCsvRows({
+  dayEntryNotes,
   daySubmission,
   entry,
   project,
   projectBlacklisted
 }: {
+  dayEntryNotes: DayEntryNotes | undefined;
   daySubmission: DaySubmission | undefined;
   entry: AllocationEntry;
   project: Project | undefined;
@@ -4313,6 +5587,8 @@ function buildEntryCsvRows({
     projectBlacklisted ? "yes" : "no",
     entry.date,
     daySubmission?.status ?? "draft",
+    dayEntryNotes?.notes ?? "",
+    dayEntryNotes?.inventory ?? "",
     daySubmission?.submittedByUserId ?? "",
     daySubmission?.submittedByName ?? "",
     daySubmission?.submittedAt ?? "",
@@ -4375,18 +5651,20 @@ function formatCsvNumber(value: number | undefined) {
 
 function formatCsvIdentifier(value: string) {
   if (/^\d{12,}$/.test(value)) {
-    return `="${value}"`;
+    return `\t${value}`;
   }
 
   return value;
 }
 
 function escapeCsvCell(value: string) {
-  if (/[",\r\n]/.test(value)) {
-    return `"${value.replaceAll('"', '""')}"`;
+  const safeValue = value.trimStart().match(/^[=+\-@]/) ? `'${value}` : value;
+
+  if (/[",\r\n\t]/.test(safeValue)) {
+    return `"${safeValue.replaceAll('"', '""')}"`;
   }
 
-  return value;
+  return safeValue;
 }
 
 function exportPayItemSummaryToCsv(payItemRows: PayItemReportRow[]) {
