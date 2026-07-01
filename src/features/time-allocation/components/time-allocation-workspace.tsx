@@ -96,6 +96,8 @@ type AuthResponse = {
 
 type ProcoreStatusResponse = {
   connected: boolean;
+  connectedAt?: string;
+  connectedBy?: string;
 };
 
 type DaySubmission = {
@@ -135,6 +137,7 @@ type DailyReportAnswers = {
   arrowBoards: string;
   vmsBoards: string;
   fdotIndex: string;
+  itsfmRows: DailyReportItsfmRow[];
   itsfmAbovegroundEquipment: string;
   itsfmCabinetEquipment: string;
 };
@@ -158,6 +161,13 @@ type DailyReportPayItemRow = {
   quantity: string;
 };
 
+type DailyReportItsfmRow = {
+  itemKey: string;
+  modelNumber: string;
+  serialNumber: string;
+  location: string;
+};
+
 type DailyReport = DailyReportAnswers & {
   projectId: string;
   date: string;
@@ -177,6 +187,37 @@ type DailyReportUpload = {
 };
 
 type DailyReportUploadsByKey = Record<string, DailyReportUpload>;
+
+type DailyReportItsfmItem = {
+  group: "Aboveground Equipment" | "Cabinet Equipment";
+  key: string;
+  label: string;
+};
+
+const DAILY_REPORT_ITSFM_ITEMS: DailyReportItsfmItem[] = [
+  { group: "Aboveground Equipment", key: "cctv-1", label: "CCTV #1" },
+  { group: "Aboveground Equipment", key: "cctv-2", label: "CCTV #2" },
+  { group: "Aboveground Equipment", key: "cctv-3", label: "CCTV #3" },
+  { group: "Aboveground Equipment", key: "cctv-4", label: "CCTV #4" },
+  { group: "Aboveground Equipment", key: "cctv-5", label: "CCTV #5" },
+  { group: "Aboveground Equipment", key: "cctv-6", label: "CCTV #6" },
+  { group: "Aboveground Equipment", key: "preemption-unit-1", label: "#1 Preemtion Unit" },
+  { group: "Aboveground Equipment", key: "preemption-unit-2", label: "#2 Preemtion Unit" },
+  { group: "Aboveground Equipment", key: "rsu", label: "RSU" },
+  { group: "Aboveground Equipment", key: "antenna", label: "Antenna" },
+  { group: "Cabinet Equipment", key: "cabinet", label: "Cabinet" },
+  { group: "Cabinet Equipment", key: "controller", label: "Controller" },
+  { group: "Cabinet Equipment", key: "mmu", label: "MMU" },
+  { group: "Cabinet Equipment", key: "biu-1", label: "BIU #1" },
+  { group: "Cabinet Equipment", key: "biu-2", label: "BIU #2" },
+  { group: "Cabinet Equipment", key: "detection-ccu", label: "Detection CCU" },
+  { group: "Cabinet Equipment", key: "rpm", label: "RPM" },
+  { group: "Cabinet Equipment", key: "ups", label: "UPS" },
+  { group: "Cabinet Equipment", key: "ethernet-switch", label: "Ethernet Switch" },
+  { group: "Cabinet Equipment", key: "preemption-card", label: "Preemtion Card" },
+  { group: "Cabinet Equipment", key: "misc-1", label: "Misc" },
+  { group: "Cabinet Equipment", key: "misc-2", label: "Misc" }
+];
 
 type MyJobsByUser = Record<string, string[]>;
 
@@ -250,7 +291,6 @@ export function TimeAllocationWorkspace() {
   const [editingEntry, setEditingEntry] = useState<EditingEntry | null>(null);
   const [editingCrewMember, setEditingCrewMember] = useState<EditingCrewMember | null>(null);
   const [connectionStatus, setConnectionStatus] = useState("Mock data active");
-  const [procoreConnected, setProcoreConnected] = useState(false);
   const [projectLoadError, setProjectLoadError] = useState("");
   const [entryNotice, setEntryNotice] = useState("");
   const [syncSummary, setSyncSummary] = useState<ProcoreSyncSummary | null>(null);
@@ -332,10 +372,8 @@ export function TimeAllocationWorkspace() {
 
     const procoreStatus = new URLSearchParams(window.location.search).get("procore");
     if (procoreStatus === "connected") {
-      setProcoreConnected(true);
       setConnectionStatus("Procore connected");
     } else if (procoreStatus) {
-      setProcoreConnected(false);
       setConnectionStatus("Procore connection needs attention");
     }
 
@@ -346,9 +384,11 @@ export function TimeAllocationWorkspace() {
         const response = await fetch("/api/procore/status");
         const data = (await response.json()) as ProcoreStatusResponse;
 
-        setProcoreConnected(data.connected);
+        if (data.connected && data.connectedBy) {
+          setConnectionStatus(`Procore configured by ${data.connectedBy}`);
+        }
       } catch {
-        setProcoreConnected(false);
+        // Cached project data can still load even if the Procore status check fails.
       }
     }
 
@@ -666,7 +706,6 @@ export function TimeAllocationWorkspace() {
     setDailyReportModalOpen(false);
     setDailyReportUploadNotice(null);
     setUploadingDailyReport(false);
-    setProcoreConnected(false);
     setMyJobsByUser({});
     setProjectBlacklistById({});
     setCrewDirectory([]);
@@ -836,6 +875,24 @@ export function TimeAllocationWorkspace() {
     }));
   }
 
+  function updateDailyReportItsfmDraft(
+    itemKey: string,
+    field: keyof Omit<DailyReportItsfmRow, "itemKey">,
+    value: string
+  ) {
+    setDailyReportDraft((current) => ({
+      ...current,
+      itsfmRows: normalizeDailyReportItsfmRows(current.itsfmRows).map((row) =>
+        row.itemKey === itemKey
+          ? {
+              ...row,
+              [field]: value
+            }
+          : row
+      )
+    }));
+  }
+
   function saveDailyReport() {
     if (!selectedProject || !currentUser) {
       return;
@@ -885,11 +942,6 @@ export function TimeAllocationWorkspace() {
       return;
     }
 
-    if (!procoreConnected) {
-      connectProcore("upload_daily");
-      return;
-    }
-
     setUploadingDailyReport(true);
     setDailyReportUploadNotice(null);
 
@@ -909,10 +961,6 @@ export function TimeAllocationWorkspace() {
       const data = (await response.json()) as DailyReportUploadResponse;
 
       if (!response.ok) {
-        if (response.status === 401 || data.error?.toLowerCase().includes("connect procore")) {
-          setProcoreConnected(false);
-        }
-
         throw new Error(data.error ?? "Unable to upload daily report to Procore.");
       }
 
@@ -1672,6 +1720,10 @@ export function TimeAllocationWorkspace() {
                     <Download aria-hidden="true" size={18} />
                     Export CSV
                   </button>
+                  <button className="primary-button" onClick={() => connectProcore("connect")} type="button">
+                    <PlugZap aria-hidden="true" size={18} />
+                    Configure Procore Upload
+                  </button>
                 </>
               ) : null}
               <button
@@ -1682,10 +1734,6 @@ export function TimeAllocationWorkspace() {
               >
                 <RefreshCw aria-hidden="true" size={18} />
                 {updatingProject ? "Updating..." : "Add/Update Project"}
-              </button>
-              <button className="primary-button" onClick={() => connectProcore("connect")} type="button">
-                <PlugZap aria-hidden="true" size={18} />
-                Connect Procore
               </button>
             </>
           ) : null}
@@ -2352,10 +2400,23 @@ export function TimeAllocationWorkspace() {
             <div className="panel">
               <div className="panel-heading">
                 <h2>Daily Report</h2>
-                <button className="primary-button" disabled={!selectedProject} onClick={openDailyReportModal} type="button">
-                  <Edit3 aria-hidden="true" size={18} />
-                  Create Daily Report
-                </button>
+                <div className="panel-heading-actions">
+                  <button className="primary-button" disabled={!selectedProject} onClick={openDailyReportModal} type="button">
+                    <Edit3 aria-hidden="true" size={18} />
+                    {currentDailyReport ? "Edit Daily Report" : "Create Daily Report"}
+                  </button>
+                  {currentDailyReport ? (
+                  <button
+                    className="secondary-button"
+                    disabled={!selectedProject || uploadingDailyReport}
+                    onClick={uploadDailyReportToProcoreDocuments}
+                    type="button"
+                  >
+                    <UploadCloud aria-hidden="true" size={18} />
+                      {uploadingDailyReport ? "Uploading..." : "Upload to Procore"}
+                    </button>
+                  ) : null}
+                </div>
               </div>
               {currentDailyReport ? (
                 <div className="daily-report-summary">
@@ -2379,30 +2440,19 @@ export function TimeAllocationWorkspace() {
               ) : (
                 <div className="empty-state">No daily report has been created for this job and date.</div>
               )}
-              <div className="daily-report-upload-actions">
-                <button
-                  className="primary-button"
-                  disabled={!selectedProject || !currentDailyReport || uploadingDailyReport}
-                  onClick={uploadDailyReportToProcoreDocuments}
-                  type="button"
-                >
-                  <UploadCloud aria-hidden="true" size={18} />
-                  {uploadingDailyReport
-                    ? "Uploading..."
-                    : procoreConnected
-                      ? "Upload Daily to Procore"
-                      : "Connect Procore to Upload"}
-                </button>
-                {dailyReportUploadNotice ? (
-                  <div className={dailyReportUploadNotice.status === "error" ? "inline-alert" : "success-alert"}>
-                    {dailyReportUploadNotice.message}
-                  </div>
-                ) : (
-                  <div className="field-note">
-                    Upload creates a Daily Reports folder in Procore Documents when needed.
-                  </div>
-                )}
-              </div>
+              {currentDailyReport ? (
+                <div className="daily-report-upload-status">
+                  {dailyReportUploadNotice ? (
+                    <div className={dailyReportUploadNotice.status === "error" ? "inline-alert" : "success-alert"}>
+                      {dailyReportUploadNotice.message}
+                    </div>
+                  ) : (
+                    <div className="field-note">
+                      Upload creates a Daily Reports folder in Procore Documents when needed.
+                    </div>
+                  )}
+                </div>
+              ) : null}
             </div>
           </section>
         ) : viewMode === "calendar" ? (
@@ -2456,6 +2506,7 @@ export function TimeAllocationWorkspace() {
           onChange={updateDailyReportDraft}
           onEmployeeChange={updateDailyReportEmployeeDraft}
           onEmployeeTimeBlur={normalizeDailyReportEmployeeTimeDraft}
+          onItsfmChange={updateDailyReportItsfmDraft}
           onPayItemChange={updateDailyReportPayItemDraft}
           onClose={() => setDailyReportModalOpen(false)}
           onSave={saveDailyReport}
@@ -2478,6 +2529,7 @@ function DailyReportModal({
   onChange,
   onEmployeeChange,
   onEmployeeTimeBlur,
+  onItsfmChange,
   onPayItemChange,
   onClose,
   onSave
@@ -2489,6 +2541,7 @@ function DailyReportModal({
   onChange: (field: keyof DailyReportAnswers, value: string) => void;
   onEmployeeChange: (rowIndex: number, field: keyof DailyReportEmployeeRow, value: string | boolean) => void;
   onEmployeeTimeBlur: (rowIndex: number, field: DailyReportTimeField) => void;
+  onItsfmChange: (itemKey: string, field: keyof Omit<DailyReportItsfmRow, "itemKey">, value: string) => void;
   onPayItemChange: (rowIndex: number, field: keyof DailyReportPayItemRow, value: string) => void;
   onClose: () => void;
   onSave: () => void;
@@ -2789,26 +2842,7 @@ function DailyReportModal({
 
           <section>
             <h3>ITSFM Itemized List</h3>
-            <div className="daily-report-grid two">
-              <div className="field-group">
-                <label htmlFor="daily-aboveground-equipment">Aboveground Equipment</label>
-                <textarea
-                  id="daily-aboveground-equipment"
-                  placeholder="Model, serial number, and location"
-                  value={draft.itsfmAbovegroundEquipment}
-                  onChange={(event) => onChange("itsfmAbovegroundEquipment", event.target.value)}
-                />
-              </div>
-              <div className="field-group">
-                <label htmlFor="daily-cabinet-equipment">Cabinet Equipment</label>
-                <textarea
-                  id="daily-cabinet-equipment"
-                  placeholder="Model, serial number, and location"
-                  value={draft.itsfmCabinetEquipment}
-                  onChange={(event) => onChange("itsfmCabinetEquipment", event.target.value)}
-                />
-              </div>
-            </div>
+            <DailyReportItsfmMatrix rows={draft.itsfmRows} onChange={onItsfmChange} />
           </section>
         </div>
 
@@ -2849,6 +2883,57 @@ function DailyReportNumberField({
         onChange={(event) => onChange(field, event.target.value)}
         onWheel={(event) => event.currentTarget.blur()}
       />
+    </div>
+  );
+}
+
+function DailyReportItsfmMatrix({
+  rows,
+  onChange
+}: {
+  rows: DailyReportItsfmRow[];
+  onChange: (itemKey: string, field: keyof Omit<DailyReportItsfmRow, "itemKey">, value: string) => void;
+}) {
+  const rowsByKey = new Map(normalizeDailyReportItsfmRows(rows).map((row) => [row.itemKey, row]));
+  const groups = Array.from(new Set(DAILY_REPORT_ITSFM_ITEMS.map((item) => item.group)));
+
+  return (
+    <div className="daily-itsfm-table" role="table" aria-label="ITSFM itemized list">
+      <div className="daily-itsfm-row daily-itsfm-header" role="row">
+        <span>Item</span>
+        <span>Model #</span>
+        <span>S/N</span>
+        <span>Location</span>
+      </div>
+      {groups.map((group) => (
+        <div className="daily-itsfm-section" key={group}>
+          <div className="daily-itsfm-section-heading">{group}</div>
+          {DAILY_REPORT_ITSFM_ITEMS.filter((item) => item.group === group).map((item) => {
+            const row = rowsByKey.get(item.key) ?? createEmptyDailyReportItsfmRow(item.key);
+
+            return (
+              <div className="daily-itsfm-row" key={item.key} role="row">
+                <span className="daily-itsfm-item-label">{item.label}</span>
+                <input
+                  aria-label={`${item.label} model number`}
+                  value={row.modelNumber}
+                  onChange={(event) => onChange(item.key, "modelNumber", event.target.value)}
+                />
+                <input
+                  aria-label={`${item.label} serial number`}
+                  value={row.serialNumber}
+                  onChange={(event) => onChange(item.key, "serialNumber", event.target.value)}
+                />
+                <input
+                  aria-label={`${item.label} location`}
+                  value={row.location}
+                  onChange={(event) => onChange(item.key, "location", event.target.value)}
+                />
+              </div>
+            );
+          })}
+        </div>
+      ))}
     </div>
   );
 }
@@ -5293,6 +5378,7 @@ function createEmptyDailyReportAnswers(): DailyReportAnswers {
     arrowBoards: "",
     vmsBoards: "",
     fdotIndex: "",
+    itsfmRows: createEmptyDailyReportItsfmRows(),
     itsfmAbovegroundEquipment: "",
     itsfmCabinetEquipment: ""
   };
@@ -5320,6 +5406,7 @@ function getDailyReportAnswers(report: DailyReport): DailyReportAnswers {
     arrowBoards: report.arrowBoards ?? "",
     vmsBoards: report.vmsBoards ?? "",
     fdotIndex: report.fdotIndex ?? "",
+    itsfmRows: normalizeDailyReportItsfmRows(report.itsfmRows),
     itsfmAbovegroundEquipment: report.itsfmAbovegroundEquipment ?? "",
     itsfmCabinetEquipment: report.itsfmCabinetEquipment ?? ""
   };
@@ -5331,8 +5418,31 @@ function normalizeDailyReportAnswersForSave(report: DailyReportAnswers): DailyRe
     accidentReportFiled: report.incidentOccurred === "yes" ? report.accidentReportFiled : "",
     incidentDetails: report.incidentOccurred === "yes" ? report.incidentDetails : "",
     inspectorName: report.quantitiesTurnedIn === "yes" ? report.inspectorName : "",
-    inspectorQuantityDetails: report.quantitiesTurnedIn === "yes" ? report.inspectorQuantityDetails : ""
+    inspectorQuantityDetails: report.quantitiesTurnedIn === "yes" ? report.inspectorQuantityDetails : "",
+    itsfmRows: normalizeDailyReportItsfmRows(report.itsfmRows)
   };
+}
+
+function createEmptyDailyReportItsfmRows() {
+  return DAILY_REPORT_ITSFM_ITEMS.map((item) => createEmptyDailyReportItsfmRow(item.key));
+}
+
+function createEmptyDailyReportItsfmRow(itemKey: string): DailyReportItsfmRow {
+  return {
+    itemKey,
+    location: "",
+    modelNumber: "",
+    serialNumber: ""
+  };
+}
+
+function normalizeDailyReportItsfmRows(rows: DailyReportItsfmRow[] | undefined) {
+  const rowsByKey = new Map((rows ?? []).map((row) => [row.itemKey, row]));
+
+  return DAILY_REPORT_ITSFM_ITEMS.map((item) => ({
+    ...createEmptyDailyReportItsfmRow(item.key),
+    ...(rowsByKey.get(item.key) ?? {})
+  }));
 }
 
 function createEmptyDailyReportPayItemRows() {

@@ -2,7 +2,7 @@ import { mockProjects } from "@/lib/data/mock-projects";
 import { readProcoreCache, updateProcoreCache } from "@/lib/procore/cache";
 import { ProcoreClient } from "@/lib/procore/client";
 import { getProcoreConfig } from "@/lib/procore/config";
-import { getProcoreAccessToken } from "@/lib/procore/session";
+import { getProcoreIntegrationAccessToken } from "@/lib/procore/session";
 import type { PayItem, Project } from "@/lib/procore/types";
 
 const PROCORE_PROJECT_SYNC_DELAY_MS = 350;
@@ -77,10 +77,10 @@ export async function syncAllProjectsFromProcore(): Promise<ProcoreSyncResult> {
 }
 
 export async function addOrUpdateProjectFromProcore(projectId: string): Promise<Project[]> {
-  const accessToken = await getProcoreAccessToken();
+  const accessToken = await getProcoreIntegrationAccessToken();
 
   if (!accessToken) {
-    throw new Error("Connect Procore before adding or updating a project.");
+    throw new Error("Procore has not been configured by an admin.");
   }
 
   const cache = await readProcoreCache();
@@ -129,10 +129,10 @@ function mapProcoreProject(project: ProcoreProject): Project {
 }
 
 async function fetchEligibleProcoreProjects() {
-  const accessToken = await getProcoreAccessToken();
+  const accessToken = await getProcoreIntegrationAccessToken();
 
   if (!accessToken) {
-    throw new Error("Connect Procore before syncing projects.");
+    throw new Error("Procore has not been configured by an admin.");
   }
 
   const config = getProcoreConfig();
@@ -240,7 +240,7 @@ export async function getProjectPayItems(projectId: string): Promise<PayItem[]> 
 }
 
 async function getProjectPayItemsFromProcore(projectId: string): Promise<PayItem[]> {
-  const accessToken = await getProcoreAccessToken();
+  const accessToken = await getProcoreIntegrationAccessToken();
 
   if (!accessToken) {
     return mockProjects.find((project) => project.id === projectId)?.payItems ?? [];

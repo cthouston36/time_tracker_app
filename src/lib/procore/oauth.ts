@@ -42,3 +42,25 @@ export async function exchangeCodeForToken(code: string) {
 
   return (await response.json()) as ProcoreTokenResponse;
 }
+
+export async function refreshProcoreToken(refreshToken: string) {
+  const config = getProcoreConfig();
+  const response = await fetch(new URL("/oauth/token", config.authUrl), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+      client_id: config.clientId,
+      client_secret: config.clientSecret
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Procore token refresh failed: ${response.status} ${response.statusText}`);
+  }
+
+  return (await response.json()) as ProcoreTokenResponse;
+}

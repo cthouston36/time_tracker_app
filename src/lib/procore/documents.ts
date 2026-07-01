@@ -1,5 +1,5 @@
 import { getProcoreConfig } from "@/lib/procore/config";
-import { getProcoreAccessToken } from "@/lib/procore/session";
+import { getProcoreIntegrationAccessToken } from "@/lib/procore/session";
 import type { Project } from "@/lib/procore/types";
 
 const DEFAULT_FOLDERS_PATH = "/rest/v1.0/folders";
@@ -28,6 +28,7 @@ type DailyReportUploadPayload = {
     arrowBoards?: string;
     vmsBoards?: string;
     fdotIndex?: string;
+    itsfmRows?: DailyReportItsfmRow[];
     itsfmAbovegroundEquipment?: string;
     itsfmCabinetEquipment?: string;
     createdByName?: string;
@@ -56,6 +57,44 @@ type DailyReportPayItemRow = {
   quantity: string;
 };
 
+type DailyReportItsfmRow = {
+  itemKey: string;
+  modelNumber: string;
+  serialNumber: string;
+  location: string;
+};
+
+type DailyReportItsfmItem = {
+  group: "Aboveground Equipment" | "Cabinet Equipment";
+  key: string;
+  label: string;
+};
+
+const DAILY_REPORT_ITSFM_ITEMS: DailyReportItsfmItem[] = [
+  { group: "Aboveground Equipment", key: "cctv-1", label: "CCTV #1" },
+  { group: "Aboveground Equipment", key: "cctv-2", label: "CCTV #2" },
+  { group: "Aboveground Equipment", key: "cctv-3", label: "CCTV #3" },
+  { group: "Aboveground Equipment", key: "cctv-4", label: "CCTV #4" },
+  { group: "Aboveground Equipment", key: "cctv-5", label: "CCTV #5" },
+  { group: "Aboveground Equipment", key: "cctv-6", label: "CCTV #6" },
+  { group: "Aboveground Equipment", key: "preemption-unit-1", label: "#1 Preemtion Unit" },
+  { group: "Aboveground Equipment", key: "preemption-unit-2", label: "#2 Preemtion Unit" },
+  { group: "Aboveground Equipment", key: "rsu", label: "RSU" },
+  { group: "Aboveground Equipment", key: "antenna", label: "Antenna" },
+  { group: "Cabinet Equipment", key: "cabinet", label: "Cabinet" },
+  { group: "Cabinet Equipment", key: "controller", label: "Controller" },
+  { group: "Cabinet Equipment", key: "mmu", label: "MMU" },
+  { group: "Cabinet Equipment", key: "biu-1", label: "BIU #1" },
+  { group: "Cabinet Equipment", key: "biu-2", label: "BIU #2" },
+  { group: "Cabinet Equipment", key: "detection-ccu", label: "Detection CCU" },
+  { group: "Cabinet Equipment", key: "rpm", label: "RPM" },
+  { group: "Cabinet Equipment", key: "ups", label: "UPS" },
+  { group: "Cabinet Equipment", key: "ethernet-switch", label: "Ethernet Switch" },
+  { group: "Cabinet Equipment", key: "preemption-card", label: "Preemtion Card" },
+  { group: "Cabinet Equipment", key: "misc-1", label: "Misc" },
+  { group: "Cabinet Equipment", key: "misc-2", label: "Misc" }
+];
+
 type ProcoreFolder = {
   id: string;
   name: string;
@@ -83,10 +122,10 @@ type ProcoreUploadDebugInfo = {
 };
 
 export async function uploadDailyReportToProcore(payload: DailyReportUploadPayload): Promise<UploadDailyReportResult> {
-  const accessToken = await getProcoreAccessToken();
+  const accessToken = await getProcoreIntegrationAccessToken();
 
   if (!accessToken) {
-    throw new Error("Connect Procore before uploading daily reports.");
+    throw new Error("Procore upload has not been configured by an admin.");
   }
 
   const config = getProcoreConfig();
@@ -673,6 +712,8 @@ function renderDailyReportHtml({ project, date, report, dayNotes }: DailyReportU
     ].some(Boolean)
   );
   const payItemRows = (report.payItemRows ?? []).filter((row) => row.payItemId || row.quantity);
+  const itsfmRows = normalizeDailyReportItsfmRows(report.itsfmRows);
+  const legacyItsfmNotes = renderLegacyItsfmNotes(report);
   const inspectorQuantitiesTurnedIn = report.quantitiesTurnedIn === "yes";
   const incidentOccurred = report.incidentOccurred === "yes";
 
@@ -695,6 +736,8 @@ function renderDailyReportHtml({ project, date, report, dayNotes }: DailyReportU
       .mot-table th { min-width: 210px; white-space: nowrap; }
       .mot-table td { min-width: 70px; }
       .mot-table .wide-value { min-width: 360px; }
+      .itsfm-table th:first-child, .itsfm-table td:first-child { width: 28%; }
+      .section-row th { background: #dbeafe; color: #111827; text-transform: uppercase; }
     </style>
   </head>
   <body>
@@ -812,12 +855,74 @@ function renderDailyReportHtml({ project, date, report, dayNotes }: DailyReportU
     </table>
 
     <h2>ITSFM Itemized List</h2>
-    <h3>Aboveground Equipment</h3>
-    <div class="note">${escapeHtml(report.itsfmAbovegroundEquipment ?? "")}</div>
-    <h3>Cabinet Equipment</h3>
-    <div class="note">${escapeHtml(report.itsfmCabinetEquipment ?? "")}</div>
+    <table class="itsfm-table">
+      <thead>
+        <tr>
+          <th>Item</th>
+          <th>Model #</th>
+          <th>S/N</th>
+          <th>Location</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${renderItsfmRows(itsfmRows)}
+      </tbody>
+    </table>
+    ${legacyItsfmNotes}
   </body>
 </html>`;
+}
+
+function renderItsfmRows(rows: DailyReportItsfmRow[]) {
+  const rowsByKey = new Map(rows.map((row) => [row.itemKey, row]));
+  const groups = Array.from(new Set(DAILY_REPORT_ITSFM_ITEMS.map((item) => item.group)));
+
+  return groups.map((group) => `
+        <tr class="section-row">
+          <th colspan="4">${escapeHtml(group)}</th>
+        </tr>
+        ${DAILY_REPORT_ITSFM_ITEMS.filter((item) => item.group === group).map((item) => {
+          const row = rowsByKey.get(item.key) ?? createEmptyDailyReportItsfmRow(item.key);
+
+          return `<tr>
+          <td>${escapeHtml(item.label)}</td>
+          <td>${escapeHtml(row.modelNumber)}</td>
+          <td>${escapeHtml(row.serialNumber)}</td>
+          <td>${escapeHtml(row.location)}</td>
+        </tr>`;
+        }).join("")}`).join("");
+}
+
+function renderLegacyItsfmNotes(report: DailyReportUploadPayload["report"]) {
+  const abovegroundEquipment = report.itsfmAbovegroundEquipment?.trim();
+  const cabinetEquipment = report.itsfmCabinetEquipment?.trim();
+
+  if (!abovegroundEquipment && !cabinetEquipment) {
+    return "";
+  }
+
+  return `
+    <h3>Legacy ITSFM Notes</h3>
+    ${abovegroundEquipment ? `<h4>Aboveground Equipment</h4><div class="note">${escapeHtml(abovegroundEquipment)}</div>` : ""}
+    ${cabinetEquipment ? `<h4>Cabinet Equipment</h4><div class="note">${escapeHtml(cabinetEquipment)}</div>` : ""}`;
+}
+
+function createEmptyDailyReportItsfmRow(itemKey: string): DailyReportItsfmRow {
+  return {
+    itemKey,
+    location: "",
+    modelNumber: "",
+    serialNumber: ""
+  };
+}
+
+function normalizeDailyReportItsfmRows(rows: DailyReportItsfmRow[] | undefined) {
+  const rowsByKey = new Map((rows ?? []).map((row) => [row.itemKey, row]));
+
+  return DAILY_REPORT_ITSFM_ITEMS.map((item) => ({
+    ...createEmptyDailyReportItsfmRow(item.key),
+    ...(rowsByKey.get(item.key) ?? {})
+  }));
 }
 
 function buildDailyReportFileName(projectName: string, date: string) {

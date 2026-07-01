@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
-import { getProcoreAccessToken } from "@/lib/procore/session";
+import { getProcoreIntegrationStatus } from "@/lib/procore/session";
 
 export async function GET() {
-  const accessToken = await getProcoreAccessToken();
+  const status = await getProcoreIntegrationStatus();
 
   return NextResponse.json({
-    connected: Boolean(accessToken)
+    connected: status.connected,
+    connectedAt: status.connectedAt,
+    connectedBy: status.connectedBy
   });
 }

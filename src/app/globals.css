@@ -679,6 +679,65 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   min-width: 28px;
 }
 
+.daily-itsfm-table {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: auto;
+}
+
+.daily-itsfm-section {
+  display: contents;
+}
+
+.daily-itsfm-section-heading {
+  background: rgba(45, 171, 184, 0.12);
+  border-bottom: 1px solid var(--line);
+  color: var(--foreground);
+  font-size: 0.78rem;
+  font-weight: 800;
+  min-width: 760px;
+  padding: 8px;
+  text-transform: uppercase;
+}
+
+.daily-itsfm-row {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 6px;
+  grid-template-columns: minmax(210px, 1.2fr) repeat(3, minmax(160px, 1fr));
+  min-width: 760px;
+  padding: 7px;
+}
+
+.daily-itsfm-row:last-child {
+  border-bottom: 0;
+}
+
+.daily-itsfm-header {
+  background: var(--field);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.daily-itsfm-item-label {
+  color: var(--foreground);
+  font-weight: 700;
+}
+
+.daily-itsfm-row input {
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--foreground);
+  min-height: 36px;
+  min-width: 0;
+  padding: 7px 8px;
+  width: 100%;
+}
+
 .daily-report-summary {
   display: grid;
   gap: 10px;
@@ -707,11 +766,8 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   overflow-wrap: anywhere;
 }
 
-.daily-report-upload-actions {
-  align-items: flex-start;
-  display: grid;
-  gap: 10px;
-  justify-items: start;
+.daily-report-upload-status {
+  margin-top: 10px;
 }
 
 .number-entry {
@@ -838,6 +894,14 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
 .panel-heading h2 {
   margin: 0;
+}
+
+.panel-heading-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
 }
 
 .status-card {
@@ -2041,6 +2105,12 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   .panel-heading {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .panel-heading-actions {
+    align-items: stretch;
+    flex-direction: column;
+    width: 100%;
   }
 
   .panel-heading .primary-button,
