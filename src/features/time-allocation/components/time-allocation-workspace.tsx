@@ -78,13 +78,6 @@ type SharedAppState = {
   syncLog: SyncLogEntry[];
 };
 
-type AppStateResponse = {
-  state?: Partial<SharedAppState> | null;
-  updatedAt?: string;
-  updatedBy?: string;
-  error?: string;
-};
-
 type EntriesResponse = {
   databaseConfigured?: boolean;
   entries?: AllocationEntry[];
@@ -356,7 +349,6 @@ export function TimeAllocationWorkspace() {
   const [updatingProject, setUpdatingProject] = useState(false);
   const [appStateHydrated, setAppStateHydrated] = useState(false);
   const dateInputRef = useRef<HTMLInputElement>(null);
-  const lastSavedSharedAppStateRef = useRef("");
   const lastSavedEntriesRef = useRef("");
   const lastSavedCrewStateRef = useRef("");
   const lastSavedDailyReportStateRef = useRef("");
@@ -581,23 +573,10 @@ export function TimeAllocationWorkspace() {
 
     let cancelled = false;
 
-    async function loadSharedAppState() {
+    async function loadAppState() {
       setAppStateHydrated(false);
 
       try {
-        const response = await fetch("/api/app-state", {
-          cache: "no-store"
-        });
-        const data = (await response.json()) as AppStateResponse;
-
-        if (!response.ok) {
-          throw new Error(data.error ?? "Unable to load shared app data.");
-        }
-
-        if (cancelled) {
-          return;
-        }
-
         const [
           databaseEntries,
           databaseCrewData,
@@ -616,7 +595,7 @@ export function TimeAllocationWorkspace() {
           return;
         }
 
-        const sharedState = data.state ?? readLocalSharedAppState();
+        const sharedState = readLocalSharedAppState();
         const nextState = {
           ...sharedState,
           ...(databaseEntries ? { entries: databaseEntries } : {}),
@@ -626,11 +605,7 @@ export function TimeAllocationWorkspace() {
           ...(databaseProjectControls ?? {})
         };
 
-        if (data.state) {
-          applySharedAppState(nextState, { markSaved: true });
-        } else {
-          applySharedAppState(nextState, { markSaved: false });
-        }
+        applySharedAppState(nextState, { markSaved: true });
       } catch {
         if (!cancelled) {
           applySharedAppState(readLocalSharedAppState(), { markSaved: false });
@@ -642,7 +617,7 @@ export function TimeAllocationWorkspace() {
       }
     }
 
-    void loadSharedAppState();
+    void loadAppState();
 
     return () => {
       cancelled = true;
@@ -666,30 +641,8 @@ export function TimeAllocationWorkspace() {
       projectBlacklistById,
       syncLog
     });
-    const serializedAppState = JSON.stringify(sharedAppState);
 
     writeLocalSharedAppState(sharedAppState);
-
-    if (serializedAppState === lastSavedSharedAppStateRef.current) {
-      return;
-    }
-
-    const saveTimeout = window.setTimeout(() => {
-      lastSavedSharedAppStateRef.current = serializedAppState;
-      void fetch("/api/app-state", {
-        body: JSON.stringify({ state: sharedAppState }),
-        headers: {
-          "Content-Type": "application/json"
-        },
-        method: "PUT"
-      }).catch(() => {
-        lastSavedSharedAppStateRef.current = "";
-      });
-    }, 500);
-
-    return () => {
-      window.clearTimeout(saveTimeout);
-    };
   }, [
     appStateHydrated,
     currentUser,
@@ -1296,7 +1249,6 @@ export function TimeAllocationWorkspace() {
     );
     setMyJobsByUser(normalizedState.myJobsByUser);
     setProjectBlacklistById(normalizedState.projectBlacklistById);
-    lastSavedSharedAppStateRef.current = options.markSaved ? JSON.stringify(normalizedState) : "";
     lastSavedEntriesRef.current = options.markSaved ? JSON.stringify(normalizedState.entries) : "";
     lastSavedCrewStateRef.current = options.markSaved ? JSON.stringify(buildCrewStatePayload(normalizedState)) : "";
     lastSavedDailyReportStateRef.current = options.markSaved ? JSON.stringify(buildDailyReportStatePayload(normalizedState)) : "";
