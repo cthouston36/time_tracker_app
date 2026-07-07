@@ -1,0 +1,317 @@
+import { getSql } from "@/lib/db";
+import type { AllocationEntry, CrewAllocation } from "@/lib/procore/types";
+
+type EntryRow = {
+  id: string;
+  project_id: string;
+  project_name: string | null;
+  date: string;
+  pay_item_id: string;
+  pay_item_code: string;
+  pay_item_name: string;
+  pay_item_budgeted_quantity: number | string | null;
+  pay_item_unit_of_measure: string | null;
+  hours: number | string | null;
+  quantity_completed: number | string | null;
+  saved_by_user_id: string | null;
+  saved_by_name: string | null;
+  saved_at: string | null;
+};
+
+type CrewAllocationRow = {
+  entry_id: string;
+  crew_member_id: string;
+  crew_member_name: string;
+  job_title: string;
+  hours: number | string | null;
+};
+
+const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+let dailyEntryTablesReady = false;
+
+export async function readAllocationEntries() {
+  const sql = getSql();
+
+  if (!sql) {
+    return null;
+  }
+
+  await ensureDailyEntryTables();
+
+  const entryRows = (await sql`
+    select
+      id,
+      project_id,
+      project_name,
+      to_char(work_date, 'YYYY-MM-DD') as date,
+      pay_item_id,
+      pay_item_code,
+      pay_item_name,
+      pay_item_budgeted_quantity,
+      pay_item_unit_of_measure,
+      hours,
+      quantity_completed,
+      saved_by_user_id,
+      saved_by_name,
+      saved_at::text as saved_at
+    from daily_entries
+    order by work_date desc, project_name nulls last, pay_item_code, pay_item_name
+  `) as EntryRow[];
+
+  const allocationRows = (await sql`
+    select
+      entry_id,
+      crew_member_id,
+      crew_member_name,
+      job_title,
+      hours
+    from daily_entry_crew_allocations
+    order by crew_member_name, crew_member_id
+  `) as CrewAllocationRow[];
+
+  const allocationsByEntryId = new Map<string, CrewAllocation[]>();
+
+  for (const allocationRow of allocationRows) {
+    const allocations = allocationsByEntryId.get(allocationRow.entry_id) ?? [];
+    allocations.push({
+      crewMemberId: allocationRow.crew_member_id,
+      crewMemberName: allocationRow.crew_member_name,
+      jobTitle: allocationRow.job_title,
+      hours: toNumber(allocationRow.hours)
+    });
+    allocationsByEntryId.set(allocationRow.entry_id, allocations);
+  }
+
+  return entryRows.map((entryRow) => ({
+    id: entryRow.id,
+    projectId: entryRow.project_id,
+    projectName: entryRow.project_name ?? undefined,
+    date: entryRow.date,
+    payItemId: entryRow.pay_item_id,
+    payItemCode: entryRow.pay_item_code,
+    payItemName: entryRow.pay_item_name,
+    payItemBudgetedQuantity: toOptionalNumber(entryRow.pay_item_budgeted_quantity),
+    payItemUnitOfMeasure: entryRow.pay_item_unit_of_measure ?? undefined,
+    hours: toNumber(entryRow.hours),
+    quantityCompleted: toNumber(entryRow.quantity_completed),
+    crewAllocations: allocationsByEntryId.get(entryRow.id) ?? [],
+    savedByUserId: entryRow.saved_by_user_id ?? undefined,
+    savedByName: entryRow.saved_by_name ?? undefined,
+    savedAt: entryRow.saved_at ?? undefined
+  }));
+}
+
+export async function replaceAllocationEntries(entries: AllocationEntry[]) {
+  const sql = getSql();
+
+  if (!sql) {
+    return null;
+  }
+
+  await ensureDailyEntryTables();
+
+  const normalizedEntries = entries.map(normalizeAllocationEntry).filter((entry) => entry !== null);
+  const queries = [sql`delete from daily_entry_crew_allocations`, sql`delete from daily_entries`];
+
+  for (const entry of normalizedEntries) {
+    queries.push(sql`
+      insert into daily_entries (
+        id,
+        project_id,
+        project_name,
+        work_date,
+        pay_item_id,
+        pay_item_code,
+        pay_item_name,
+        pay_item_budgeted_quantity,
+        pay_item_unit_of_measure,
+        hours,
+        quantity_completed,
+        saved_by_user_id,
+        saved_by_name,
+        saved_at,
+        raw_entry,
+        updated_at
+      )
+      values (
+        ${entry.id},
+        ${entry.projectId},
+        ${entry.projectName},
+        ${entry.date}::date,
+        ${entry.payItemId},
+        ${entry.payItemCode},
+        ${entry.payItemName},
+        ${entry.payItemBudgetedQuantity},
+        ${entry.payItemUnitOfMeasure},
+        ${entry.hours},
+        ${entry.quantityCompleted},
+        ${entry.savedByUserId},
+        ${entry.savedByName},
+        ${entry.savedAt}::timestamptz,
+        ${JSON.stringify(entry.rawEntry)}::jsonb,
+        now()
+      )
+    `);
+
+    for (const allocation of entry.crewAllocations) {
+      queries.push(sql`
+        insert into daily_entry_crew_allocations (
+          entry_id,
+          crew_member_id,
+          crew_member_name,
+          job_title,
+          hours,
+          raw_allocation,
+          updated_at
+        )
+        values (
+          ${entry.id},
+          ${allocation.crewMemberId},
+          ${allocation.crewMemberName},
+          ${allocation.jobTitle},
+          ${allocation.hours},
+          ${JSON.stringify(allocation.rawAllocation)}::jsonb,
+          now()
+        )
+      `);
+    }
+  }
+
+  await sql.transaction(queries);
+
+  return {
+    crewAllocations: normalizedEntries.reduce((total, entry) => total + entry.crewAllocations.length, 0),
+    entries: normalizedEntries.length
+  };
+}
+
+async function ensureDailyEntryTables() {
+  const sql = getSql();
+
+  if (!sql) {
+    return;
+  }
+
+  if (dailyEntryTablesReady) {
+    return;
+  }
+
+  await sql`
+    create table if not exists daily_entries (
+      id text primary key,
+      project_id text not null,
+      project_name text,
+      work_date date not null,
+      pay_item_id text not null,
+      pay_item_code text not null,
+      pay_item_name text not null,
+      pay_item_budgeted_quantity numeric,
+      pay_item_unit_of_measure text,
+      hours numeric not null default 0,
+      quantity_completed numeric not null default 0,
+      saved_by_user_id text,
+      saved_by_name text,
+      saved_at timestamptz,
+      raw_entry jsonb not null,
+      updated_at timestamptz not null default now()
+    )
+  `;
+
+  await sql`
+    create table if not exists daily_entry_crew_allocations (
+      entry_id text not null,
+      crew_member_id text not null,
+      crew_member_name text not null,
+      job_title text not null,
+      hours numeric not null default 0,
+      raw_allocation jsonb not null,
+      updated_at timestamptz not null default now(),
+      primary key (entry_id, crew_member_id)
+    )
+  `;
+
+  await sql`create index if not exists daily_entries_project_date_idx on daily_entries (project_id, work_date)`;
+  await sql`create index if not exists daily_entries_pay_item_idx on daily_entries (pay_item_code, pay_item_id)`;
+  await sql`create index if not exists daily_entry_crew_allocations_crew_idx on daily_entry_crew_allocations (crew_member_id)`;
+
+  dailyEntryTablesReady = true;
+}
+
+function normalizeAllocationEntry(entry: AllocationEntry) {
+  if (!entry.id || !entry.projectId || !isIsoDate(entry.date) || !entry.payItemId || !entry.payItemCode || !entry.payItemName) {
+    return null;
+  }
+
+  return {
+    id: entry.id,
+    projectId: entry.projectId,
+    projectName: entry.projectName ?? null,
+    date: entry.date,
+    payItemId: entry.payItemId,
+    payItemCode: entry.payItemCode,
+    payItemName: entry.payItemName,
+    payItemBudgetedQuantity: toNullableNumber(entry.payItemBudgetedQuantity),
+    payItemUnitOfMeasure: entry.payItemUnitOfMeasure ?? null,
+    hours: toNumber(entry.hours),
+    quantityCompleted: toNumber(entry.quantityCompleted),
+    crewAllocations: (entry.crewAllocations ?? []).map(normalizeCrewAllocation).filter((allocation) => allocation !== null),
+    rawEntry: entry,
+    savedAt: isValidTimestamp(entry.savedAt) ? entry.savedAt : null,
+    savedByName: entry.savedByName ?? null,
+    savedByUserId: entry.savedByUserId ?? null
+  };
+}
+
+function normalizeCrewAllocation(allocation: CrewAllocation) {
+  if (!allocation.crewMemberId || !allocation.crewMemberName) {
+    return null;
+  }
+
+  return {
+    crewMemberId: allocation.crewMemberId,
+    crewMemberName: allocation.crewMemberName,
+    hours: toNumber(allocation.hours),
+    jobTitle: allocation.jobTitle ?? "",
+    rawAllocation: allocation
+  };
+}
+
+function toNumber(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const parsedValue = Number(value);
+    return Number.isFinite(parsedValue) ? parsedValue : 0;
+  }
+
+  return 0;
+}
+
+function toOptionalNumber(value: unknown) {
+  const numberValue = toNullableNumber(value);
+  return numberValue === null ? undefined : numberValue;
+}
+
+function toNullableNumber(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string" && value.trim()) {
+    const parsedValue = Number(value);
+    return Number.isFinite(parsedValue) ? parsedValue : null;
+  }
+
+  return null;
+}
+
+function isIsoDate(value: string) {
+  return ISO_DATE_PATTERN.test(value);
+}
+
+function isValidTimestamp(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0 && !Number.isNaN(Date.parse(value));
+}

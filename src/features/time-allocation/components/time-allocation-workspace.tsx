@@ -85,6 +85,12 @@ type AppStateResponse = {
   error?: string;
 };
 
+type EntriesResponse = {
+  databaseConfigured?: boolean;
+  entries?: AllocationEntry[];
+  error?: string;
+};
+
 type PayItemDraft = {
   hours: string;
   quantity: string;
@@ -322,6 +328,7 @@ export function TimeAllocationWorkspace() {
   const [appStateHydrated, setAppStateHydrated] = useState(false);
   const dateInputRef = useRef<HTMLInputElement>(null);
   const lastSavedSharedAppStateRef = useRef("");
+  const lastSavedEntriesRef = useRef("");
 
   const projects = useMemo(
     () => allProjects.filter((project) => !projectBlacklistById[project.id]),
@@ -556,10 +563,14 @@ export function TimeAllocationWorkspace() {
           return;
         }
 
+        const databaseEntries = await loadDatabaseEntries();
+        const sharedState = data.state ?? readLocalSharedAppState();
+        const nextState = databaseEntries ? { ...sharedState, entries: databaseEntries } : sharedState;
+
         if (data.state) {
-          applySharedAppState(data.state, { markSaved: true });
+          applySharedAppState(nextState, { markSaved: true });
         } else {
-          applySharedAppState(readLocalSharedAppState(), { markSaved: false });
+          applySharedAppState(nextState, { markSaved: false });
         }
       } catch {
         if (!cancelled) {
@@ -634,6 +645,39 @@ export function TimeAllocationWorkspace() {
     projectBlacklistById,
     syncLog
   ]);
+
+  useEffect(() => {
+    if (!currentUser || !appStateHydrated) {
+      return;
+    }
+
+    const serializedEntries = JSON.stringify(entries);
+
+    if (serializedEntries === lastSavedEntriesRef.current) {
+      return;
+    }
+
+    const saveTimeout = window.setTimeout(() => {
+      lastSavedEntriesRef.current = serializedEntries;
+      void fetch("/api/entries", {
+        body: JSON.stringify({ entries }),
+        headers: {
+          "Content-Type": "application/json"
+        },
+        method: "PUT"
+      }).then((response) => {
+        if (!response.ok) {
+          lastSavedEntriesRef.current = "";
+        }
+      }).catch(() => {
+        lastSavedEntriesRef.current = "";
+      });
+    }, 500);
+
+    return () => {
+      window.clearTimeout(saveTimeout);
+    };
+  }, [appStateHydrated, currentUser, entries]);
 
   useEffect(() => {
     if (!currentUser || projects.length === 0 || entries.length === 0) {
@@ -1058,6 +1102,7 @@ export function TimeAllocationWorkspace() {
     setMyJobsByUser(normalizedState.myJobsByUser);
     setProjectBlacklistById(normalizedState.projectBlacklistById);
     lastSavedSharedAppStateRef.current = options.markSaved ? JSON.stringify(normalizedState) : "";
+    lastSavedEntriesRef.current = options.markSaved ? JSON.stringify(normalizedState.entries) : "";
   }
 
   function updateDraft(payItemId: string, field: "hours" | "quantity", value: string) {
@@ -4818,6 +4863,23 @@ function buildSharedAppState(state: SharedAppState): SharedAppState {
     projectBlacklistById: state.projectBlacklistById,
     syncLog: state.syncLog
   };
+}
+
+async function loadDatabaseEntries() {
+  try {
+    const response = await fetch("/api/entries", {
+      cache: "no-store"
+    });
+    const data = (await response.json()) as EntriesResponse;
+
+    if (!response.ok || !data.databaseConfigured) {
+      return null;
+    }
+
+    return data.entries ?? [];
+  } catch {
+    return null;
+  }
 }
 
 function normalizeSharedAppState(state: Partial<SharedAppState> | null | undefined): SharedAppState {
