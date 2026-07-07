@@ -56,6 +56,9 @@ PROCORE_CLIENT_ID=your_client_id
 PROCORE_CLIENT_SECRET=your_client_secret
 PROCORE_TOKEN_ENCRYPTION_KEY=your_long_random_secret
 PROCORE_COMPANY_ID=your_company_id
+AUTH_SESSION_SECRET=your_long_random_session_secret
 ```
 
 `PROCORE_TOKEN_ENCRYPTION_KEY` should be set in production. If it is omitted, the app falls back to `PROCORE_CLIENT_SECRET` for token encryption so existing deployments continue to work.
+
+User accounts are stored in Neon in the `app_users` table with hashed passwords. The `LOCAL_*_PASSWORD` variables are used only to bootstrap the first accounts when the table is empty, or as a local fallback when `DATABASE_URL` is not configured.
