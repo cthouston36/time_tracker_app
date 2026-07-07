@@ -1,11 +1,13 @@
 import { cookies } from "next/headers";
 import { mkdir, readFile, writeFile } from "fs/promises";
 import path from "path";
+import { getSql } from "@/lib/db";
 import { refreshProcoreToken, type ProcoreTokenResponse } from "@/lib/procore/oauth";
 
 const ACCESS_TOKEN_COOKIE = "procore_access_token";
 const REFRESH_TOKEN_COOKIE = "procore_refresh_token";
 const OAUTH_STATE_COOKIE = "procore_oauth_state";
+const PROCORE_INTEGRATION_TOKEN_SETTING_KEY = "procore_integration_token";
 const PROCORE_TOKEN_REFRESH_BUFFER_MS = 60 * 1000;
 
 type StoredProcoreIntegrationToken = {
@@ -126,6 +128,26 @@ export async function getProcoreIntegrationStatus() {
 }
 
 async function readProcoreIntegrationToken() {
+  const sql = getSql();
+
+  if (sql) {
+    await ensureAppSettingsTable();
+
+    const rows = await sql`
+      select value
+      from app_settings
+      where key = ${PROCORE_INTEGRATION_TOKEN_SETTING_KEY}
+      limit 1
+    `;
+    const value = rows[0]?.value;
+
+    if (!value) {
+      return null;
+    }
+
+    return parseStoredProcoreIntegrationToken(value);
+  }
+
   try {
     const file = await readFile(getProcoreIntegrationTokenPath(), "utf8");
     return JSON.parse(file) as StoredProcoreIntegrationToken;
@@ -135,10 +157,48 @@ async function readProcoreIntegrationToken() {
 }
 
 async function writeProcoreIntegrationToken(token: StoredProcoreIntegrationToken) {
+  const sql = getSql();
+
+  if (sql) {
+    await ensureAppSettingsTable();
+    await sql`
+      insert into app_settings (key, value, updated_at)
+      values (${PROCORE_INTEGRATION_TOKEN_SETTING_KEY}, ${JSON.stringify(token)}::jsonb, now())
+      on conflict (key) do update
+      set value = excluded.value,
+          updated_at = now()
+    `;
+    return;
+  }
+
   const filePath = getProcoreIntegrationTokenPath();
 
   await mkdir(path.dirname(filePath), { recursive: true });
   await writeFile(filePath, JSON.stringify(token, null, 2), "utf8");
+}
+
+async function ensureAppSettingsTable() {
+  const sql = getSql();
+
+  if (!sql) {
+    return;
+  }
+
+  await sql`
+    create table if not exists app_settings (
+      key text primary key,
+      value jsonb not null,
+      updated_at timestamptz not null default now()
+    )
+  `;
+}
+
+function parseStoredProcoreIntegrationToken(value: unknown) {
+  if (typeof value === "string") {
+    return JSON.parse(value) as StoredProcoreIntegrationToken;
+  }
+
+  return value as StoredProcoreIntegrationToken;
 }
 
 function getProcoreIntegrationTokenPath() {

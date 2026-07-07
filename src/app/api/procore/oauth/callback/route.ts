@@ -30,10 +30,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL("/?procore=invalid_state", config.appUrl));
   }
 
-  const tokenResponse = await exchangeCodeForToken(code);
-  await saveProcoreIntegrationTokens(tokenResponse, {
-    connectedBy: `${user.firstName} ${user.lastName}`.trim() || user.id
-  });
+  try {
+    const tokenResponse = await exchangeCodeForToken(code);
+    await saveProcoreIntegrationTokens(tokenResponse, {
+      connectedBy: `${user.firstName} ${user.lastName}`.trim() || user.id
+    });
+  } catch (callbackError) {
+    console.error("Procore OAuth callback failed", callbackError);
+    return NextResponse.redirect(new URL("/?procore=callback_failed", config.appUrl));
+  }
 
   return NextResponse.redirect(new URL("/?procore=connected", config.appUrl));
 }
