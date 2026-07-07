@@ -186,6 +186,161 @@ export async function replaceAllocationEntries(entries: AllocationEntry[]) {
   };
 }
 
+export async function upsertAllocationEntries(entries: AllocationEntry[]) {
+  const sql = getSql();
+
+  if (!sql) {
+    return null;
+  }
+
+  await ensureDailyEntryTables();
+
+  const normalizedEntries = entries.map(normalizeAllocationEntry).filter((entry) => entry !== null);
+
+  if (normalizedEntries.length === 0) {
+    return {
+      crewAllocations: 0,
+      entries: 0
+    };
+  }
+
+  const queries = [];
+
+  for (const entry of normalizedEntries) {
+    queries.push(sql`delete from daily_entry_crew_allocations where entry_id = ${entry.id}`);
+    queries.push(sql`
+      insert into daily_entries (
+        id,
+        project_id,
+        project_name,
+        work_date,
+        pay_item_id,
+        pay_item_code,
+        pay_item_name,
+        pay_item_budgeted_quantity,
+        pay_item_unit_of_measure,
+        hours,
+        quantity_completed,
+        saved_by_user_id,
+        saved_by_name,
+        saved_at,
+        raw_entry,
+        updated_at
+      )
+      values (
+        ${entry.id},
+        ${entry.projectId},
+        ${entry.projectName},
+        ${entry.date}::date,
+        ${entry.payItemId},
+        ${entry.payItemCode},
+        ${entry.payItemName},
+        ${entry.payItemBudgetedQuantity},
+        ${entry.payItemUnitOfMeasure},
+        ${entry.hours},
+        ${entry.quantityCompleted},
+        ${entry.savedByUserId},
+        ${entry.savedByName},
+        ${entry.savedAt}::timestamptz,
+        ${JSON.stringify(entry.rawEntry)}::jsonb,
+        now()
+      )
+      on conflict (id) do update
+      set project_id = excluded.project_id,
+          project_name = excluded.project_name,
+          work_date = excluded.work_date,
+          pay_item_id = excluded.pay_item_id,
+          pay_item_code = excluded.pay_item_code,
+          pay_item_name = excluded.pay_item_name,
+          pay_item_budgeted_quantity = excluded.pay_item_budgeted_quantity,
+          pay_item_unit_of_measure = excluded.pay_item_unit_of_measure,
+          hours = excluded.hours,
+          quantity_completed = excluded.quantity_completed,
+          saved_by_user_id = excluded.saved_by_user_id,
+          saved_by_name = excluded.saved_by_name,
+          saved_at = excluded.saved_at,
+          raw_entry = excluded.raw_entry,
+          updated_at = now()
+    `);
+
+    for (const allocation of entry.crewAllocations) {
+      queries.push(sql`
+        insert into daily_entry_crew_allocations (
+          entry_id,
+          crew_member_id,
+          crew_member_name,
+          job_title,
+          hours,
+          raw_allocation,
+          updated_at
+        )
+        values (
+          ${entry.id},
+          ${allocation.crewMemberId},
+          ${allocation.crewMemberName},
+          ${allocation.jobTitle},
+          ${allocation.hours},
+          ${JSON.stringify(allocation.rawAllocation)}::jsonb,
+          now()
+        )
+      `);
+    }
+  }
+
+  await sql.transaction(queries);
+
+  return {
+    crewAllocations: normalizedEntries.reduce((total, entry) => total + entry.crewAllocations.length, 0),
+    entries: normalizedEntries.length
+  };
+}
+
+export async function deleteAllocationEntry(entryId: string) {
+  const sql = getSql();
+
+  if (!sql) {
+    return null;
+  }
+
+  await ensureDailyEntryTables();
+
+  await sql.transaction([
+    sql`delete from daily_entry_crew_allocations where entry_id = ${entryId}`,
+    sql`delete from daily_entries where id = ${entryId}`
+  ]);
+
+  return true;
+}
+
+export async function deleteAllocationEntriesForDay(projectId: string, date: string) {
+  const sql = getSql();
+
+  if (!sql) {
+    return null;
+  }
+
+  await ensureDailyEntryTables();
+
+  await sql.transaction([
+    sql`
+      delete from daily_entry_crew_allocations
+      where entry_id in (
+        select id
+        from daily_entries
+        where project_id = ${projectId}
+          and work_date = ${date}::date
+      )
+    `,
+    sql`
+      delete from daily_entries
+      where project_id = ${projectId}
+        and work_date = ${date}::date
+    `
+  ]);
+
+  return true;
+}
+
 async function ensureDailyEntryTables() {
   const sql = getSql();
 

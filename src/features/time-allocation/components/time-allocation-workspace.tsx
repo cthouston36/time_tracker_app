@@ -349,7 +349,6 @@ export function TimeAllocationWorkspace() {
   const [updatingProject, setUpdatingProject] = useState(false);
   const [appStateHydrated, setAppStateHydrated] = useState(false);
   const dateInputRef = useRef<HTMLInputElement>(null);
-  const lastSavedEntriesRef = useRef("");
   const lastSavedCrewStateRef = useRef("");
   const lastSavedDailyReportStateRef = useRef("");
   const lastSavedDayRecordsStateRef = useRef("");
@@ -657,39 +656,6 @@ export function TimeAllocationWorkspace() {
     projectBlacklistById,
     syncLog
   ]);
-
-  useEffect(() => {
-    if (!currentUser || !appStateHydrated) {
-      return;
-    }
-
-    const serializedEntries = JSON.stringify(entries);
-
-    if (serializedEntries === lastSavedEntriesRef.current) {
-      return;
-    }
-
-    const saveTimeout = window.setTimeout(() => {
-      lastSavedEntriesRef.current = serializedEntries;
-      void fetch("/api/entries", {
-        body: JSON.stringify({ entries }),
-        headers: {
-          "Content-Type": "application/json"
-        },
-        method: "PUT"
-      }).then((response) => {
-        if (!response.ok) {
-          lastSavedEntriesRef.current = "";
-        }
-      }).catch(() => {
-        lastSavedEntriesRef.current = "";
-      });
-    }, 500);
-
-    return () => {
-      window.clearTimeout(saveTimeout);
-    };
-  }, [appStateHydrated, currentUser, entries]);
 
   useEffect(() => {
     if (!currentUser || !appStateHydrated) {
@@ -1249,7 +1215,6 @@ export function TimeAllocationWorkspace() {
     );
     setMyJobsByUser(normalizedState.myJobsByUser);
     setProjectBlacklistById(normalizedState.projectBlacklistById);
-    lastSavedEntriesRef.current = options.markSaved ? JSON.stringify(normalizedState.entries) : "";
     lastSavedCrewStateRef.current = options.markSaved ? JSON.stringify(buildCrewStatePayload(normalizedState)) : "";
     lastSavedDailyReportStateRef.current = options.markSaved ? JSON.stringify(buildDailyReportStatePayload(normalizedState)) : "";
     lastSavedDayRecordsStateRef.current = options.markSaved ? JSON.stringify(buildDayRecordsStatePayload(normalizedState)) : "";
@@ -1400,26 +1365,42 @@ export function TimeAllocationWorkspace() {
         ])
       ) as CrewMembersByProject
     );
-    setEntries((current) =>
-      current.map((entry) => {
-        if (!entry.crewAllocations?.length) {
-          return entry;
+    const nextEntries = entries.map((entry) => {
+      if (!entry.crewAllocations?.length) {
+        return entry;
+      }
+
+      let entryChanged = false;
+      const crewAllocations = entry.crewAllocations.map((allocation) => {
+        if (allocation.crewMemberId !== editingCrewMember.crewMemberId) {
+          return allocation;
         }
 
+        entryChanged = true;
         return {
-          ...entry,
-          crewAllocations: entry.crewAllocations.map((allocation) =>
-            allocation.crewMemberId === editingCrewMember.crewMemberId
-              ? {
-                  ...allocation,
-                  crewMemberName: name,
-                  jobTitle
-                }
-              : allocation
-          )
+          ...allocation,
+          crewMemberName: name,
+          jobTitle
         };
-      })
-    );
+      });
+
+      if (!entryChanged) {
+        return entry;
+      }
+
+      return {
+        ...entry,
+        crewAllocations
+      };
+    });
+    const changedEntries = nextEntries.filter((entry, index) => entry !== entries[index]);
+
+    setEntries(nextEntries);
+    if (changedEntries.length > 0) {
+      void saveDatabaseEntries(changedEntries).catch((error) => {
+        setEntryNotice(error instanceof Error ? error.message : "Crew member updated locally, but saved entry rows did not sync.");
+      });
+    }
     setEditingCrewMember(null);
     setEntryNotice(`${name} updated across saved days.`);
   }
@@ -1481,9 +1462,17 @@ export function TimeAllocationWorkspace() {
       return;
     }
 
+    const nextEntries = entries.map((entry) => mergeEntryCrewAllocations(entry, sourceCrewMember.id, targetCrewMember));
+    const changedEntries = nextEntries.filter((entry, index) => entry !== entries[index]);
+
     setCrewDirectory((current) => current.filter((member) => member.id !== sourceCrewMember.id));
     setCrewMembersByProject((current) => mergeProjectCrewMembers(current, sourceCrewMember.id, targetCrewMember));
-    setEntries((current) => current.map((entry) => mergeEntryCrewAllocations(entry, sourceCrewMember.id, targetCrewMember)));
+    setEntries(nextEntries);
+    if (changedEntries.length > 0) {
+      void saveDatabaseEntries(changedEntries).catch((error) => {
+        setEntryNotice(error instanceof Error ? error.message : "Crew members merged locally, but saved entry rows did not sync.");
+      });
+    }
     setDraftsByPayItem((current) => mergeDraftCrewMembers(current, sourceCrewMember.id, targetCrewMember.id));
     setSelectedExistingCrewMemberId((current) => (current === sourceCrewMember.id ? "" : current));
     setEditingCrewMember((current) => (current?.crewMemberId === sourceCrewMember.id ? null : current));
@@ -1777,6 +1766,9 @@ export function TimeAllocationWorkspace() {
       const upsertIds = new Set(nextEntries.map((entry) => entry.id));
       return [...current.filter((entry) => !upsertIds.has(entry.id)), ...nextEntries];
     });
+    void saveDatabaseEntries(nextEntries).catch((error) => {
+      setEntryNotice(error instanceof Error ? error.message : "Rows saved locally, but did not sync to the database.");
+    });
     setDraftsByPayItem({});
     setEntryNotice(`${nextEntries.length} row${nextEntries.length === 1 ? "" : "s"} saved for ${formatDate(workDate)}.`);
   }
@@ -1792,6 +1784,9 @@ export function TimeAllocationWorkspace() {
     }
 
     setEntries((current) => current.filter((entry) => entry.id !== entryId));
+    void deleteDatabaseEntry(entryId).catch((error) => {
+      setEntryNotice(error instanceof Error ? error.message : "Entry deleted locally, but did not sync to the database.");
+    });
   }
 
   function deleteSubmittedDay() {
@@ -1804,6 +1799,9 @@ export function TimeAllocationWorkspace() {
     setEntries((current) =>
       current.filter((entry) => !(entry.projectId === selectedProject.id && entry.date === workDate))
     );
+    void deleteDatabaseDayEntries(selectedProject.id, workDate).catch((error) => {
+      setEntryNotice(error instanceof Error ? error.message : "Submitted day deleted locally, but entries did not sync.");
+    });
     setDaySubmissions((current) => {
       const next = { ...current };
       delete next[dayKey];
@@ -1833,23 +1831,31 @@ export function TimeAllocationWorkspace() {
       return;
     }
 
-    setEntries((current) =>
-      current.map((entry) => {
-        if (entry.id !== editingEntry.entryId) {
-          return entry;
-        }
+    let updatedEntry: AllocationEntry | null = null;
+    const nextEntries = entries.map((entry) => {
+      if (entry.id !== editingEntry.entryId) {
+        return entry;
+      }
 
-        return {
-          ...entry,
-          hours,
-          quantityCompleted: quantity,
-          crewAllocations: scaleCrewAllocations(entry.crewAllocations ?? [], hours),
-          savedByUserId: currentUser.id,
-          savedByName: formatUserName(currentUser),
-          savedAt: new Date().toISOString()
-        };
-      })
-    );
+      updatedEntry = {
+        ...entry,
+        hours,
+        quantityCompleted: quantity,
+        crewAllocations: scaleCrewAllocations(entry.crewAllocations ?? [], hours),
+        savedByUserId: currentUser.id,
+        savedByName: formatUserName(currentUser),
+        savedAt: new Date().toISOString()
+      };
+
+      return updatedEntry;
+    });
+
+    setEntries(nextEntries);
+    if (updatedEntry) {
+      void saveDatabaseEntries([updatedEntry]).catch((error) => {
+        setEntryNotice(error instanceof Error ? error.message : "Daily allocation updated locally, but did not sync.");
+      });
+    }
     setEditingEntry(null);
     setEntryNotice("Daily allocation row updated.");
   }
@@ -5063,6 +5069,46 @@ async function loadDatabaseEntries() {
     return data.entries ?? [];
   } catch {
     return null;
+  }
+}
+
+async function saveDatabaseEntries(entries: AllocationEntry[]) {
+  const response = await fetch("/api/entries", {
+    body: JSON.stringify({ entries }),
+    headers: {
+      "Content-Type": "application/json"
+    },
+    method: "POST"
+  });
+  const data = (await response.json()) as { error?: string };
+
+  if (!response.ok) {
+    throw new Error(data.error ?? "Unable to save entries.");
+  }
+}
+
+async function deleteDatabaseEntry(entryId: string) {
+  const response = await fetch(`/api/entries?entryId=${encodeURIComponent(entryId)}`, {
+    method: "DELETE"
+  });
+  const data = (await response.json()) as { error?: string };
+
+  if (!response.ok) {
+    throw new Error(data.error ?? "Unable to delete entry.");
+  }
+}
+
+async function deleteDatabaseDayEntries(projectId: string, date: string) {
+  const response = await fetch(
+    `/api/entries?projectId=${encodeURIComponent(projectId)}&date=${encodeURIComponent(date)}`,
+    {
+      method: "DELETE"
+    }
+  );
+  const data = (await response.json()) as { error?: string };
+
+  if (!response.ok) {
+    throw new Error(data.error ?? "Unable to delete day entries.");
   }
 }
 
