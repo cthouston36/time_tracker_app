@@ -349,7 +349,6 @@ export function TimeAllocationWorkspace() {
   const [updatingProject, setUpdatingProject] = useState(false);
   const [appStateHydrated, setAppStateHydrated] = useState(false);
   const dateInputRef = useRef<HTMLInputElement>(null);
-  const lastSavedProjectControlsStateRef = useRef("");
   const dayNotesSaveTimeoutsRef = useRef<Record<string, number>>({});
 
   const projects = useMemo(
@@ -602,10 +601,10 @@ export function TimeAllocationWorkspace() {
           ...(databaseProjectControls ?? {})
         };
 
-        applySharedAppState(nextState, { markSaved: true });
+        applySharedAppState(nextState);
       } catch {
         if (!cancelled) {
-          applySharedAppState(readLocalSharedAppState(), { markSaved: false });
+          applySharedAppState(readLocalSharedAppState());
         }
       } finally {
         if (!cancelled) {
@@ -654,40 +653,6 @@ export function TimeAllocationWorkspace() {
     projectBlacklistById,
     syncLog
   ]);
-
-  useEffect(() => {
-    if (!currentUser || !appStateHydrated) {
-      return;
-    }
-
-    const projectControlsStatePayload = buildProjectControlsStatePayload({ myJobsByUser, projectBlacklistById, syncLog });
-    const serializedProjectControlsState = JSON.stringify(projectControlsStatePayload);
-
-    if (serializedProjectControlsState === lastSavedProjectControlsStateRef.current) {
-      return;
-    }
-
-    const saveTimeout = window.setTimeout(() => {
-      lastSavedProjectControlsStateRef.current = serializedProjectControlsState;
-      void fetch("/api/project-controls", {
-        body: JSON.stringify(projectControlsStatePayload),
-        headers: {
-          "Content-Type": "application/json"
-        },
-        method: "PUT"
-      }).then((response) => {
-        if (!response.ok) {
-          lastSavedProjectControlsStateRef.current = "";
-        }
-      }).catch(() => {
-        lastSavedProjectControlsStateRef.current = "";
-      });
-    }, 500);
-
-    return () => {
-      window.clearTimeout(saveTimeout);
-    };
-  }, [appStateHydrated, currentUser, myJobsByUser, projectBlacklistById, syncLog]);
 
   useEffect(() => {
     if (!currentUser || projects.length === 0 || entries.length === 0) {
@@ -826,6 +791,9 @@ export function TimeAllocationWorkspace() {
       ...current,
       [currentUser.id]: uniqueJobIds
     }));
+    void saveDatabaseMyJobs(currentUser.id, uniqueJobIds).catch((error) => {
+      setEntryNotice(error instanceof Error ? error.message : "My Projects saved locally, but did not sync.");
+    });
   }
 
   function toggleProjectBlacklist(projectId: string, blacklisted: boolean) {
@@ -840,6 +808,9 @@ export function TimeAllocationWorkspace() {
       const nextBlacklist = { ...current };
       delete nextBlacklist[projectId];
       return nextBlacklist;
+    });
+    void saveDatabaseProjectBlacklist(projectId, blacklisted).catch((error) => {
+      setProjectLoadError(error instanceof Error ? error.message : "Project blacklist saved locally, but did not sync.");
     });
   }
 
@@ -1134,12 +1105,7 @@ export function TimeAllocationWorkspace() {
     window.location.assign("/api/procore/oauth/login");
   }
 
-  function applySharedAppState(
-    state: Partial<SharedAppState> | null,
-    options: {
-      markSaved: boolean;
-    }
-  ) {
+  function applySharedAppState(state: Partial<SharedAppState> | null) {
     const normalizedState = normalizeSharedAppState(state);
 
     setEntries(normalizedState.entries);
@@ -1157,7 +1123,6 @@ export function TimeAllocationWorkspace() {
     );
     setMyJobsByUser(normalizedState.myJobsByUser);
     setProjectBlacklistById(normalizedState.projectBlacklistById);
-    lastSavedProjectControlsStateRef.current = options.markSaved ? JSON.stringify(buildProjectControlsStatePayload(normalizedState)) : "";
   }
 
   function updateDraft(payItemId: string, field: "hours" | "quantity", value: string) {
@@ -1494,16 +1459,18 @@ export function TimeAllocationWorkspace() {
   }
 
   function addSyncLog(entry: Omit<SyncLogEntry, "id" | "createdAt">) {
+    const syncLogEntry = {
+      id: crypto.randomUUID(),
+      createdAt: new Date().toISOString(),
+      ...entry
+    };
+
     setSyncLog((current) =>
-      [
-        {
-          id: crypto.randomUUID(),
-          createdAt: new Date().toISOString(),
-          ...entry
-        },
-        ...current
-      ].slice(0, 25)
+      [syncLogEntry, ...current].slice(0, 25)
     );
+    void saveDatabaseSyncLogEntry(syncLogEntry).catch((error) => {
+      setProjectLoadError(error instanceof Error ? error.message : "Sync log saved locally, but did not sync.");
+    });
   }
 
   async function syncProcoreData() {
@@ -4994,16 +4961,6 @@ function buildSharedAppState(state: SharedAppState): SharedAppState {
   };
 }
 
-function buildProjectControlsStatePayload(
-  state: Pick<SharedAppState, "myJobsByUser" | "projectBlacklistById" | "syncLog">
-) {
-  return {
-    myJobsByUser: state.myJobsByUser,
-    projectBlacklistById: state.projectBlacklistById,
-    syncLog: state.syncLog
-  };
-}
-
 async function loadDatabaseEntries() {
   try {
     const response = await fetch("/api/entries", {
@@ -5317,6 +5274,62 @@ async function loadDatabaseProjectControls() {
     };
   } catch {
     return null;
+  }
+}
+
+async function saveDatabaseMyJobs(userId: string, projectIds: string[]) {
+  const response = await fetch("/api/project-controls", {
+    body: JSON.stringify({
+      action: "save_my_jobs",
+      projectIds,
+      userId
+    }),
+    headers: {
+      "Content-Type": "application/json"
+    },
+    method: "PATCH"
+  });
+  const data = (await response.json()) as { error?: string; ok?: boolean };
+
+  if (!response.ok || data.ok === false) {
+    throw new Error(data.error ?? "Unable to save My Projects.");
+  }
+}
+
+async function saveDatabaseProjectBlacklist(projectId: string, blacklisted: boolean) {
+  const response = await fetch("/api/project-controls", {
+    body: JSON.stringify({
+      action: "set_blacklist",
+      blacklisted,
+      projectId
+    }),
+    headers: {
+      "Content-Type": "application/json"
+    },
+    method: "PATCH"
+  });
+  const data = (await response.json()) as { error?: string; ok?: boolean };
+
+  if (!response.ok || data.ok === false) {
+    throw new Error(data.error ?? "Unable to save project blacklist.");
+  }
+}
+
+async function saveDatabaseSyncLogEntry(syncLogEntry: SyncLogEntry) {
+  const response = await fetch("/api/project-controls", {
+    body: JSON.stringify({
+      action: "add_sync_log",
+      syncLogEntry
+    }),
+    headers: {
+      "Content-Type": "application/json"
+    },
+    method: "PATCH"
+  });
+  const data = (await response.json()) as { error?: string; ok?: boolean };
+
+  if (!response.ok || data.ok === false) {
+    throw new Error(data.error ?? "Unable to save sync log.");
   }
 }
 

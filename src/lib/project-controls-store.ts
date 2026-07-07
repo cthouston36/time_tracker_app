@@ -152,6 +152,129 @@ export async function replaceProjectControls(
   };
 }
 
+export async function replaceMyJobsForUser(userId: string, projectIds: string[]) {
+  const sql = getSql();
+
+  if (!sql) {
+    return null;
+  }
+
+  await ensureProjectControlTables();
+
+  const normalizedUserId = readString(userId);
+  const normalizedProjectIds = normalizeProjectIds(projectIds);
+
+  if (!normalizedUserId) {
+    return false;
+  }
+
+  const queries = [sql`delete from my_jobs where user_id = ${normalizedUserId}`];
+
+  for (const projectId of normalizedProjectIds) {
+    queries.push(sql`
+      insert into my_jobs (user_id, project_id, updated_at)
+      values (${normalizedUserId}, ${projectId}, now())
+      on conflict (user_id, project_id) do update
+      set updated_at = now()
+    `);
+  }
+
+  await sql.transaction(queries);
+
+  return true;
+}
+
+export async function setProjectBlacklist(projectId: string, blacklisted: boolean) {
+  const sql = getSql();
+
+  if (!sql) {
+    return null;
+  }
+
+  await ensureProjectControlTables();
+
+  const normalizedProjectId = readString(projectId);
+
+  if (!normalizedProjectId) {
+    return false;
+  }
+
+  if (blacklisted) {
+    await sql`
+      insert into project_blacklist (project_id, blacklisted_at)
+      values (${normalizedProjectId}, now())
+      on conflict (project_id) do nothing
+    `;
+  } else {
+    await sql`
+      delete from project_blacklist
+      where project_id = ${normalizedProjectId}
+    `;
+  }
+
+  return true;
+}
+
+export async function insertSyncLogEntry(entry: StoredSyncLogEntry) {
+  const sql = getSql();
+
+  if (!sql) {
+    return null;
+  }
+
+  await ensureProjectControlTables();
+
+  const normalizedEntry = normalizeSyncLog([entry])[0];
+
+  if (!normalizedEntry) {
+    return false;
+  }
+
+  await sql.transaction([
+    sql`
+      insert into sync_log_entries (
+        id,
+        action,
+        status,
+        created_at,
+        message,
+        summary,
+        raw_log,
+        updated_at
+      )
+      values (
+        ${normalizedEntry.id},
+        ${normalizedEntry.action},
+        ${normalizedEntry.status},
+        ${normalizedEntry.createdAt}::timestamptz,
+        ${normalizedEntry.message},
+        ${normalizedEntry.summary === undefined ? null : JSON.stringify(normalizedEntry.summary)}::jsonb,
+        ${JSON.stringify(normalizedEntry)}::jsonb,
+        now()
+      )
+      on conflict (id) do update
+      set action = excluded.action,
+          status = excluded.status,
+          created_at = excluded.created_at,
+          message = excluded.message,
+          summary = excluded.summary,
+          raw_log = excluded.raw_log,
+          updated_at = now()
+    `,
+    sql`
+      delete from sync_log_entries
+      where id not in (
+        select id
+        from sync_log_entries
+        order by created_at desc nulls last, id desc
+        limit 25
+      )
+    `
+  ]);
+
+  return true;
+}
+
 async function ensureProjectControlTables() {
   const sql = getSql();
 
@@ -217,6 +340,10 @@ function normalizeProjectBlacklist(projectBlacklistById: StoredProjectBlacklistB
   return Object.entries(projectBlacklistById)
     .filter(([projectId, blacklisted]) => Boolean(projectId) && Boolean(blacklisted))
     .map(([projectId]) => projectId);
+}
+
+function normalizeProjectIds(projectIds: string[]) {
+  return Array.from(new Set(projectIds.map(readString).filter(Boolean)));
 }
 
 function normalizeSyncLog(syncLog: StoredSyncLogEntry[]) {
