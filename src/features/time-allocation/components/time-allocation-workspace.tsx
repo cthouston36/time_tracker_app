@@ -113,6 +113,27 @@ type ProjectControlsResponse = {
   error?: string;
 };
 
+type ManagedAppUser = AuthUser & {
+  active: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+type AdminUsersResponse = {
+  databaseConfigured?: boolean;
+  error?: string;
+  users?: ManagedAppUser[];
+};
+
+type AdminUserFormState = {
+  active: boolean;
+  firstName: string;
+  lastName: string;
+  password: string;
+  role: AuthUser["role"];
+  userId: string;
+};
+
 type PayItemDraft = {
   hours: string;
   quantity: string;
@@ -341,6 +362,12 @@ export function TimeAllocationWorkspace() {
   const [connectionStatus, setConnectionStatus] = useState("Mock data active");
   const [projectLoadError, setProjectLoadError] = useState("");
   const [entryNotice, setEntryNotice] = useState("");
+  const [adminUsers, setAdminUsers] = useState<ManagedAppUser[]>([]);
+  const [adminUsersNotice, setAdminUsersNotice] = useState("");
+  const [adminUserForm, setAdminUserForm] = useState<AdminUserFormState>(() => createEmptyAdminUserForm());
+  const [editingAdminUserId, setEditingAdminUserId] = useState("");
+  const [loadingAdminUsers, setLoadingAdminUsers] = useState(false);
+  const [savingAdminUser, setSavingAdminUser] = useState(false);
   const [syncSummary, setSyncSummary] = useState<ProcoreSyncSummary | null>(null);
   const [syncLog, setSyncLog] = useState<SyncLogEntry[]>([]);
   const [syncedAt, setSyncedAt] = useState<string | null>(null);
@@ -493,6 +520,18 @@ export function TimeAllocationWorkspace() {
 
     void loadProcoreConnectionStatus();
     void loadProjects();
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (currentUser?.role === "admin") {
+      void loadAdminUsers();
+      return;
+    }
+
+    setAdminUsers([]);
+    setAdminUsersNotice("");
+    setAdminUserForm(createEmptyAdminUserForm());
+    setEditingAdminUserId("");
   }, [currentUser]);
 
   useEffect(() => {
@@ -760,6 +799,10 @@ export function TimeAllocationWorkspace() {
     setShowOnlyMyProjects(false);
     setMyProjectsEditorOpen(false);
     setCrewSetupExpanded(false);
+    setAdminUsers([]);
+    setAdminUsersNotice("");
+    setAdminUserForm(createEmptyAdminUserForm());
+    setEditingAdminUserId("");
     setEntries([]);
     setDaySubmissions({});
     setDayEntryNotesByKey({});
@@ -777,6 +820,146 @@ export function TimeAllocationWorkspace() {
     setMergeTargetCrewMemberId("");
     setEditingCrewMember(null);
     setViewMode("entry");
+  }
+
+  async function loadAdminUsers() {
+    setLoadingAdminUsers(true);
+    setAdminUsersNotice("");
+
+    try {
+      const response = await fetch("/api/admin/users", {
+        cache: "no-store"
+      });
+      const data = (await response.json()) as AdminUsersResponse;
+
+      if (!response.ok || data.databaseConfigured === false) {
+        throw new Error(data.error ?? "User management requires the database.");
+      }
+
+      setAdminUsers(data.users ?? []);
+    } catch (error) {
+      setAdminUsersNotice(error instanceof Error ? error.message : "Unable to load users.");
+    } finally {
+      setLoadingAdminUsers(false);
+    }
+  }
+
+  function updateAdminUserForm(field: keyof AdminUserFormState, value: string | boolean) {
+    setAdminUsersNotice("");
+    setAdminUserForm((current) => ({
+      ...current,
+      [field]: value
+    }));
+  }
+
+  function startEditingAdminUser(user: ManagedAppUser) {
+    setEditingAdminUserId(user.id);
+    setAdminUsersNotice("");
+    setAdminUserForm({
+      active: user.active,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      password: "",
+      role: user.role,
+      userId: user.id
+    });
+  }
+
+  function resetAdminUserForm() {
+    setEditingAdminUserId("");
+    setAdminUsersNotice("");
+    setAdminUserForm(createEmptyAdminUserForm());
+  }
+
+  async function saveAdminUser() {
+    if (currentUser?.role !== "admin") {
+      return;
+    }
+
+    const userId = adminUserForm.userId.trim().toLowerCase();
+    const firstName = adminUserForm.firstName.trim();
+    const lastName = adminUserForm.lastName.trim();
+    const password = adminUserForm.password.trim();
+
+    if (!userId || !firstName || !lastName) {
+      setAdminUsersNotice("Enter user ID, first name, and last name.");
+      return;
+    }
+
+    if (!editingAdminUserId && !password) {
+      setAdminUsersNotice("Enter a temporary password for new users.");
+      return;
+    }
+
+    setSavingAdminUser(true);
+    setAdminUsersNotice("");
+
+    try {
+      const response = await fetch("/api/admin/users", {
+        body: JSON.stringify({
+          active: adminUserForm.active,
+          firstName,
+          lastName,
+          password: password || undefined,
+          role: adminUserForm.role,
+          userId
+        }),
+        headers: {
+          "Content-Type": "application/json"
+        },
+        method: "POST"
+      });
+      const data = (await response.json()) as AdminUsersResponse & { ok?: boolean };
+
+      if (!response.ok || data.ok === false) {
+        throw new Error(data.error ?? "Unable to save user.");
+      }
+
+      setAdminUsers(data.users ?? []);
+      resetAdminUserForm();
+      setAdminUsersNotice(`${firstName} ${lastName} saved.`);
+    } catch (error) {
+      setAdminUsersNotice(error instanceof Error ? error.message : "Unable to save user.");
+    } finally {
+      setSavingAdminUser(false);
+    }
+  }
+
+  async function setAdminUserActive(user: ManagedAppUser, active: boolean) {
+    if (currentUser?.role !== "admin") {
+      return;
+    }
+
+    setSavingAdminUser(true);
+    setAdminUsersNotice("");
+
+    try {
+      const response = await fetch("/api/admin/users", {
+        body: JSON.stringify({
+          active,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          role: user.role,
+          userId: user.id
+        }),
+        headers: {
+          "Content-Type": "application/json"
+        },
+        method: "POST"
+      });
+      const data = (await response.json()) as AdminUsersResponse & { ok?: boolean };
+
+      if (!response.ok || data.ok === false) {
+        throw new Error(data.error ?? "Unable to update user.");
+      }
+
+      setAdminUsers(data.users ?? []);
+      setAdminUsersNotice(`${formatUserName(user)} ${active ? "reactivated" : "deactivated"}.`);
+    } catch (error) {
+      setAdminUsersNotice(error instanceof Error ? error.message : "Unable to update user.");
+    } finally {
+      setSavingAdminUser(false);
+    }
   }
 
   function setCurrentUserMyJobIds(jobIds: string[]) {
@@ -2063,6 +2246,23 @@ export function TimeAllocationWorkspace() {
               onToggleProject={toggleProjectBlacklist}
               projectBlacklistById={projectBlacklistById}
               projects={allProjects}
+            />
+          ) : null}
+          {currentUser.role === "admin" ? (
+            <AdminUsersPanel
+              currentUserId={currentUser.id}
+              editingUserId={editingAdminUserId}
+              form={adminUserForm}
+              loading={loadingAdminUsers}
+              notice={adminUsersNotice}
+              onCancelEdit={resetAdminUserForm}
+              onEditUser={startEditingAdminUser}
+              onRefresh={loadAdminUsers}
+              onSaveUser={saveAdminUser}
+              onSetUserActive={setAdminUserActive}
+              onUpdateForm={updateAdminUserForm}
+              saving={savingAdminUser}
+              users={adminUsers}
             />
           ) : null}
 
@@ -4511,6 +4711,162 @@ function ProjectBlacklistPanel({
   );
 }
 
+function AdminUsersPanel({
+  currentUserId,
+  editingUserId,
+  form,
+  loading,
+  notice,
+  onCancelEdit,
+  onEditUser,
+  onRefresh,
+  onSaveUser,
+  onSetUserActive,
+  onUpdateForm,
+  saving,
+  users
+}: {
+  currentUserId: string;
+  editingUserId: string;
+  form: AdminUserFormState;
+  loading: boolean;
+  notice: string;
+  onCancelEdit: () => void;
+  onEditUser: (user: ManagedAppUser) => void;
+  onRefresh: () => void;
+  onSaveUser: () => void;
+  onSetUserActive: (user: ManagedAppUser, active: boolean) => void;
+  onUpdateForm: (field: keyof AdminUserFormState, value: string | boolean) => void;
+  saving: boolean;
+  users: ManagedAppUser[];
+}) {
+  const activeUserCount = users.filter((user) => user.active).length;
+
+  return (
+    <details className="admin-users">
+      <summary>
+        <Users aria-hidden="true" size={16} />
+        Users ({activeUserCount}/{users.length})
+      </summary>
+      <div className="admin-users-body">
+        {notice ? <div className={notice.toLowerCase().includes("unable") || notice.toLowerCase().includes("requires") ? "inline-alert" : "success-alert"}>{notice}</div> : null}
+        <div className="admin-user-form">
+          <div className="field-group">
+            <label htmlFor="admin-user-id">User ID</label>
+            <input
+              disabled={Boolean(editingUserId) || saving}
+              id="admin-user-id"
+              onChange={(event) => onUpdateForm("userId", event.target.value)}
+              placeholder="jdoe"
+              value={form.userId}
+            />
+          </div>
+          <div className="admin-user-name-grid">
+            <div className="field-group">
+              <label htmlFor="admin-user-first-name">First Name</label>
+              <input
+                disabled={saving}
+                id="admin-user-first-name"
+                onChange={(event) => onUpdateForm("firstName", event.target.value)}
+                value={form.firstName}
+              />
+            </div>
+            <div className="field-group">
+              <label htmlFor="admin-user-last-name">Last Name</label>
+              <input
+                disabled={saving}
+                id="admin-user-last-name"
+                onChange={(event) => onUpdateForm("lastName", event.target.value)}
+                value={form.lastName}
+              />
+            </div>
+          </div>
+          <div className="field-group">
+            <label htmlFor="admin-user-role">Role</label>
+            <select
+              disabled={saving || form.userId === currentUserId}
+              id="admin-user-role"
+              onChange={(event) => onUpdateForm("role", event.target.value as AuthUser["role"])}
+              value={form.role}
+            >
+              <option value="standard">Standard User</option>
+              <option value="project_manager">Project Manager</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+          <div className="field-group">
+            <label htmlFor="admin-user-password">{editingUserId ? "New Password" : "Temporary Password"}</label>
+            <input
+              autoComplete="new-password"
+              disabled={saving}
+              id="admin-user-password"
+              onChange={(event) => onUpdateForm("password", event.target.value)}
+              placeholder={editingUserId ? "Leave blank to keep current password" : ""}
+              type="password"
+              value={form.password}
+            />
+          </div>
+          <label className="compact-check-row">
+            <input
+              checked={form.active}
+              disabled={saving || form.userId === currentUserId}
+              onChange={(event) => onUpdateForm("active", event.target.checked)}
+              type="checkbox"
+            />
+            <span>Active account</span>
+          </label>
+          <div className="admin-user-actions">
+            <button className="primary-button" disabled={saving} onClick={onSaveUser} type="button">
+              <Save aria-hidden="true" size={16} />
+              {saving ? "Saving..." : editingUserId ? "Save user" : "Create user"}
+            </button>
+            {editingUserId ? (
+              <button className="secondary-button" disabled={saving} onClick={onCancelEdit} type="button">
+                <X aria-hidden="true" size={16} />
+                Cancel
+              </button>
+            ) : null}
+            <button className="secondary-button" disabled={loading || saving} onClick={onRefresh} type="button">
+              <RefreshCw aria-hidden="true" size={16} />
+              {loading ? "Loading..." : "Refresh"}
+            </button>
+          </div>
+        </div>
+        {users.length === 0 ? (
+          <div className="field-note">No database users loaded yet.</div>
+        ) : (
+          <div className="admin-user-list">
+            {users.map((user) => (
+              <div className={user.active ? "admin-user-row" : "admin-user-row inactive"} key={user.id}>
+                <div className="admin-user-row-main">
+                  <strong>{formatUserName(user)}</strong>
+                  <span>
+                    {user.id} - {formatRole(user.role)}
+                  </span>
+                </div>
+                <div className="admin-user-row-actions">
+                  <button className="icon-button" onClick={() => onEditUser(user)} title="Edit user" type="button">
+                    <Edit3 aria-hidden="true" size={16} />
+                  </button>
+                  <button
+                    className="icon-button"
+                    disabled={saving || user.id === currentUserId}
+                    onClick={() => onSetUserActive(user, !user.active)}
+                    title={user.active ? "Deactivate user" : "Reactivate user"}
+                    type="button"
+                  >
+                    {user.active ? <X aria-hidden="true" size={16} /> : <UserPlus aria-hidden="true" size={16} />}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </details>
+  );
+}
+
 function buildPayItemReport(entries: AllocationEntry[]): PayItemReportRow[] {
   const rows = new Map<string, PayItemReportRow>();
 
@@ -6010,6 +6366,17 @@ function calculateDailyReportTotalHours(row: DailyReportEmployeeRow) {
   }
 
   return (totalMinutes / 60).toFixed(2);
+}
+
+function createEmptyAdminUserForm(): AdminUserFormState {
+  return {
+    active: true,
+    firstName: "",
+    lastName: "",
+    password: "",
+    role: "standard",
+    userId: ""
+  };
 }
 
 function createEmptyDailyReportAnswers(): DailyReportAnswers {

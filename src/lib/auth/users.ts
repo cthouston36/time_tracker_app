@@ -19,6 +19,21 @@ type CountRow = {
   count: number | string | bigint;
 };
 
+export type ManagedAppUser = AuthUser & {
+  active: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type SaveAppUserInput = {
+  active: boolean;
+  firstName: string;
+  lastName: string;
+  password?: string;
+  role: UserRole;
+  userId: string;
+};
+
 const bootstrapUsers: BootstrapUser[] = [
   {
     id: "caleb",
@@ -91,6 +106,173 @@ export async function validateUserCredentials(userId: string, password: string) 
     lastName: user.last_name,
     role: user.role
   } satisfies AuthUser;
+}
+
+export async function getActiveAppUser(userId: string) {
+  const normalizedUserId = normalizeUserId(userId);
+
+  if (!normalizedUserId) {
+    return null;
+  }
+
+  const sql = getSql();
+
+  if (!sql) {
+    const user = bootstrapUsers.find((candidate) => normalizeUserId(candidate.id) === normalizedUserId);
+
+    if (!user) {
+      return null;
+    }
+
+    return {
+      firstName: user.firstName,
+      id: normalizeUserId(user.id),
+      lastName: user.lastName,
+      role: user.role
+    };
+  }
+
+  await ensureAuthUsersTable();
+  await seedBootstrapUsersIfEmpty();
+
+  const rows = (await sql`
+    select user_id, first_name, last_name, role, password_hash, active
+    from app_users
+    where user_id = ${normalizedUserId}
+    limit 1
+  `) as AuthUserRow[];
+  const user = rows[0];
+
+  if (!user?.active || !isUserRole(user.role)) {
+    return null;
+  }
+
+  return {
+    firstName: user.first_name,
+    id: user.user_id,
+    lastName: user.last_name,
+    role: user.role
+  } satisfies AuthUser;
+}
+
+export async function listAppUsers() {
+  const sql = getSql();
+
+  if (!sql) {
+    return null;
+  }
+
+  await ensureAuthUsersTable();
+  await seedBootstrapUsersIfEmpty();
+
+  const rows = (await sql`
+    select
+      user_id,
+      first_name,
+      last_name,
+      role,
+      active,
+      created_at::text as created_at,
+      updated_at::text as updated_at
+    from app_users
+    order by first_name, last_name, user_id
+  `) as Array<Omit<AuthUserRow, "password_hash"> & { created_at: string | null; updated_at: string | null }>;
+
+  return rows.flatMap((row) => {
+    if (!isUserRole(row.role)) {
+      return [];
+    }
+
+    return [
+      {
+        active: row.active,
+        createdAt: row.created_at ?? undefined,
+        firstName: row.first_name,
+        id: row.user_id,
+        lastName: row.last_name,
+        role: row.role,
+        updatedAt: row.updated_at ?? undefined
+      } satisfies ManagedAppUser
+    ];
+  });
+}
+
+export async function saveAppUser(input: SaveAppUserInput) {
+  const sql = getSql();
+
+  if (!sql) {
+    return null;
+  }
+
+  await ensureAuthUsersTable();
+  await seedBootstrapUsersIfEmpty();
+
+  const userId = normalizeUserId(input.userId);
+  const firstName = input.firstName.trim();
+  const lastName = input.lastName.trim();
+  const password = normalizePassword(input.password);
+
+  if (!userId || !firstName || !lastName || !isUserRole(input.role)) {
+    return false;
+  }
+
+  const existingRows = (await sql`
+    select user_id
+    from app_users
+    where user_id = ${userId}
+    limit 1
+  `) as Array<{ user_id: string }>;
+  const existingUser = existingRows[0];
+
+  if (!existingUser && !password) {
+    return false;
+  }
+
+  if (password) {
+    const passwordHash = await hashPassword(password);
+
+    await sql`
+      insert into app_users (
+        user_id,
+        first_name,
+        last_name,
+        role,
+        password_hash,
+        active,
+        created_at,
+        updated_at
+      )
+      values (
+        ${userId},
+        ${firstName},
+        ${lastName},
+        ${input.role},
+        ${passwordHash},
+        ${input.active},
+        now(),
+        now()
+      )
+      on conflict (user_id) do update
+      set first_name = excluded.first_name,
+          last_name = excluded.last_name,
+          role = excluded.role,
+          password_hash = excluded.password_hash,
+          active = excluded.active,
+          updated_at = now()
+    `;
+  } else {
+    await sql`
+      update app_users
+      set first_name = ${firstName},
+          last_name = ${lastName},
+          role = ${input.role},
+          active = ${input.active},
+          updated_at = now()
+      where user_id = ${userId}
+    `;
+  }
+
+  return true;
 }
 
 async function ensureAuthUsersTable() {

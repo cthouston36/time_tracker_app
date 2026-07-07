@@ -1068,6 +1068,103 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   overflow-wrap: anywhere;
 }
 
+.admin-users {
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin-top: 12px;
+  padding: 10px 12px;
+}
+
+.admin-users > summary {
+  align-items: center;
+  color: var(--foreground);
+  cursor: pointer;
+  display: flex;
+  font-size: 0.86rem;
+  font-weight: 700;
+  gap: 8px;
+}
+
+.admin-users-body {
+  display: grid;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.admin-user-form {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+}
+
+.admin-user-form .field-group {
+  margin-bottom: 0;
+}
+
+.admin-user-name-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.admin-user-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.admin-user-actions .primary-button,
+.admin-user-actions .secondary-button {
+  width: 100%;
+}
+
+.admin-user-list {
+  display: grid;
+  gap: 8px;
+  max-height: 260px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.admin-user-row {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  padding: 8px;
+}
+
+.admin-user-row.inactive {
+  opacity: 0.62;
+}
+
+.admin-user-row-main {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.admin-user-row-main strong,
+.admin-user-row-main span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.admin-user-row-main span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.admin-user-row-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
 .pay-item-matrix {
   border: 1px solid var(--line);
   border-radius: 8px;

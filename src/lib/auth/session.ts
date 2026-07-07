@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { getActiveAppUser } from "@/lib/auth/users";
 import type { AuthUser } from "@/lib/auth/types";
 
 const SESSION_COOKIE = "time_tracker_user";
@@ -16,7 +17,7 @@ export async function getCurrentUser() {
   const signedUser = parseSignedSessionValue(value);
 
   if (signedUser) {
-    return signedUser;
+    return (await getActiveAppUser(signedUser.id)) ?? null;
   }
 
   return process.env.NODE_ENV === "production" ? null : parseLegacySessionValue(value);
