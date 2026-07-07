@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 import { mkdir, readFile, writeFile } from "fs/promises";
 import path from "path";
 import { getSql } from "@/lib/db";
@@ -9,6 +10,8 @@ const REFRESH_TOKEN_COOKIE = "procore_refresh_token";
 const OAUTH_STATE_COOKIE = "procore_oauth_state";
 const PROCORE_INTEGRATION_TOKEN_SETTING_KEY = "procore_integration_token";
 const PROCORE_TOKEN_REFRESH_BUFFER_MS = 60 * 1000;
+const PROCORE_TOKEN_ENCRYPTION_ALGORITHM = "aes-256-gcm";
+const PROCORE_TOKEN_ENCRYPTION_VERSION = 1;
 
 type StoredProcoreIntegrationToken = {
   accessToken: string;
@@ -17,6 +20,15 @@ type StoredProcoreIntegrationToken = {
   expiresAt: number;
   refreshToken?: string;
   tokenType: string;
+};
+
+type EncryptedProcoreIntegrationToken = {
+  algorithm: typeof PROCORE_TOKEN_ENCRYPTION_ALGORITHM;
+  authTag: string;
+  ciphertext: string;
+  encrypted: true;
+  iv: string;
+  version: typeof PROCORE_TOKEN_ENCRYPTION_VERSION;
 };
 
 export async function createOAuthState() {
@@ -145,12 +157,18 @@ async function readProcoreIntegrationToken() {
       return null;
     }
 
-    return parseStoredProcoreIntegrationToken(value);
+    const token = parseStoredProcoreIntegrationToken(value);
+
+    if (token && !isEncryptedProcoreIntegrationToken(value) && getProcoreTokenEncryptionKey()) {
+      await writeProcoreIntegrationToken(token);
+    }
+
+    return token;
   }
 
   try {
     const file = await readFile(getProcoreIntegrationTokenPath(), "utf8");
-    return JSON.parse(file) as StoredProcoreIntegrationToken;
+    return parseStoredProcoreIntegrationToken(file);
   } catch {
     return null;
   }
@@ -163,7 +181,7 @@ async function writeProcoreIntegrationToken(token: StoredProcoreIntegrationToken
     await ensureAppSettingsTable();
     await sql`
       insert into app_settings (key, value, updated_at)
-      values (${PROCORE_INTEGRATION_TOKEN_SETTING_KEY}, ${JSON.stringify(token)}::jsonb, now())
+      values (${PROCORE_INTEGRATION_TOKEN_SETTING_KEY}, ${JSON.stringify(serializeStoredProcoreIntegrationToken(token))}::jsonb, now())
       on conflict (key) do update
       set value = excluded.value,
           updated_at = now()
@@ -174,7 +192,7 @@ async function writeProcoreIntegrationToken(token: StoredProcoreIntegrationToken
   const filePath = getProcoreIntegrationTokenPath();
 
   await mkdir(path.dirname(filePath), { recursive: true });
-  await writeFile(filePath, JSON.stringify(token, null, 2), "utf8");
+  await writeFile(filePath, JSON.stringify(serializeStoredProcoreIntegrationToken(token), null, 2), "utf8");
 }
 
 async function ensureAppSettingsTable() {
@@ -193,12 +211,148 @@ async function ensureAppSettingsTable() {
   `;
 }
 
-function parseStoredProcoreIntegrationToken(value: unknown) {
-  if (typeof value === "string") {
-    return JSON.parse(value) as StoredProcoreIntegrationToken;
+function serializeStoredProcoreIntegrationToken(token: StoredProcoreIntegrationToken) {
+  const key = getProcoreTokenEncryptionKey();
+
+  if (!key) {
+    return token;
   }
 
-  return value as StoredProcoreIntegrationToken;
+  const iv = randomBytes(12);
+  const cipher = createCipheriv(PROCORE_TOKEN_ENCRYPTION_ALGORITHM, key, iv);
+  const ciphertext = Buffer.concat([
+    cipher.update(JSON.stringify(token), "utf8"),
+    cipher.final()
+  ]);
+
+  return {
+    algorithm: PROCORE_TOKEN_ENCRYPTION_ALGORITHM,
+    authTag: cipher.getAuthTag().toString("base64"),
+    ciphertext: ciphertext.toString("base64"),
+    encrypted: true,
+    iv: iv.toString("base64"),
+    version: PROCORE_TOKEN_ENCRYPTION_VERSION
+  } satisfies EncryptedProcoreIntegrationToken;
+}
+
+function parseStoredProcoreIntegrationToken(value: unknown): StoredProcoreIntegrationToken | null {
+  if (typeof value === "string") {
+    try {
+      return parseStoredProcoreIntegrationToken(JSON.parse(value));
+    } catch {
+      return null;
+    }
+  }
+
+  if (isEncryptedProcoreIntegrationToken(value)) {
+    return decryptStoredProcoreIntegrationToken(value);
+  }
+
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  return normalizeStoredProcoreIntegrationToken(value);
+}
+
+function decryptStoredProcoreIntegrationToken(value: EncryptedProcoreIntegrationToken) {
+  const keys = getProcoreTokenDecryptionKeys();
+
+  if (keys.length === 0) {
+    return null;
+  }
+
+  for (const key of keys) {
+    try {
+      const decipher = createDecipheriv(
+        PROCORE_TOKEN_ENCRYPTION_ALGORITHM,
+        key,
+        Buffer.from(value.iv, "base64")
+      );
+      decipher.setAuthTag(Buffer.from(value.authTag, "base64"));
+
+      const plaintext = Buffer.concat([
+        decipher.update(Buffer.from(value.ciphertext, "base64")),
+        decipher.final()
+      ]).toString("utf8");
+
+      return parseStoredProcoreIntegrationToken(plaintext);
+    } catch {
+      // Try the next configured key. This supports moving from the client secret fallback
+      // to a dedicated token encryption key without forcing an immediate Procore reconnect.
+    }
+  }
+
+  return null;
+}
+
+function normalizeStoredProcoreIntegrationToken(value: Record<string, unknown>) {
+  const accessToken = readString(value.accessToken);
+  const connectedAt = readString(value.connectedAt);
+  const connectedBy = readOptionalString(value.connectedBy);
+  const expiresAt = typeof value.expiresAt === "number" ? value.expiresAt : Number(value.expiresAt);
+  const refreshToken = readOptionalString(value.refreshToken);
+  const tokenType = readString(value.tokenType);
+
+  if (!accessToken || !Number.isFinite(expiresAt) || !tokenType) {
+    return null;
+  }
+
+  return {
+    accessToken,
+    connectedAt: connectedAt || new Date(0).toISOString(),
+    ...(connectedBy ? { connectedBy } : {}),
+    expiresAt,
+    ...(refreshToken ? { refreshToken } : {}),
+    tokenType
+  } satisfies StoredProcoreIntegrationToken;
+}
+
+function isEncryptedProcoreIntegrationToken(value: unknown): value is EncryptedProcoreIntegrationToken {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    value.encrypted === true &&
+    value.algorithm === PROCORE_TOKEN_ENCRYPTION_ALGORITHM &&
+    value.version === PROCORE_TOKEN_ENCRYPTION_VERSION &&
+    typeof value.authTag === "string" &&
+    typeof value.ciphertext === "string" &&
+    typeof value.iv === "string"
+  );
+}
+
+function getProcoreTokenEncryptionKey() {
+  const secret = readOptionalString(process.env.PROCORE_TOKEN_ENCRYPTION_KEY) ?? readOptionalString(process.env.PROCORE_CLIENT_SECRET);
+
+  if (!secret) {
+    return null;
+  }
+
+  return createHash("sha256").update(secret).digest();
+}
+
+function getProcoreTokenDecryptionKeys() {
+  return Array.from(
+    new Set([
+      readOptionalString(process.env.PROCORE_TOKEN_ENCRYPTION_KEY),
+      readOptionalString(process.env.PROCORE_CLIENT_SECRET)
+    ].filter((secret): secret is string => Boolean(secret)))
+  ).map((secret) => createHash("sha256").update(secret).digest());
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function readString(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function readOptionalString(value: unknown) {
+  const normalizedValue = readString(value);
+  return normalizedValue || undefined;
 }
 
 function getProcoreIntegrationTokenPath() {

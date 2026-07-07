@@ -54,5 +54,8 @@ Keep these in `.env.local`, never in committed source files:
 ```env
 PROCORE_CLIENT_ID=your_client_id
 PROCORE_CLIENT_SECRET=your_client_secret
+PROCORE_TOKEN_ENCRYPTION_KEY=your_long_random_secret
 PROCORE_COMPANY_ID=your_company_id
 ```
+
+`PROCORE_TOKEN_ENCRYPTION_KEY` should be set in production. If it is omitted, the app falls back to `PROCORE_CLIENT_SECRET` for token encryption so existing deployments continue to work.
