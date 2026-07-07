@@ -132,6 +132,274 @@ export async function replaceCrewData(crewDirectory: StoredCrewMember[], crewMem
   };
 }
 
+export async function upsertCrewMember(crewMember: StoredCrewMember) {
+  const sql = getSql();
+
+  if (!sql) {
+    return null;
+  }
+
+  await ensureCrewTables();
+
+  const normalizedCrewMember = normalizeCrewMember(crewMember);
+
+  if (!normalizedCrewMember) {
+    return false;
+  }
+
+  await sql`
+    insert into crew_members (
+      id,
+      name,
+      job_title,
+      raw_data,
+      updated_at
+    )
+    values (
+      ${normalizedCrewMember.id},
+      ${normalizedCrewMember.name},
+      ${normalizedCrewMember.jobTitle},
+      ${JSON.stringify(normalizedCrewMember)}::jsonb,
+      now()
+    )
+    on conflict (id) do update
+    set name = excluded.name,
+        job_title = excluded.job_title,
+        raw_data = excluded.raw_data,
+        updated_at = now()
+  `;
+
+  return true;
+}
+
+export async function addCrewMemberToProject(projectId: string, crewMember: StoredCrewMember) {
+  const sql = getSql();
+
+  if (!sql) {
+    return null;
+  }
+
+  await ensureCrewTables();
+
+  const normalizedProjectId = readString(projectId);
+  const normalizedCrewMember = normalizeCrewMember(crewMember);
+
+  if (!normalizedProjectId || !normalizedCrewMember) {
+    return false;
+  }
+
+  await sql.transaction([
+    sql`
+      insert into crew_members (
+        id,
+        name,
+        job_title,
+        raw_data,
+        updated_at
+      )
+      values (
+        ${normalizedCrewMember.id},
+        ${normalizedCrewMember.name},
+        ${normalizedCrewMember.jobTitle},
+        ${JSON.stringify(normalizedCrewMember)}::jsonb,
+        now()
+      )
+      on conflict (id) do update
+      set name = excluded.name,
+          job_title = excluded.job_title,
+          raw_data = excluded.raw_data,
+          updated_at = now()
+    `,
+    sql`
+      insert into project_crew_members (
+        project_id,
+        crew_member_id,
+        crew_member_name,
+        job_title,
+        raw_data,
+        updated_at
+      )
+      values (
+        ${normalizedProjectId},
+        ${normalizedCrewMember.id},
+        ${normalizedCrewMember.name},
+        ${normalizedCrewMember.jobTitle},
+        ${JSON.stringify(normalizedCrewMember)}::jsonb,
+        now()
+      )
+      on conflict (project_id, crew_member_id) do update
+      set crew_member_name = excluded.crew_member_name,
+          job_title = excluded.job_title,
+          raw_data = excluded.raw_data,
+          updated_at = now()
+    `
+  ]);
+
+  return true;
+}
+
+export async function updateCrewMember(crewMember: StoredCrewMember) {
+  const sql = getSql();
+
+  if (!sql) {
+    return null;
+  }
+
+  await ensureCrewTables();
+
+  const normalizedCrewMember = normalizeCrewMember(crewMember);
+
+  if (!normalizedCrewMember) {
+    return false;
+  }
+
+  await sql.transaction([
+    sql`
+      insert into crew_members (
+        id,
+        name,
+        job_title,
+        raw_data,
+        updated_at
+      )
+      values (
+        ${normalizedCrewMember.id},
+        ${normalizedCrewMember.name},
+        ${normalizedCrewMember.jobTitle},
+        ${JSON.stringify(normalizedCrewMember)}::jsonb,
+        now()
+      )
+      on conflict (id) do update
+      set name = excluded.name,
+          job_title = excluded.job_title,
+          raw_data = excluded.raw_data,
+          updated_at = now()
+    `,
+    sql`
+      update project_crew_members
+      set crew_member_name = ${normalizedCrewMember.name},
+          job_title = ${normalizedCrewMember.jobTitle},
+          raw_data = ${JSON.stringify(normalizedCrewMember)}::jsonb,
+          updated_at = now()
+      where crew_member_id = ${normalizedCrewMember.id}
+    `
+  ]);
+
+  return true;
+}
+
+export async function removeCrewMemberFromProject(projectId: string, crewMemberId: string) {
+  const sql = getSql();
+
+  if (!sql) {
+    return null;
+  }
+
+  await ensureCrewTables();
+
+  const normalizedProjectId = readString(projectId);
+  const normalizedCrewMemberId = readString(crewMemberId);
+
+  if (!normalizedProjectId || !normalizedCrewMemberId) {
+    return false;
+  }
+
+  await sql`
+    delete from project_crew_members
+    where project_id = ${normalizedProjectId}
+      and crew_member_id = ${normalizedCrewMemberId}
+  `;
+
+  return true;
+}
+
+export async function mergeCrewMember(sourceCrewMemberId: string, targetCrewMember: StoredCrewMember) {
+  const sql = getSql();
+
+  if (!sql) {
+    return null;
+  }
+
+  await ensureCrewTables();
+
+  const normalizedSourceCrewMemberId = readString(sourceCrewMemberId);
+  const normalizedTargetCrewMember = normalizeCrewMember(targetCrewMember);
+
+  if (
+    !normalizedSourceCrewMemberId ||
+    !normalizedTargetCrewMember ||
+    normalizedSourceCrewMemberId === normalizedTargetCrewMember.id
+  ) {
+    return false;
+  }
+
+  await sql.transaction([
+    sql`
+      insert into crew_members (
+        id,
+        name,
+        job_title,
+        raw_data,
+        updated_at
+      )
+      values (
+        ${normalizedTargetCrewMember.id},
+        ${normalizedTargetCrewMember.name},
+        ${normalizedTargetCrewMember.jobTitle},
+        ${JSON.stringify(normalizedTargetCrewMember)}::jsonb,
+        now()
+      )
+      on conflict (id) do update
+      set name = excluded.name,
+          job_title = excluded.job_title,
+          raw_data = excluded.raw_data,
+          updated_at = now()
+    `,
+    sql`
+      insert into project_crew_members (
+        project_id,
+        crew_member_id,
+        crew_member_name,
+        job_title,
+        raw_data,
+        updated_at
+      )
+      select
+        project_id,
+        ${normalizedTargetCrewMember.id},
+        ${normalizedTargetCrewMember.name},
+        ${normalizedTargetCrewMember.jobTitle},
+        ${JSON.stringify(normalizedTargetCrewMember)}::jsonb,
+        now()
+      from project_crew_members
+      where crew_member_id = ${normalizedSourceCrewMemberId}
+      on conflict (project_id, crew_member_id) do update
+      set crew_member_name = excluded.crew_member_name,
+          job_title = excluded.job_title,
+          raw_data = excluded.raw_data,
+          updated_at = now()
+    `,
+    sql`
+      update project_crew_members
+      set crew_member_name = ${normalizedTargetCrewMember.name},
+          job_title = ${normalizedTargetCrewMember.jobTitle},
+          raw_data = ${JSON.stringify(normalizedTargetCrewMember)}::jsonb,
+          updated_at = now()
+      where crew_member_id = ${normalizedTargetCrewMember.id}
+    `,
+    sql`
+      delete from project_crew_members
+      where crew_member_id = ${normalizedSourceCrewMemberId}
+    `,
+    sql`
+      delete from crew_members
+      where id = ${normalizedSourceCrewMemberId}
+    `
+  ]);
+
+  return true;
+}
+
 async function ensureCrewTables() {
   const sql = getSql();
 

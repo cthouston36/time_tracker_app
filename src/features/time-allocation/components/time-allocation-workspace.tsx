@@ -349,7 +349,6 @@ export function TimeAllocationWorkspace() {
   const [updatingProject, setUpdatingProject] = useState(false);
   const [appStateHydrated, setAppStateHydrated] = useState(false);
   const dateInputRef = useRef<HTMLInputElement>(null);
-  const lastSavedCrewStateRef = useRef("");
   const lastSavedDailyReportStateRef = useRef("");
   const lastSavedDayRecordsStateRef = useRef("");
   const lastSavedProjectControlsStateRef = useRef("");
@@ -656,40 +655,6 @@ export function TimeAllocationWorkspace() {
     projectBlacklistById,
     syncLog
   ]);
-
-  useEffect(() => {
-    if (!currentUser || !appStateHydrated) {
-      return;
-    }
-
-    const crewStatePayload = buildCrewStatePayload({ crewDirectory, crewMembersByProject });
-    const serializedCrewState = JSON.stringify(crewStatePayload);
-
-    if (serializedCrewState === lastSavedCrewStateRef.current) {
-      return;
-    }
-
-    const saveTimeout = window.setTimeout(() => {
-      lastSavedCrewStateRef.current = serializedCrewState;
-      void fetch("/api/crew", {
-        body: JSON.stringify(crewStatePayload),
-        headers: {
-          "Content-Type": "application/json"
-        },
-        method: "PUT"
-      }).then((response) => {
-        if (!response.ok) {
-          lastSavedCrewStateRef.current = "";
-        }
-      }).catch(() => {
-        lastSavedCrewStateRef.current = "";
-      });
-    }, 500);
-
-    return () => {
-      window.clearTimeout(saveTimeout);
-    };
-  }, [appStateHydrated, crewDirectory, crewMembersByProject, currentUser]);
 
   useEffect(() => {
     if (!currentUser || !appStateHydrated) {
@@ -1215,7 +1180,6 @@ export function TimeAllocationWorkspace() {
     );
     setMyJobsByUser(normalizedState.myJobsByUser);
     setProjectBlacklistById(normalizedState.projectBlacklistById);
-    lastSavedCrewStateRef.current = options.markSaved ? JSON.stringify(buildCrewStatePayload(normalizedState)) : "";
     lastSavedDailyReportStateRef.current = options.markSaved ? JSON.stringify(buildDailyReportStatePayload(normalizedState)) : "";
     lastSavedDayRecordsStateRef.current = options.markSaved ? JSON.stringify(buildDayRecordsStatePayload(normalizedState)) : "";
     lastSavedProjectControlsStateRef.current = options.markSaved ? JSON.stringify(buildProjectControlsStatePayload(normalizedState)) : "";
@@ -1270,6 +1234,9 @@ export function TimeAllocationWorkspace() {
         crewMember
       ]
     }));
+    void addDatabaseCrewMemberToProject(selectedProject.id, crewMember).catch((error) => {
+      setEntryNotice(error instanceof Error ? error.message : "Crew member added locally, but did not sync.");
+    });
     setCrewMemberName("");
     setCrewMemberJobTitle("");
     setSelectedExistingCrewMemberId("");
@@ -1298,6 +1265,9 @@ export function TimeAllocationWorkspace() {
       ...current,
       [selectedProject.id]: sortCrewMembersByName([...(current[selectedProject.id] ?? []), crewMember])
     }));
+    void addDatabaseCrewMemberToProject(selectedProject.id, crewMember).catch((error) => {
+      setEntryNotice(error instanceof Error ? error.message : "Crew member added locally, but did not sync.");
+    });
     setSelectedExistingCrewMemberId("");
     setEntryNotice(`${crewMember.name} added to ${selectedProject.name}.`);
   }
@@ -1365,6 +1335,11 @@ export function TimeAllocationWorkspace() {
         ])
       ) as CrewMembersByProject
     );
+    const updatedCrewMember = {
+      id: editingCrewMember.crewMemberId,
+      name,
+      jobTitle
+    };
     const nextEntries = entries.map((entry) => {
       if (!entry.crewAllocations?.length) {
         return entry;
@@ -1396,6 +1371,9 @@ export function TimeAllocationWorkspace() {
     const changedEntries = nextEntries.filter((entry, index) => entry !== entries[index]);
 
     setEntries(nextEntries);
+    void updateDatabaseCrewMember(updatedCrewMember).catch((error) => {
+      setEntryNotice(error instanceof Error ? error.message : "Crew member updated locally, but did not sync.");
+    });
     if (changedEntries.length > 0) {
       void saveDatabaseEntries(changedEntries).catch((error) => {
         setEntryNotice(error instanceof Error ? error.message : "Crew member updated locally, but saved entry rows did not sync.");
@@ -1419,6 +1397,9 @@ export function TimeAllocationWorkspace() {
       ...current,
       [selectedProject.id]: (current[selectedProject.id] ?? []).filter((member) => member.id !== crewMemberId)
     }));
+    void removeDatabaseCrewMemberFromProject(selectedProject.id, crewMemberId).catch((error) => {
+      setEntryNotice(error instanceof Error ? error.message : "Crew member removed locally, but did not sync.");
+    });
     setDraftsByPayItem((current) =>
       Object.fromEntries(
         Object.entries(current).map(([payItemId, draft]) => [
@@ -1468,6 +1449,9 @@ export function TimeAllocationWorkspace() {
     setCrewDirectory((current) => current.filter((member) => member.id !== sourceCrewMember.id));
     setCrewMembersByProject((current) => mergeProjectCrewMembers(current, sourceCrewMember.id, targetCrewMember));
     setEntries(nextEntries);
+    void mergeDatabaseCrewMembers(sourceCrewMember.id, targetCrewMember).catch((error) => {
+      setEntryNotice(error instanceof Error ? error.message : "Crew members merged locally, but crew records did not sync.");
+    });
     if (changedEntries.length > 0) {
       void saveDatabaseEntries(changedEntries).catch((error) => {
         setEntryNotice(error instanceof Error ? error.message : "Crew members merged locally, but saved entry rows did not sync.");
@@ -5022,13 +5006,6 @@ function buildSharedAppState(state: SharedAppState): SharedAppState {
   };
 }
 
-function buildCrewStatePayload(state: Pick<SharedAppState, "crewDirectory" | "crewMembersByProject">) {
-  return {
-    crewDirectory: sortCrewMembersByName(state.crewDirectory),
-    crewMembersByProject: state.crewMembersByProject
-  };
-}
-
 function buildDailyReportStatePayload(
   state: Pick<SharedAppState, "dailyReportUploadsByKey" | "dailyReportsByKey">
 ) {
@@ -5129,6 +5106,76 @@ async function loadDatabaseCrewData() {
     };
   } catch {
     return null;
+  }
+}
+
+async function addDatabaseCrewMemberToProject(projectId: string, crewMember: CrewMember) {
+  const response = await fetch("/api/crew", {
+    body: JSON.stringify({
+      action: "add_to_project",
+      crewMember,
+      projectId
+    }),
+    headers: {
+      "Content-Type": "application/json"
+    },
+    method: "POST"
+  });
+  const data = (await response.json()) as { error?: string; ok?: boolean };
+
+  if (!response.ok || data.ok === false) {
+    throw new Error(data.error ?? "Unable to save crew member.");
+  }
+}
+
+async function updateDatabaseCrewMember(crewMember: CrewMember) {
+  const response = await fetch("/api/crew", {
+    body: JSON.stringify({
+      action: "update_member",
+      crewMember
+    }),
+    headers: {
+      "Content-Type": "application/json"
+    },
+    method: "PATCH"
+  });
+  const data = (await response.json()) as { error?: string; ok?: boolean };
+
+  if (!response.ok || data.ok === false) {
+    throw new Error(data.error ?? "Unable to update crew member.");
+  }
+}
+
+async function removeDatabaseCrewMemberFromProject(projectId: string, crewMemberId: string) {
+  const response = await fetch(
+    `/api/crew?projectId=${encodeURIComponent(projectId)}&crewMemberId=${encodeURIComponent(crewMemberId)}`,
+    {
+      method: "DELETE"
+    }
+  );
+  const data = (await response.json()) as { error?: string; ok?: boolean };
+
+  if (!response.ok || data.ok === false) {
+    throw new Error(data.error ?? "Unable to remove crew member from project.");
+  }
+}
+
+async function mergeDatabaseCrewMembers(sourceCrewMemberId: string, targetCrewMember: CrewMember) {
+  const response = await fetch("/api/crew", {
+    body: JSON.stringify({
+      action: "merge",
+      sourceCrewMemberId,
+      targetCrewMember
+    }),
+    headers: {
+      "Content-Type": "application/json"
+    },
+    method: "PATCH"
+  });
+  const data = (await response.json()) as { error?: string; ok?: boolean };
+
+  if (!response.ok || data.ok === false) {
+    throw new Error(data.error ?? "Unable to merge crew members.");
   }
 }
 
