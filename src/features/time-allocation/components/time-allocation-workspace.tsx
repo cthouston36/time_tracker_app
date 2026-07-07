@@ -105,6 +105,13 @@ type DailyReportsResponse = {
   error?: string;
 };
 
+type DayRecordsResponse = {
+  dayEntryNotesByKey?: DayEntryNotesByKey;
+  daySubmissions?: DaySubmissionsByKey;
+  databaseConfigured?: boolean;
+  error?: string;
+};
+
 type PayItemDraft = {
   hours: string;
   quantity: string;
@@ -345,6 +352,7 @@ export function TimeAllocationWorkspace() {
   const lastSavedEntriesRef = useRef("");
   const lastSavedCrewStateRef = useRef("");
   const lastSavedDailyReportStateRef = useRef("");
+  const lastSavedDayRecordsStateRef = useRef("");
 
   const projects = useMemo(
     () => allProjects.filter((project) => !projectBlacklistById[project.id]),
@@ -375,7 +383,9 @@ export function TimeAllocationWorkspace() {
     ? crewDirectory.filter((member) => !projectHasCrewMember(selectedProjectCrewMembers, member.id))
     : [];
   const crewSummaryRows = buildCrewSummary(visibleEntries, selectedProjectCrewMembers);
-  const currentDaySubmission = daySubmissions[getDayKey(selectedProjectId, workDate)] ?? { status: "draft" };
+  const currentDaySubmission: DaySubmission = selectedProject
+    ? daySubmissions[getDayKey(selectedProject.id, workDate)] ?? { status: "draft" }
+    : { status: "draft" };
   const currentDayEntryNotes = selectedProject
     ? dayEntryNotesByKey[getDayKey(selectedProject.id, workDate)] ?? { notes: "", inventory: "" }
     : { notes: "", inventory: "" };
@@ -579,10 +589,11 @@ export function TimeAllocationWorkspace() {
           return;
         }
 
-        const [databaseEntries, databaseCrewData, databaseDailyReportData] = await Promise.all([
+        const [databaseEntries, databaseCrewData, databaseDailyReportData, databaseDayRecords] = await Promise.all([
           loadDatabaseEntries(),
           loadDatabaseCrewData(),
-          loadDatabaseDailyReportData()
+          loadDatabaseDailyReportData(),
+          loadDatabaseDayRecords()
         ]);
 
         if (cancelled) {
@@ -594,7 +605,8 @@ export function TimeAllocationWorkspace() {
           ...sharedState,
           ...(databaseEntries ? { entries: databaseEntries } : {}),
           ...(databaseCrewData ?? {}),
-          ...(databaseDailyReportData ?? {})
+          ...(databaseDailyReportData ?? {}),
+          ...(databaseDayRecords ?? {})
         };
 
         if (data.state) {
@@ -776,6 +788,40 @@ export function TimeAllocationWorkspace() {
       window.clearTimeout(saveTimeout);
     };
   }, [appStateHydrated, currentUser, dailyReportUploadsByKey, dailyReportsByKey]);
+
+  useEffect(() => {
+    if (!currentUser || !appStateHydrated) {
+      return;
+    }
+
+    const dayRecordsStatePayload = buildDayRecordsStatePayload({ dayEntryNotesByKey, daySubmissions });
+    const serializedDayRecordsState = JSON.stringify(dayRecordsStatePayload);
+
+    if (serializedDayRecordsState === lastSavedDayRecordsStateRef.current) {
+      return;
+    }
+
+    const saveTimeout = window.setTimeout(() => {
+      lastSavedDayRecordsStateRef.current = serializedDayRecordsState;
+      void fetch("/api/day-records", {
+        body: JSON.stringify(dayRecordsStatePayload),
+        headers: {
+          "Content-Type": "application/json"
+        },
+        method: "PUT"
+      }).then((response) => {
+        if (!response.ok) {
+          lastSavedDayRecordsStateRef.current = "";
+        }
+      }).catch(() => {
+        lastSavedDayRecordsStateRef.current = "";
+      });
+    }, 500);
+
+    return () => {
+      window.clearTimeout(saveTimeout);
+    };
+  }, [appStateHydrated, currentUser, dayEntryNotesByKey, daySubmissions]);
 
   useEffect(() => {
     if (!currentUser || projects.length === 0 || entries.length === 0) {
@@ -1203,6 +1249,7 @@ export function TimeAllocationWorkspace() {
     lastSavedEntriesRef.current = options.markSaved ? JSON.stringify(normalizedState.entries) : "";
     lastSavedCrewStateRef.current = options.markSaved ? JSON.stringify(buildCrewStatePayload(normalizedState)) : "";
     lastSavedDailyReportStateRef.current = options.markSaved ? JSON.stringify(buildDailyReportStatePayload(normalizedState)) : "";
+    lastSavedDayRecordsStateRef.current = options.markSaved ? JSON.stringify(buildDayRecordsStatePayload(normalizedState)) : "";
   }
 
   function updateDraft(payItemId: string, field: "hours" | "quantity", value: string) {
@@ -4981,6 +5028,13 @@ function buildDailyReportStatePayload(
   };
 }
 
+function buildDayRecordsStatePayload(state: Pick<SharedAppState, "dayEntryNotesByKey" | "daySubmissions">) {
+  return {
+    dayEntryNotesByKey: state.dayEntryNotesByKey,
+    daySubmissions: state.daySubmissions
+  };
+}
+
 async function loadDatabaseEntries() {
   try {
     const response = await fetch("/api/entries", {
@@ -5032,6 +5086,26 @@ async function loadDatabaseDailyReportData() {
     return {
       dailyReportUploadsByKey: data.dailyReportUploadsByKey ?? {},
       dailyReportsByKey: data.dailyReportsByKey ?? {}
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function loadDatabaseDayRecords() {
+  try {
+    const response = await fetch("/api/day-records", {
+      cache: "no-store"
+    });
+    const data = (await response.json()) as DayRecordsResponse;
+
+    if (!response.ok || !data.databaseConfigured) {
+      return null;
+    }
+
+    return {
+      dayEntryNotesByKey: data.dayEntryNotesByKey ?? {},
+      daySubmissions: data.daySubmissions ?? {}
     };
   } catch {
     return null;
