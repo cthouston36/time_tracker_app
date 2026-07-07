@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/session";
+import { mirrorSharedAppStateToTables, type AppStateMirrorStatus } from "@/lib/app-state-normalized";
 import { readAppSetting, writeAppSetting } from "@/lib/db";
 
 const APP_STATE_KEY = "time_allocation_app_state";
@@ -45,7 +46,17 @@ export async function PUT(request: NextRequest) {
     updatedBy: user.id
   });
 
+  let mirrorStatus: AppStateMirrorStatus | "failed" = "not_configured";
+
+  try {
+    mirrorStatus = await mirrorSharedAppStateToTables(body.state);
+  } catch (error) {
+    mirrorStatus = "failed";
+    console.error("App state normalized table mirror failed", error);
+  }
+
   return NextResponse.json({
-    ok: true
+    ok: true,
+    mirrorStatus
   });
 }
