@@ -349,7 +349,6 @@ export function TimeAllocationWorkspace() {
   const [updatingProject, setUpdatingProject] = useState(false);
   const [appStateHydrated, setAppStateHydrated] = useState(false);
   const dateInputRef = useRef<HTMLInputElement>(null);
-  const lastSavedDailyReportStateRef = useRef("");
   const lastSavedProjectControlsStateRef = useRef("");
   const dayNotesSaveTimeoutsRef = useRef<Record<string, number>>({});
 
@@ -655,40 +654,6 @@ export function TimeAllocationWorkspace() {
     projectBlacklistById,
     syncLog
   ]);
-
-  useEffect(() => {
-    if (!currentUser || !appStateHydrated) {
-      return;
-    }
-
-    const dailyReportStatePayload = buildDailyReportStatePayload({ dailyReportUploadsByKey, dailyReportsByKey });
-    const serializedDailyReportState = JSON.stringify(dailyReportStatePayload);
-
-    if (serializedDailyReportState === lastSavedDailyReportStateRef.current) {
-      return;
-    }
-
-    const saveTimeout = window.setTimeout(() => {
-      lastSavedDailyReportStateRef.current = serializedDailyReportState;
-      void fetch("/api/daily-reports", {
-        body: JSON.stringify(dailyReportStatePayload),
-        headers: {
-          "Content-Type": "application/json"
-        },
-        method: "PUT"
-      }).then((response) => {
-        if (!response.ok) {
-          lastSavedDailyReportStateRef.current = "";
-        }
-      }).catch(() => {
-        lastSavedDailyReportStateRef.current = "";
-      });
-    }, 500);
-
-    return () => {
-      window.clearTimeout(saveTimeout);
-    };
-  }, [appStateHydrated, currentUser, dailyReportUploadsByKey, dailyReportsByKey]);
 
   useEffect(() => {
     if (!currentUser || !appStateHydrated) {
@@ -1053,20 +1018,22 @@ export function TimeAllocationWorkspace() {
     const now = new Date().toISOString();
 
     const normalizedDraft = normalizeDailyReportAnswersForSave(dailyReportDraft);
+    const dailyReport: DailyReport = {
+      ...(existingReport ?? {
+        projectId: selectedProject.id,
+        date: workDate,
+        createdByUserId: currentUser.id,
+        createdByName: formatUserName(currentUser),
+        createdAt: now
+      }),
+      ...normalizedDraft,
+      updatedAt: now
+    };
+    const hadUploadedDailyReport = Boolean(dailyReportUploadsByKey[dayKey]);
 
     setDailyReportsByKey((current) => ({
       ...current,
-      [dayKey]: {
-        ...(existingReport ?? {
-          projectId: selectedProject.id,
-          date: workDate,
-          createdByUserId: currentUser.id,
-          createdByName: formatUserName(currentUser),
-          createdAt: now
-        }),
-        ...normalizedDraft,
-        updatedAt: now
-      }
+      [dayKey]: dailyReport
     }));
     setDailyReportUploadsByKey((current) => {
       if (!current[dayKey]) {
@@ -1078,6 +1045,14 @@ export function TimeAllocationWorkspace() {
 
       return remainingUploads;
     });
+    void saveDatabaseDailyReport(selectedProject.id, workDate, dailyReport).catch((error) => {
+      setEntryNotice(error instanceof Error ? error.message : "Daily report saved locally, but did not sync.");
+    });
+    if (hadUploadedDailyReport) {
+      void deleteDatabaseDailyReportUpload(selectedProject.id, workDate).catch((error) => {
+        setEntryNotice(error instanceof Error ? error.message : "Daily upload status cleared locally, but did not sync.");
+      });
+    }
     setDailyReportModalOpen(false);
     setDailyReportUploadNotice(null);
     setEntryNotice("Daily report saved.");
@@ -1114,15 +1089,23 @@ export function TimeAllocationWorkspace() {
         throw new Error(data.error ?? "Unable to upload daily report to Procore.");
       }
 
+      const dailyReportUpload: DailyReportUpload = {
+        fileName: data.fileName ?? "daily report",
+        folderPath: data.folderPath ?? "Daily Reports",
+        procoreFileId: data.procoreFileId,
+        uploadedAt: new Date().toISOString()
+      };
+
       setDailyReportUploadsByKey((current) => ({
         ...current,
-        [getDayKey(selectedProject.id, workDate)]: {
-          fileName: data.fileName ?? "daily report",
-          folderPath: data.folderPath ?? "Daily Reports",
-          procoreFileId: data.procoreFileId,
-          uploadedAt: new Date().toISOString()
-        }
+        [getDayKey(selectedProject.id, workDate)]: dailyReportUpload
       }));
+      void saveDatabaseDailyReportUpload(selectedProject.id, workDate, dailyReportUpload).catch((error) => {
+        setDailyReportUploadNotice({
+          message: error instanceof Error ? error.message : "Daily uploaded, but upload status did not sync.",
+          status: "error"
+        });
+      });
       setDailyReportUploadNotice({
         message: `Uploaded ${data.fileName ?? "daily report"} to ${data.folderPath ?? "Procore Documents"}.`,
         status: "success"
@@ -1174,7 +1157,6 @@ export function TimeAllocationWorkspace() {
     );
     setMyJobsByUser(normalizedState.myJobsByUser);
     setProjectBlacklistById(normalizedState.projectBlacklistById);
-    lastSavedDailyReportStateRef.current = options.markSaved ? JSON.stringify(buildDailyReportStatePayload(normalizedState)) : "";
     lastSavedProjectControlsStateRef.current = options.markSaved ? JSON.stringify(buildProjectControlsStatePayload(normalizedState)) : "";
   }
 
@@ -5012,15 +4994,6 @@ function buildSharedAppState(state: SharedAppState): SharedAppState {
   };
 }
 
-function buildDailyReportStatePayload(
-  state: Pick<SharedAppState, "dailyReportUploadsByKey" | "dailyReportsByKey">
-) {
-  return {
-    dailyReportUploadsByKey: state.dailyReportUploadsByKey,
-    dailyReportsByKey: state.dailyReportsByKey
-  };
-}
-
 function buildProjectControlsStatePayload(
   state: Pick<SharedAppState, "myJobsByUser" | "projectBlacklistById" | "syncLog">
 ) {
@@ -5195,6 +5168,60 @@ async function loadDatabaseDailyReportData() {
     };
   } catch {
     return null;
+  }
+}
+
+async function saveDatabaseDailyReport(projectId: string, date: string, dailyReport: DailyReport) {
+  const response = await fetch("/api/daily-reports", {
+    body: JSON.stringify({
+      action: "save_report",
+      dailyReport,
+      date,
+      projectId
+    }),
+    headers: {
+      "Content-Type": "application/json"
+    },
+    method: "PATCH"
+  });
+  const data = (await response.json()) as { error?: string; ok?: boolean };
+
+  if (!response.ok || data.ok === false) {
+    throw new Error(data.error ?? "Unable to save daily report.");
+  }
+}
+
+async function saveDatabaseDailyReportUpload(projectId: string, date: string, dailyReportUpload: DailyReportUpload) {
+  const response = await fetch("/api/daily-reports", {
+    body: JSON.stringify({
+      action: "save_upload",
+      dailyReportUpload,
+      date,
+      projectId
+    }),
+    headers: {
+      "Content-Type": "application/json"
+    },
+    method: "PATCH"
+  });
+  const data = (await response.json()) as { error?: string; ok?: boolean };
+
+  if (!response.ok || data.ok === false) {
+    throw new Error(data.error ?? "Unable to save daily report upload status.");
+  }
+}
+
+async function deleteDatabaseDailyReportUpload(projectId: string, date: string) {
+  const response = await fetch(
+    `/api/daily-reports?projectId=${encodeURIComponent(projectId)}&date=${encodeURIComponent(date)}&kind=upload`,
+    {
+      method: "DELETE"
+    }
+  );
+  const data = (await response.json()) as { error?: string; ok?: boolean };
+
+  if (!response.ok || data.ok === false) {
+    throw new Error(data.error ?? "Unable to clear daily report upload status.");
   }
 }
 

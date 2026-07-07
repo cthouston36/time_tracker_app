@@ -2,6 +2,8 @@ import { getSql } from "@/lib/db";
 
 export type StoredDailyReportsByKey = Record<string, Record<string, unknown>>;
 export type StoredDailyReportUploadsByKey = Record<string, Record<string, unknown>>;
+export type StoredDailyReport = Record<string, unknown>;
+export type StoredDailyReportUpload = Record<string, unknown>;
 
 type DailyReportRow = {
   project_id: string;
@@ -137,6 +139,139 @@ export async function replaceDailyReportData(
   };
 }
 
+export async function upsertDailyReport(projectId: string, date: string, dailyReport: StoredDailyReport) {
+  const sql = getSql();
+
+  if (!sql) {
+    return null;
+  }
+
+  await ensureDailyReportTables();
+
+  const normalizedProjectId = readPlainString(projectId);
+  const normalizedDate = readPlainString(date);
+  const report = {
+    ...asRecord(dailyReport),
+    date: normalizedDate,
+    projectId: normalizedProjectId
+  };
+
+  if (!normalizedProjectId || !isIsoDate(normalizedDate)) {
+    return false;
+  }
+
+  await sql`
+    insert into daily_reports (
+      project_id,
+      work_date,
+      created_by_user_id,
+      created_by_name,
+      created_at,
+      report_updated_at,
+      report,
+      updated_at
+    )
+    values (
+      ${normalizedProjectId},
+      ${normalizedDate}::date,
+      ${readNullableString(report, "createdByUserId")},
+      ${readNullableString(report, "createdByName")},
+      ${readNullableTimestamp(report, "createdAt")}::timestamptz,
+      ${readNullableTimestamp(report, "updatedAt")}::timestamptz,
+      ${JSON.stringify(report)}::jsonb,
+      now()
+    )
+    on conflict (project_id, work_date) do update
+    set created_by_user_id = excluded.created_by_user_id,
+        created_by_name = excluded.created_by_name,
+        created_at = excluded.created_at,
+        report_updated_at = excluded.report_updated_at,
+        report = excluded.report,
+        updated_at = now()
+  `;
+
+  return true;
+}
+
+export async function upsertDailyReportUpload(
+  projectId: string,
+  date: string,
+  dailyReportUpload: StoredDailyReportUpload
+) {
+  const sql = getSql();
+
+  if (!sql) {
+    return null;
+  }
+
+  await ensureDailyReportTables();
+
+  const normalizedProjectId = readPlainString(projectId);
+  const normalizedDate = readPlainString(date);
+  const upload = asRecord(dailyReportUpload);
+
+  if (!normalizedProjectId || !isIsoDate(normalizedDate) || !readString(upload, "fileName") || !readString(upload, "folderPath")) {
+    return false;
+  }
+
+  await sql`
+    insert into daily_report_uploads (
+      project_id,
+      work_date,
+      file_name,
+      folder_path,
+      procore_file_id,
+      uploaded_at,
+      upload,
+      updated_at
+    )
+    values (
+      ${normalizedProjectId},
+      ${normalizedDate}::date,
+      ${readString(upload, "fileName")},
+      ${readString(upload, "folderPath")},
+      ${readNullableString(upload, "procoreFileId")},
+      ${readNullableTimestamp(upload, "uploadedAt")}::timestamptz,
+      ${JSON.stringify(upload)}::jsonb,
+      now()
+    )
+    on conflict (project_id, work_date) do update
+    set file_name = excluded.file_name,
+        folder_path = excluded.folder_path,
+        procore_file_id = excluded.procore_file_id,
+        uploaded_at = excluded.uploaded_at,
+        upload = excluded.upload,
+        updated_at = now()
+  `;
+
+  return true;
+}
+
+export async function deleteDailyReportUpload(projectId: string, date: string) {
+  const sql = getSql();
+
+  if (!sql) {
+    return null;
+  }
+
+  await ensureDailyReportTables();
+
+  const normalizedProjectId = readPlainString(projectId);
+  const normalizedDate = readPlainString(date);
+
+  if (!normalizedProjectId || !isIsoDate(normalizedDate)) {
+    return false;
+  }
+
+  await sql`
+    delete from daily_report_uploads
+    where project_id = ${normalizedProjectId}
+      and work_date = ${normalizedDate}::date
+  `;
+
+  return true;
+}
+
 async function ensureDailyReportTables() {
   const sql = getSql();
 
@@ -265,6 +400,10 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function readString(record: Record<string, unknown>, key: string) {
   const value = record[key];
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function readPlainString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
