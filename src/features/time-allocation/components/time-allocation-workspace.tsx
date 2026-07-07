@@ -98,6 +98,13 @@ type CrewDataResponse = {
   error?: string;
 };
 
+type DailyReportsResponse = {
+  dailyReportUploadsByKey?: DailyReportUploadsByKey;
+  dailyReportsByKey?: DailyReportsByKey;
+  databaseConfigured?: boolean;
+  error?: string;
+};
+
 type PayItemDraft = {
   hours: string;
   quantity: string;
@@ -337,6 +344,7 @@ export function TimeAllocationWorkspace() {
   const lastSavedSharedAppStateRef = useRef("");
   const lastSavedEntriesRef = useRef("");
   const lastSavedCrewStateRef = useRef("");
+  const lastSavedDailyReportStateRef = useRef("");
 
   const projects = useMemo(
     () => allProjects.filter((project) => !projectBlacklistById[project.id]),
@@ -571,12 +579,22 @@ export function TimeAllocationWorkspace() {
           return;
         }
 
-        const [databaseEntries, databaseCrewData] = await Promise.all([loadDatabaseEntries(), loadDatabaseCrewData()]);
+        const [databaseEntries, databaseCrewData, databaseDailyReportData] = await Promise.all([
+          loadDatabaseEntries(),
+          loadDatabaseCrewData(),
+          loadDatabaseDailyReportData()
+        ]);
+
+        if (cancelled) {
+          return;
+        }
+
         const sharedState = data.state ?? readLocalSharedAppState();
         const nextState = {
           ...sharedState,
           ...(databaseEntries ? { entries: databaseEntries } : {}),
-          ...(databaseCrewData ?? {})
+          ...(databaseCrewData ?? {}),
+          ...(databaseDailyReportData ?? {})
         };
 
         if (data.state) {
@@ -724,6 +742,40 @@ export function TimeAllocationWorkspace() {
       window.clearTimeout(saveTimeout);
     };
   }, [appStateHydrated, crewDirectory, crewMembersByProject, currentUser]);
+
+  useEffect(() => {
+    if (!currentUser || !appStateHydrated) {
+      return;
+    }
+
+    const dailyReportStatePayload = buildDailyReportStatePayload({ dailyReportUploadsByKey, dailyReportsByKey });
+    const serializedDailyReportState = JSON.stringify(dailyReportStatePayload);
+
+    if (serializedDailyReportState === lastSavedDailyReportStateRef.current) {
+      return;
+    }
+
+    const saveTimeout = window.setTimeout(() => {
+      lastSavedDailyReportStateRef.current = serializedDailyReportState;
+      void fetch("/api/daily-reports", {
+        body: JSON.stringify(dailyReportStatePayload),
+        headers: {
+          "Content-Type": "application/json"
+        },
+        method: "PUT"
+      }).then((response) => {
+        if (!response.ok) {
+          lastSavedDailyReportStateRef.current = "";
+        }
+      }).catch(() => {
+        lastSavedDailyReportStateRef.current = "";
+      });
+    }, 500);
+
+    return () => {
+      window.clearTimeout(saveTimeout);
+    };
+  }, [appStateHydrated, currentUser, dailyReportUploadsByKey, dailyReportsByKey]);
 
   useEffect(() => {
     if (!currentUser || projects.length === 0 || entries.length === 0) {
@@ -1150,6 +1202,7 @@ export function TimeAllocationWorkspace() {
     lastSavedSharedAppStateRef.current = options.markSaved ? JSON.stringify(normalizedState) : "";
     lastSavedEntriesRef.current = options.markSaved ? JSON.stringify(normalizedState.entries) : "";
     lastSavedCrewStateRef.current = options.markSaved ? JSON.stringify(buildCrewStatePayload(normalizedState)) : "";
+    lastSavedDailyReportStateRef.current = options.markSaved ? JSON.stringify(buildDailyReportStatePayload(normalizedState)) : "";
   }
 
   function updateDraft(payItemId: string, field: "hours" | "quantity", value: string) {
@@ -4919,6 +4972,15 @@ function buildCrewStatePayload(state: Pick<SharedAppState, "crewDirectory" | "cr
   };
 }
 
+function buildDailyReportStatePayload(
+  state: Pick<SharedAppState, "dailyReportUploadsByKey" | "dailyReportsByKey">
+) {
+  return {
+    dailyReportUploadsByKey: state.dailyReportUploadsByKey,
+    dailyReportsByKey: state.dailyReportsByKey
+  };
+}
+
 async function loadDatabaseEntries() {
   try {
     const response = await fetch("/api/entries", {
@@ -4950,6 +5012,26 @@ async function loadDatabaseCrewData() {
     return {
       crewDirectory: data.crewDirectory ?? [],
       crewMembersByProject: data.crewMembersByProject ?? {}
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function loadDatabaseDailyReportData() {
+  try {
+    const response = await fetch("/api/daily-reports", {
+      cache: "no-store"
+    });
+    const data = (await response.json()) as DailyReportsResponse;
+
+    if (!response.ok || !data.databaseConfigured) {
+      return null;
+    }
+
+    return {
+      dailyReportUploadsByKey: data.dailyReportUploadsByKey ?? {},
+      dailyReportsByKey: data.dailyReportsByKey ?? {}
     };
   } catch {
     return null;
