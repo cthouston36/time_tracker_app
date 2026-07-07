@@ -91,6 +91,13 @@ type EntriesResponse = {
   error?: string;
 };
 
+type CrewDataResponse = {
+  crewDirectory?: CrewMember[];
+  crewMembersByProject?: CrewMembersByProject;
+  databaseConfigured?: boolean;
+  error?: string;
+};
+
 type PayItemDraft = {
   hours: string;
   quantity: string;
@@ -329,6 +336,7 @@ export function TimeAllocationWorkspace() {
   const dateInputRef = useRef<HTMLInputElement>(null);
   const lastSavedSharedAppStateRef = useRef("");
   const lastSavedEntriesRef = useRef("");
+  const lastSavedCrewStateRef = useRef("");
 
   const projects = useMemo(
     () => allProjects.filter((project) => !projectBlacklistById[project.id]),
@@ -563,9 +571,13 @@ export function TimeAllocationWorkspace() {
           return;
         }
 
-        const databaseEntries = await loadDatabaseEntries();
+        const [databaseEntries, databaseCrewData] = await Promise.all([loadDatabaseEntries(), loadDatabaseCrewData()]);
         const sharedState = data.state ?? readLocalSharedAppState();
-        const nextState = databaseEntries ? { ...sharedState, entries: databaseEntries } : sharedState;
+        const nextState = {
+          ...sharedState,
+          ...(databaseEntries ? { entries: databaseEntries } : {}),
+          ...(databaseCrewData ?? {})
+        };
 
         if (data.state) {
           applySharedAppState(nextState, { markSaved: true });
@@ -678,6 +690,40 @@ export function TimeAllocationWorkspace() {
       window.clearTimeout(saveTimeout);
     };
   }, [appStateHydrated, currentUser, entries]);
+
+  useEffect(() => {
+    if (!currentUser || !appStateHydrated) {
+      return;
+    }
+
+    const crewStatePayload = buildCrewStatePayload({ crewDirectory, crewMembersByProject });
+    const serializedCrewState = JSON.stringify(crewStatePayload);
+
+    if (serializedCrewState === lastSavedCrewStateRef.current) {
+      return;
+    }
+
+    const saveTimeout = window.setTimeout(() => {
+      lastSavedCrewStateRef.current = serializedCrewState;
+      void fetch("/api/crew", {
+        body: JSON.stringify(crewStatePayload),
+        headers: {
+          "Content-Type": "application/json"
+        },
+        method: "PUT"
+      }).then((response) => {
+        if (!response.ok) {
+          lastSavedCrewStateRef.current = "";
+        }
+      }).catch(() => {
+        lastSavedCrewStateRef.current = "";
+      });
+    }, 500);
+
+    return () => {
+      window.clearTimeout(saveTimeout);
+    };
+  }, [appStateHydrated, crewDirectory, crewMembersByProject, currentUser]);
 
   useEffect(() => {
     if (!currentUser || projects.length === 0 || entries.length === 0) {
@@ -1103,6 +1149,7 @@ export function TimeAllocationWorkspace() {
     setProjectBlacklistById(normalizedState.projectBlacklistById);
     lastSavedSharedAppStateRef.current = options.markSaved ? JSON.stringify(normalizedState) : "";
     lastSavedEntriesRef.current = options.markSaved ? JSON.stringify(normalizedState.entries) : "";
+    lastSavedCrewStateRef.current = options.markSaved ? JSON.stringify(buildCrewStatePayload(normalizedState)) : "";
   }
 
   function updateDraft(payItemId: string, field: "hours" | "quantity", value: string) {
@@ -4865,6 +4912,13 @@ function buildSharedAppState(state: SharedAppState): SharedAppState {
   };
 }
 
+function buildCrewStatePayload(state: Pick<SharedAppState, "crewDirectory" | "crewMembersByProject">) {
+  return {
+    crewDirectory: sortCrewMembersByName(state.crewDirectory),
+    crewMembersByProject: state.crewMembersByProject
+  };
+}
+
 async function loadDatabaseEntries() {
   try {
     const response = await fetch("/api/entries", {
@@ -4877,6 +4931,26 @@ async function loadDatabaseEntries() {
     }
 
     return data.entries ?? [];
+  } catch {
+    return null;
+  }
+}
+
+async function loadDatabaseCrewData() {
+  try {
+    const response = await fetch("/api/crew", {
+      cache: "no-store"
+    });
+    const data = (await response.json()) as CrewDataResponse;
+
+    if (!response.ok || !data.databaseConfigured) {
+      return null;
+    }
+
+    return {
+      crewDirectory: data.crewDirectory ?? [],
+      crewMembersByProject: data.crewMembersByProject ?? {}
+    };
   } catch {
     return null;
   }
