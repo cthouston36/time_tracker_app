@@ -65,6 +65,26 @@ type SyncLogEntry = {
   summary?: ProcoreSyncSummary;
 };
 
+type SharedAppState = {
+  crewDirectory: CrewMember[];
+  crewMembersByProject: CrewMembersByProject;
+  dailyReportUploadsByKey: DailyReportUploadsByKey;
+  dailyReportsByKey: DailyReportsByKey;
+  dayEntryNotesByKey: DayEntryNotesByKey;
+  daySubmissions: DaySubmissionsByKey;
+  entries: AllocationEntry[];
+  myJobsByUser: MyJobsByUser;
+  projectBlacklistById: ProjectBlacklistById;
+  syncLog: SyncLogEntry[];
+};
+
+type AppStateResponse = {
+  state?: Partial<SharedAppState> | null;
+  updatedAt?: string;
+  updatedBy?: string;
+  error?: string;
+};
+
 type PayItemDraft = {
   hours: string;
   quantity: string;
@@ -299,7 +319,9 @@ export function TimeAllocationWorkspace() {
   const [syncing, setSyncing] = useState(false);
   const [syncingAll, setSyncingAll] = useState(false);
   const [updatingProject, setUpdatingProject] = useState(false);
+  const [appStateHydrated, setAppStateHydrated] = useState(false);
   const dateInputRef = useRef<HTMLInputElement>(null);
+  const lastSavedSharedAppStateRef = useRef("");
 
   const projects = useMemo(
     () => allProjects.filter((project) => !projectBlacklistById[project.id]),
@@ -511,85 +533,95 @@ export function TimeAllocationWorkspace() {
 
   useEffect(() => {
     if (!currentUser) {
+      setAppStateHydrated(false);
       return;
     }
 
-    const savedEntries = window.localStorage.getItem("allocation-entries");
-    const savedSubmissions = window.localStorage.getItem("day-submissions");
-    const savedDayEntryNotes = window.localStorage.getItem("day-entry-notes");
-    const savedDailyReports = window.localStorage.getItem("daily-reports");
-    const savedDailyReportUploads = window.localStorage.getItem("daily-report-uploads");
-    const savedSyncLog = window.localStorage.getItem("procore-sync-log");
-    const savedCrewMembers = window.localStorage.getItem("project-crew-members");
-    const savedCrewDirectory = window.localStorage.getItem("crew-member-directory");
-    const savedMyJobs = window.localStorage.getItem("my-jobs-by-user");
-    const savedProjectBlacklist = window.localStorage.getItem("project-blacklist");
-    let parsedCrewMembersByProject: CrewMembersByProject = {};
+    let cancelled = false;
 
-    if (savedEntries) {
-      setEntries(JSON.parse(savedEntries) as AllocationEntry[]);
+    async function loadSharedAppState() {
+      setAppStateHydrated(false);
+
+      try {
+        const response = await fetch("/api/app-state", {
+          cache: "no-store"
+        });
+        const data = (await response.json()) as AppStateResponse;
+
+        if (!response.ok) {
+          throw new Error(data.error ?? "Unable to load shared app data.");
+        }
+
+        if (cancelled) {
+          return;
+        }
+
+        if (data.state) {
+          applySharedAppState(data.state, { markSaved: true });
+        } else {
+          applySharedAppState(readLocalSharedAppState(), { markSaved: false });
+        }
+      } catch {
+        if (!cancelled) {
+          applySharedAppState(readLocalSharedAppState(), { markSaved: false });
+        }
+      } finally {
+        if (!cancelled) {
+          setAppStateHydrated(true);
+        }
+      }
     }
 
-    if (savedSubmissions) {
-      setDaySubmissions(JSON.parse(savedSubmissions) as DaySubmissionsByKey);
-    }
+    void loadSharedAppState();
 
-    if (savedDayEntryNotes) {
-      setDayEntryNotesByKey(JSON.parse(savedDayEntryNotes) as DayEntryNotesByKey);
-    }
-
-    if (savedDailyReports) {
-      setDailyReportsByKey(JSON.parse(savedDailyReports) as DailyReportsByKey);
-    }
-
-    if (savedDailyReportUploads) {
-      setDailyReportUploadsByKey(JSON.parse(savedDailyReportUploads) as DailyReportUploadsByKey);
-    }
-
-    if (savedSyncLog) {
-      setSyncLog(JSON.parse(savedSyncLog) as SyncLogEntry[]);
-    }
-
-    if (savedCrewMembers) {
-      parsedCrewMembersByProject = JSON.parse(savedCrewMembers) as CrewMembersByProject;
-      setCrewMembersByProject(parsedCrewMembersByProject);
-    }
-
-    if (savedCrewDirectory) {
-      setCrewDirectory(
-        mergeCrewDirectories(
-          JSON.parse(savedCrewDirectory) as CrewMember[],
-          buildCrewDirectoryFromProjects(parsedCrewMembersByProject)
-        )
-      );
-    } else {
-      setCrewDirectory(buildCrewDirectoryFromProjects(parsedCrewMembersByProject));
-    }
-
-    if (savedMyJobs) {
-      setMyJobsByUser(JSON.parse(savedMyJobs) as MyJobsByUser);
-    }
-
-    if (savedProjectBlacklist) {
-      setProjectBlacklistById(JSON.parse(savedProjectBlacklist) as ProjectBlacklistById);
-    }
+    return () => {
+      cancelled = true;
+    };
   }, [currentUser]);
 
   useEffect(() => {
-    if (!currentUser) {
+    if (!currentUser || !appStateHydrated) {
       return;
     }
 
-    window.localStorage.setItem("allocation-entries", JSON.stringify(entries));
-    window.localStorage.setItem("day-submissions", JSON.stringify(daySubmissions));
-    window.localStorage.setItem("day-entry-notes", JSON.stringify(dayEntryNotesByKey));
-    window.localStorage.setItem("daily-reports", JSON.stringify(dailyReportsByKey));
-    window.localStorage.setItem("daily-report-uploads", JSON.stringify(dailyReportUploadsByKey));
-    window.localStorage.setItem("crew-member-directory", JSON.stringify(crewDirectory));
-    window.localStorage.setItem("project-crew-members", JSON.stringify(crewMembersByProject));
-    window.localStorage.setItem("my-jobs-by-user", JSON.stringify(myJobsByUser));
-    window.localStorage.setItem("project-blacklist", JSON.stringify(projectBlacklistById));
+    const sharedAppState = buildSharedAppState({
+      crewDirectory,
+      crewMembersByProject,
+      dailyReportUploadsByKey,
+      dailyReportsByKey,
+      dayEntryNotesByKey,
+      daySubmissions,
+      entries,
+      myJobsByUser,
+      projectBlacklistById,
+      syncLog
+    });
+    const serializedAppState = JSON.stringify(sharedAppState);
+
+    writeLocalSharedAppState(sharedAppState);
+
+    if (serializedAppState === lastSavedSharedAppStateRef.current) {
+      return;
+    }
+
+    const saveTimeout = window.setTimeout(() => {
+      lastSavedSharedAppStateRef.current = serializedAppState;
+      void fetch("/api/app-state", {
+        body: JSON.stringify({ state: sharedAppState }),
+        headers: {
+          "Content-Type": "application/json"
+        },
+        method: "PUT"
+      }).catch(() => {
+        lastSavedSharedAppStateRef.current = "";
+      });
+    }, 500);
+
+    return () => {
+      window.clearTimeout(saveTimeout);
+    };
   }, [
+    appStateHydrated,
     currentUser,
     crewDirectory,
     crewMembersByProject,
@@ -599,7 +631,8 @@ export function TimeAllocationWorkspace() {
     dailyReportsByKey,
     entries,
     myJobsByUser,
-    projectBlacklistById
+    projectBlacklistById,
+    syncLog
   ]);
 
   useEffect(() => {
@@ -999,6 +1032,32 @@ export function TimeAllocationWorkspace() {
       } satisfies PendingProcoreReturn)
     );
     window.location.assign("/api/procore/oauth/login");
+  }
+
+  function applySharedAppState(
+    state: Partial<SharedAppState> | null,
+    options: {
+      markSaved: boolean;
+    }
+  ) {
+    const normalizedState = normalizeSharedAppState(state);
+
+    setEntries(normalizedState.entries);
+    setDaySubmissions(normalizedState.daySubmissions);
+    setDayEntryNotesByKey(normalizedState.dayEntryNotesByKey);
+    setDailyReportsByKey(normalizedState.dailyReportsByKey);
+    setDailyReportUploadsByKey(normalizedState.dailyReportUploadsByKey);
+    setSyncLog(normalizedState.syncLog);
+    setCrewMembersByProject(normalizedState.crewMembersByProject);
+    setCrewDirectory(
+      mergeCrewDirectories(
+        normalizedState.crewDirectory,
+        buildCrewDirectoryFromProjects(normalizedState.crewMembersByProject)
+      )
+    );
+    setMyJobsByUser(normalizedState.myJobsByUser);
+    setProjectBlacklistById(normalizedState.projectBlacklistById);
+    lastSavedSharedAppStateRef.current = options.markSaved ? JSON.stringify(normalizedState) : "";
   }
 
   function updateDraft(payItemId: string, field: "hours" | "quantity", value: string) {
@@ -4744,6 +4803,90 @@ function mergeCrewDirectories(primaryCrewMembers: CrewMember[], fallbackCrewMemb
   }
 
   return sortCrewMembersByName(Array.from(crewMembersById.values()));
+}
+
+function buildSharedAppState(state: SharedAppState): SharedAppState {
+  return {
+    crewDirectory: sortCrewMembersByName(state.crewDirectory),
+    crewMembersByProject: state.crewMembersByProject,
+    dailyReportUploadsByKey: state.dailyReportUploadsByKey,
+    dailyReportsByKey: state.dailyReportsByKey,
+    dayEntryNotesByKey: state.dayEntryNotesByKey,
+    daySubmissions: state.daySubmissions,
+    entries: state.entries,
+    myJobsByUser: state.myJobsByUser,
+    projectBlacklistById: state.projectBlacklistById,
+    syncLog: state.syncLog
+  };
+}
+
+function normalizeSharedAppState(state: Partial<SharedAppState> | null | undefined): SharedAppState {
+  const crewMembersByProject = state?.crewMembersByProject ?? {};
+  const crewDirectory = mergeCrewDirectories(
+    state?.crewDirectory ?? [],
+    buildCrewDirectoryFromProjects(crewMembersByProject)
+  );
+
+  return buildSharedAppState({
+    crewDirectory,
+    crewMembersByProject,
+    dailyReportUploadsByKey: state?.dailyReportUploadsByKey ?? {},
+    dailyReportsByKey: state?.dailyReportsByKey ?? {},
+    dayEntryNotesByKey: state?.dayEntryNotesByKey ?? {},
+    daySubmissions: state?.daySubmissions ?? {},
+    entries: state?.entries ?? [],
+    myJobsByUser: state?.myJobsByUser ?? {},
+    projectBlacklistById: state?.projectBlacklistById ?? {},
+    syncLog: state?.syncLog ?? []
+  });
+}
+
+function readLocalSharedAppState(): SharedAppState {
+  const crewMembersByProject = readLocalJson<CrewMembersByProject>("project-crew-members", {});
+  const crewDirectory = mergeCrewDirectories(
+    readLocalJson<CrewMember[]>("crew-member-directory", []),
+    buildCrewDirectoryFromProjects(crewMembersByProject)
+  );
+
+  return buildSharedAppState({
+    crewDirectory,
+    crewMembersByProject,
+    dailyReportUploadsByKey: readLocalJson<DailyReportUploadsByKey>("daily-report-uploads", {}),
+    dailyReportsByKey: readLocalJson<DailyReportsByKey>("daily-reports", {}),
+    dayEntryNotesByKey: readLocalJson<DayEntryNotesByKey>("day-entry-notes", {}),
+    daySubmissions: readLocalJson<DaySubmissionsByKey>("day-submissions", {}),
+    entries: readLocalJson<AllocationEntry[]>("allocation-entries", []),
+    myJobsByUser: readLocalJson<MyJobsByUser>("my-jobs-by-user", {}),
+    projectBlacklistById: readLocalJson<ProjectBlacklistById>("project-blacklist", {}),
+    syncLog: readLocalJson<SyncLogEntry[]>("procore-sync-log", [])
+  });
+}
+
+function writeLocalSharedAppState(state: SharedAppState) {
+  window.localStorage.setItem("allocation-entries", JSON.stringify(state.entries));
+  window.localStorage.setItem("day-submissions", JSON.stringify(state.daySubmissions));
+  window.localStorage.setItem("day-entry-notes", JSON.stringify(state.dayEntryNotesByKey));
+  window.localStorage.setItem("daily-reports", JSON.stringify(state.dailyReportsByKey));
+  window.localStorage.setItem("daily-report-uploads", JSON.stringify(state.dailyReportUploadsByKey));
+  window.localStorage.setItem("crew-member-directory", JSON.stringify(state.crewDirectory));
+  window.localStorage.setItem("project-crew-members", JSON.stringify(state.crewMembersByProject));
+  window.localStorage.setItem("my-jobs-by-user", JSON.stringify(state.myJobsByUser));
+  window.localStorage.setItem("project-blacklist", JSON.stringify(state.projectBlacklistById));
+  window.localStorage.setItem("procore-sync-log", JSON.stringify(state.syncLog));
+}
+
+function readLocalJson<TValue>(key: string, fallback: TValue): TValue {
+  const value = window.localStorage.getItem(key);
+
+  if (!value) {
+    return fallback;
+  }
+
+  try {
+    return JSON.parse(value) as TValue;
+  } catch {
+    return fallback;
+  }
 }
 
 function sortCrewMembersByName(crewMembers: CrewMember[]) {
