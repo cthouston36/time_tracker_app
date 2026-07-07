@@ -12,6 +12,7 @@ import {
   Download,
   Edit3,
   Info,
+  KeyRound,
   ListChecks,
   LogOut,
   PlugZap,
@@ -134,6 +135,12 @@ type AdminUserFormState = {
   userId: string;
 };
 
+type ChangePasswordFormState = {
+  confirmPassword: string;
+  currentPassword: string;
+  newPassword: string;
+};
+
 type PayItemDraft = {
   hours: string;
   quantity: string;
@@ -161,6 +168,11 @@ type CrewSummaryRow = {
 type AuthResponse = {
   user: AuthUser | null;
   error?: string;
+};
+
+type ChangePasswordResponse = {
+  error?: string;
+  ok?: boolean;
 };
 
 type ProcoreStatusResponse = {
@@ -324,6 +336,10 @@ export function TimeAllocationWorkspace() {
   const [loginUserId, setLoginUserId] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [loginError, setLoginError] = useState("");
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+  const [changePasswordForm, setChangePasswordForm] = useState<ChangePasswordFormState>(() => createEmptyChangePasswordForm());
+  const [changePasswordNotice, setChangePasswordNotice] = useState<{ message: string; status: "success" | "error" } | null>(null);
+  const [changingPassword, setChangingPassword] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("entry");
   const [reportProjectId, setReportProjectId] = useState("all");
   const [reportStartDate, setReportStartDate] = useState("");
@@ -803,6 +819,10 @@ export function TimeAllocationWorkspace() {
     setAdminUsersNotice("");
     setAdminUserForm(createEmptyAdminUserForm());
     setEditingAdminUserId("");
+    setChangePasswordOpen(false);
+    setChangePasswordForm(createEmptyChangePasswordForm());
+    setChangePasswordNotice(null);
+    setChangingPassword(false);
     setEntries([]);
     setDaySubmissions({});
     setDayEntryNotesByKey({});
@@ -959,6 +979,73 @@ export function TimeAllocationWorkspace() {
       setAdminUsersNotice(error instanceof Error ? error.message : "Unable to update user.");
     } finally {
       setSavingAdminUser(false);
+    }
+  }
+
+  function updateChangePasswordForm(field: keyof ChangePasswordFormState, value: string) {
+    setChangePasswordNotice(null);
+    setChangePasswordForm((current) => ({
+      ...current,
+      [field]: value
+    }));
+  }
+
+  function closeChangePasswordModal() {
+    if (changingPassword) {
+      return;
+    }
+
+    setChangePasswordOpen(false);
+    setChangePasswordForm(createEmptyChangePasswordForm());
+    setChangePasswordNotice(null);
+  }
+
+  async function submitChangePassword() {
+    const { confirmPassword, currentPassword, newPassword } = changePasswordForm;
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setChangePasswordNotice({ message: "Enter your current password, new password, and confirmation.", status: "error" });
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      setChangePasswordNotice({ message: "New password must be at least 8 characters.", status: "error" });
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setChangePasswordNotice({ message: "New password and confirmation do not match.", status: "error" });
+      return;
+    }
+
+    setChangingPassword(true);
+    setChangePasswordNotice(null);
+
+    try {
+      const response = await fetch("/api/auth/change-password", {
+        body: JSON.stringify({
+          currentPassword,
+          newPassword
+        }),
+        headers: {
+          "Content-Type": "application/json"
+        },
+        method: "POST"
+      });
+      const data = (await response.json()) as ChangePasswordResponse;
+
+      if (!response.ok || data.ok === false) {
+        throw new Error(data.error ?? "Unable to change password.");
+      }
+
+      setChangePasswordForm(createEmptyChangePasswordForm());
+      setChangePasswordNotice({ message: "Password changed.", status: "success" });
+    } catch (error) {
+      setChangePasswordNotice(error instanceof Error
+        ? { message: error.message, status: "error" }
+        : { message: "Unable to change password.", status: "error" });
+    } finally {
+      setChangingPassword(false);
     }
   }
 
@@ -2120,12 +2207,27 @@ export function TimeAllocationWorkspace() {
               </button>
             </>
           ) : null}
+          <button className="secondary-button" onClick={() => setChangePasswordOpen(true)} type="button">
+            <KeyRound aria-hidden="true" size={18} />
+            Change Password
+          </button>
           <button className="secondary-button" onClick={logout} type="button">
             <LogOut aria-hidden="true" size={18} />
             Sign out
           </button>
         </div>
       </header>
+
+      {changePasswordOpen ? (
+        <ChangePasswordModal
+          form={changePasswordForm}
+          notice={changePasswordNotice}
+          onClose={closeChangePasswordModal}
+          onSubmit={submitChangePassword}
+          onUpdateForm={updateChangePasswordForm}
+          saving={changingPassword}
+        />
+      ) : null}
 
       <div className="workspace">
         <aside className="panel">
@@ -4711,6 +4813,91 @@ function ProjectBlacklistPanel({
   );
 }
 
+function ChangePasswordModal({
+  form,
+  notice,
+  onClose,
+  onSubmit,
+  onUpdateForm,
+  saving
+}: {
+  form: ChangePasswordFormState;
+  notice: { message: string; status: "success" | "error" } | null;
+  onClose: () => void;
+  onSubmit: () => void;
+  onUpdateForm: (field: keyof ChangePasswordFormState, value: string) => void;
+  saving: boolean;
+}) {
+  return (
+    <div className="modal-backdrop">
+      <form
+        className="modal-panel password-modal"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSubmit();
+        }}
+      >
+        <div className="modal-heading">
+          <div>
+            <h2>Change Password</h2>
+            <span>Update the password for your signed-in account.</span>
+          </div>
+          <button aria-label="Close change password" className="icon-button" disabled={saving} onClick={onClose} type="button">
+            <X aria-hidden="true" size={18} />
+          </button>
+        </div>
+        <div className="change-password-form">
+          <div className="field-group">
+            <label htmlFor="current-password">Current Password</label>
+            <input
+              autoComplete="current-password"
+              disabled={saving}
+              id="current-password"
+              onChange={(event) => onUpdateForm("currentPassword", event.target.value)}
+              type="password"
+              value={form.currentPassword}
+            />
+          </div>
+          <div className="field-group">
+            <label htmlFor="new-password">New Password</label>
+            <input
+              autoComplete="new-password"
+              disabled={saving}
+              id="new-password"
+              minLength={8}
+              onChange={(event) => onUpdateForm("newPassword", event.target.value)}
+              type="password"
+              value={form.newPassword}
+            />
+          </div>
+          <div className="field-group">
+            <label htmlFor="confirm-new-password">Confirm New Password</label>
+            <input
+              autoComplete="new-password"
+              disabled={saving}
+              id="confirm-new-password"
+              minLength={8}
+              onChange={(event) => onUpdateForm("confirmPassword", event.target.value)}
+              type="password"
+              value={form.confirmPassword}
+            />
+          </div>
+          {notice ? <div className={notice.status === "success" ? "success-alert" : "inline-alert"}>{notice.message}</div> : null}
+        </div>
+        <div className="modal-actions">
+          <button className="secondary-button" disabled={saving} onClick={onClose} type="button">
+            Cancel
+          </button>
+          <button className="primary-button" disabled={saving} type="submit">
+            <KeyRound aria-hidden="true" size={18} />
+            {saving ? "Saving..." : "Save Password"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 function AdminUsersPanel({
   currentUserId,
   editingUserId,
@@ -6376,6 +6563,14 @@ function createEmptyAdminUserForm(): AdminUserFormState {
     password: "",
     role: "standard",
     userId: ""
+  };
+}
+
+function createEmptyChangePasswordForm(): ChangePasswordFormState {
+  return {
+    confirmPassword: "",
+    currentPassword: "",
+    newPassword: ""
   };
 }
 

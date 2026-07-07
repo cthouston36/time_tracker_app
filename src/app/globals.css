@@ -538,6 +538,15 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   padding-top: 12px;
 }
 
+.password-modal {
+  max-width: 460px;
+}
+
+.change-password-form {
+  display: grid;
+  gap: 12px;
+}
+
 .daily-report-form {
   display: grid;
   gap: 16px;

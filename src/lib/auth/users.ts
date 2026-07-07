@@ -34,6 +34,13 @@ export type SaveAppUserInput = {
   userId: string;
 };
 
+export type ChangePasswordResult =
+  | "changed"
+  | "database_not_configured"
+  | "invalid_current_password"
+  | "invalid_new_password"
+  | "invalid_user";
+
 const bootstrapUsers: BootstrapUser[] = [
   {
     id: "caleb",
@@ -273,6 +280,54 @@ export async function saveAppUser(input: SaveAppUserInput) {
   }
 
   return true;
+}
+
+export async function changeCurrentUserPassword(userId: string, currentPassword: string, newPassword: string) {
+  const normalizedUserId = normalizeUserId(userId);
+  const normalizedNewPassword = normalizePassword(newPassword);
+
+  if (!normalizedUserId) {
+    return "invalid_user" satisfies ChangePasswordResult;
+  }
+
+  if (!currentPassword || !normalizedNewPassword || normalizedNewPassword.length < 8) {
+    return "invalid_new_password" satisfies ChangePasswordResult;
+  }
+
+  const sql = getSql();
+
+  if (!sql) {
+    return "database_not_configured" satisfies ChangePasswordResult;
+  }
+
+  await ensureAuthUsersTable();
+
+  const rows = (await sql`
+    select user_id, first_name, last_name, role, password_hash, active
+    from app_users
+    where user_id = ${normalizedUserId}
+    limit 1
+  `) as AuthUserRow[];
+  const user = rows[0];
+
+  if (!user?.active || !isUserRole(user.role)) {
+    return "invalid_user" satisfies ChangePasswordResult;
+  }
+
+  if (!(await verifyPassword(currentPassword, user.password_hash))) {
+    return "invalid_current_password" satisfies ChangePasswordResult;
+  }
+
+  const passwordHash = await hashPassword(normalizedNewPassword);
+
+  await sql`
+    update app_users
+    set password_hash = ${passwordHash},
+        updated_at = now()
+    where user_id = ${normalizedUserId}
+  `;
+
+  return "changed" satisfies ChangePasswordResult;
 }
 
 async function ensureAuthUsersTable() {
