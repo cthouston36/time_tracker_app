@@ -112,6 +112,14 @@ type DayRecordsResponse = {
   error?: string;
 };
 
+type ProjectControlsResponse = {
+  myJobsByUser?: MyJobsByUser;
+  projectBlacklistById?: ProjectBlacklistById;
+  syncLog?: SyncLogEntry[];
+  databaseConfigured?: boolean;
+  error?: string;
+};
+
 type PayItemDraft = {
   hours: string;
   quantity: string;
@@ -353,6 +361,7 @@ export function TimeAllocationWorkspace() {
   const lastSavedCrewStateRef = useRef("");
   const lastSavedDailyReportStateRef = useRef("");
   const lastSavedDayRecordsStateRef = useRef("");
+  const lastSavedProjectControlsStateRef = useRef("");
 
   const projects = useMemo(
     () => allProjects.filter((project) => !projectBlacklistById[project.id]),
@@ -589,11 +598,18 @@ export function TimeAllocationWorkspace() {
           return;
         }
 
-        const [databaseEntries, databaseCrewData, databaseDailyReportData, databaseDayRecords] = await Promise.all([
+        const [
+          databaseEntries,
+          databaseCrewData,
+          databaseDailyReportData,
+          databaseDayRecords,
+          databaseProjectControls
+        ] = await Promise.all([
           loadDatabaseEntries(),
           loadDatabaseCrewData(),
           loadDatabaseDailyReportData(),
-          loadDatabaseDayRecords()
+          loadDatabaseDayRecords(),
+          loadDatabaseProjectControls()
         ]);
 
         if (cancelled) {
@@ -606,7 +622,8 @@ export function TimeAllocationWorkspace() {
           ...(databaseEntries ? { entries: databaseEntries } : {}),
           ...(databaseCrewData ?? {}),
           ...(databaseDailyReportData ?? {}),
-          ...(databaseDayRecords ?? {})
+          ...(databaseDayRecords ?? {}),
+          ...(databaseProjectControls ?? {})
         };
 
         if (data.state) {
@@ -822,6 +839,40 @@ export function TimeAllocationWorkspace() {
       window.clearTimeout(saveTimeout);
     };
   }, [appStateHydrated, currentUser, dayEntryNotesByKey, daySubmissions]);
+
+  useEffect(() => {
+    if (!currentUser || !appStateHydrated) {
+      return;
+    }
+
+    const projectControlsStatePayload = buildProjectControlsStatePayload({ myJobsByUser, projectBlacklistById, syncLog });
+    const serializedProjectControlsState = JSON.stringify(projectControlsStatePayload);
+
+    if (serializedProjectControlsState === lastSavedProjectControlsStateRef.current) {
+      return;
+    }
+
+    const saveTimeout = window.setTimeout(() => {
+      lastSavedProjectControlsStateRef.current = serializedProjectControlsState;
+      void fetch("/api/project-controls", {
+        body: JSON.stringify(projectControlsStatePayload),
+        headers: {
+          "Content-Type": "application/json"
+        },
+        method: "PUT"
+      }).then((response) => {
+        if (!response.ok) {
+          lastSavedProjectControlsStateRef.current = "";
+        }
+      }).catch(() => {
+        lastSavedProjectControlsStateRef.current = "";
+      });
+    }, 500);
+
+    return () => {
+      window.clearTimeout(saveTimeout);
+    };
+  }, [appStateHydrated, currentUser, myJobsByUser, projectBlacklistById, syncLog]);
 
   useEffect(() => {
     if (!currentUser || projects.length === 0 || entries.length === 0) {
@@ -1250,6 +1301,7 @@ export function TimeAllocationWorkspace() {
     lastSavedCrewStateRef.current = options.markSaved ? JSON.stringify(buildCrewStatePayload(normalizedState)) : "";
     lastSavedDailyReportStateRef.current = options.markSaved ? JSON.stringify(buildDailyReportStatePayload(normalizedState)) : "";
     lastSavedDayRecordsStateRef.current = options.markSaved ? JSON.stringify(buildDayRecordsStatePayload(normalizedState)) : "";
+    lastSavedProjectControlsStateRef.current = options.markSaved ? JSON.stringify(buildProjectControlsStatePayload(normalizedState)) : "";
   }
 
   function updateDraft(payItemId: string, field: "hours" | "quantity", value: string) {
@@ -5035,6 +5087,16 @@ function buildDayRecordsStatePayload(state: Pick<SharedAppState, "dayEntryNotesB
   };
 }
 
+function buildProjectControlsStatePayload(
+  state: Pick<SharedAppState, "myJobsByUser" | "projectBlacklistById" | "syncLog">
+) {
+  return {
+    myJobsByUser: state.myJobsByUser,
+    projectBlacklistById: state.projectBlacklistById,
+    syncLog: state.syncLog
+  };
+}
+
 async function loadDatabaseEntries() {
   try {
     const response = await fetch("/api/entries", {
@@ -5106,6 +5168,27 @@ async function loadDatabaseDayRecords() {
     return {
       dayEntryNotesByKey: data.dayEntryNotesByKey ?? {},
       daySubmissions: data.daySubmissions ?? {}
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function loadDatabaseProjectControls() {
+  try {
+    const response = await fetch("/api/project-controls", {
+      cache: "no-store"
+    });
+    const data = (await response.json()) as ProjectControlsResponse;
+
+    if (!response.ok || !data.databaseConfigured) {
+      return null;
+    }
+
+    return {
+      myJobsByUser: data.myJobsByUser ?? {},
+      projectBlacklistById: data.projectBlacklistById ?? {},
+      syncLog: data.syncLog ?? []
     };
   } catch {
     return null;
