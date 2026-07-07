@@ -165,6 +165,132 @@ export async function replaceDayRecords(
   };
 }
 
+export async function upsertDayNotes(projectId: string, date: string, dayNotes: StoredDayEntryNotes) {
+  const sql = getSql();
+
+  if (!sql) {
+    return null;
+  }
+
+  await ensureDayRecordTables();
+
+  const normalizedProjectId = readString(projectId);
+  const normalizedDate = readString(date);
+
+  if (!normalizedProjectId || !isIsoDate(normalizedDate)) {
+    return false;
+  }
+
+  const normalizedNotes = {
+    inventory: readString(dayNotes.inventory),
+    notes: readString(dayNotes.notes)
+  };
+
+  await sql`
+    insert into day_notes (
+      project_id,
+      work_date,
+      notes,
+      inventory,
+      raw_notes,
+      updated_at
+    )
+    values (
+      ${normalizedProjectId},
+      ${normalizedDate}::date,
+      ${normalizedNotes.notes},
+      ${normalizedNotes.inventory},
+      ${JSON.stringify(normalizedNotes)}::jsonb,
+      now()
+    )
+    on conflict (project_id, work_date) do update
+    set notes = excluded.notes,
+        inventory = excluded.inventory,
+        raw_notes = excluded.raw_notes,
+        updated_at = now()
+  `;
+
+  return true;
+}
+
+export async function upsertDaySubmission(projectId: string, date: string, daySubmission: StoredDaySubmission) {
+  const sql = getSql();
+
+  if (!sql) {
+    return null;
+  }
+
+  await ensureDayRecordTables();
+
+  const normalizedProjectId = readString(projectId);
+  const normalizedDate = readString(date);
+
+  if (
+    !normalizedProjectId ||
+    !isIsoDate(normalizedDate) ||
+    (daySubmission.status !== "draft" && daySubmission.status !== "submitted")
+  ) {
+    return false;
+  }
+
+  await sql`
+    insert into day_submissions (
+      project_id,
+      work_date,
+      status,
+      submitted_by_user_id,
+      submitted_by_name,
+      submitted_at,
+      raw_submission,
+      updated_at
+    )
+    values (
+      ${normalizedProjectId},
+      ${normalizedDate}::date,
+      ${daySubmission.status},
+      ${daySubmission.submittedByUserId ?? null},
+      ${daySubmission.submittedByName ?? null},
+      ${isValidTimestamp(daySubmission.submittedAt) ? daySubmission.submittedAt : null}::timestamptz,
+      ${JSON.stringify(daySubmission)}::jsonb,
+      now()
+    )
+    on conflict (project_id, work_date) do update
+    set status = excluded.status,
+        submitted_by_user_id = excluded.submitted_by_user_id,
+        submitted_by_name = excluded.submitted_by_name,
+        submitted_at = excluded.submitted_at,
+        raw_submission = excluded.raw_submission,
+        updated_at = now()
+  `;
+
+  return true;
+}
+
+export async function deleteDaySubmission(projectId: string, date: string) {
+  const sql = getSql();
+
+  if (!sql) {
+    return null;
+  }
+
+  await ensureDayRecordTables();
+
+  const normalizedProjectId = readString(projectId);
+  const normalizedDate = readString(date);
+
+  if (!normalizedProjectId || !isIsoDate(normalizedDate)) {
+    return false;
+  }
+
+  await sql`
+    delete from day_submissions
+    where project_id = ${normalizedProjectId}
+      and work_date = ${normalizedDate}::date
+  `;
+
+  return true;
+}
+
 async function ensureDayRecordTables() {
   const sql = getSql();
 

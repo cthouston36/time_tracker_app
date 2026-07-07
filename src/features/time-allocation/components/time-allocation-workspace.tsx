@@ -350,8 +350,8 @@ export function TimeAllocationWorkspace() {
   const [appStateHydrated, setAppStateHydrated] = useState(false);
   const dateInputRef = useRef<HTMLInputElement>(null);
   const lastSavedDailyReportStateRef = useRef("");
-  const lastSavedDayRecordsStateRef = useRef("");
   const lastSavedProjectControlsStateRef = useRef("");
+  const dayNotesSaveTimeoutsRef = useRef<Record<string, number>>({});
 
   const projects = useMemo(
     () => allProjects.filter((project) => !projectBlacklistById[project.id]),
@@ -695,40 +695,6 @@ export function TimeAllocationWorkspace() {
       return;
     }
 
-    const dayRecordsStatePayload = buildDayRecordsStatePayload({ dayEntryNotesByKey, daySubmissions });
-    const serializedDayRecordsState = JSON.stringify(dayRecordsStatePayload);
-
-    if (serializedDayRecordsState === lastSavedDayRecordsStateRef.current) {
-      return;
-    }
-
-    const saveTimeout = window.setTimeout(() => {
-      lastSavedDayRecordsStateRef.current = serializedDayRecordsState;
-      void fetch("/api/day-records", {
-        body: JSON.stringify(dayRecordsStatePayload),
-        headers: {
-          "Content-Type": "application/json"
-        },
-        method: "PUT"
-      }).then((response) => {
-        if (!response.ok) {
-          lastSavedDayRecordsStateRef.current = "";
-        }
-      }).catch(() => {
-        lastSavedDayRecordsStateRef.current = "";
-      });
-    }, 500);
-
-    return () => {
-      window.clearTimeout(saveTimeout);
-    };
-  }, [appStateHydrated, currentUser, dayEntryNotesByKey, daySubmissions]);
-
-  useEffect(() => {
-    if (!currentUser || !appStateHydrated) {
-      return;
-    }
-
     const projectControlsStatePayload = buildProjectControlsStatePayload({ myJobsByUser, projectBlacklistById, syncLog });
     const serializedProjectControlsState = JSON.stringify(projectControlsStatePayload);
 
@@ -819,6 +785,16 @@ export function TimeAllocationWorkspace() {
     window.localStorage.setItem("procore-sync-log", JSON.stringify(syncLog));
   }, [currentUser, syncLog]);
 
+  useEffect(
+    () => () => {
+      for (const timeoutId of Object.values(dayNotesSaveTimeoutsRef.current)) {
+        window.clearTimeout(timeoutId);
+      }
+      dayNotesSaveTimeoutsRef.current = {};
+    },
+    []
+  );
+
   async function login() {
     setLoginError("");
 
@@ -908,15 +884,33 @@ export function TimeAllocationWorkspace() {
     }
 
     const dayKey = getDayKey(selectedProject.id, workDate);
+    const nextNotes = {
+      notes: currentDayEntryNotes.notes,
+      inventory: currentDayEntryNotes.inventory,
+      [field]: value
+    };
 
     setDayEntryNotesByKey((current) => ({
       ...current,
-      [dayKey]: {
-        notes: current[dayKey]?.notes ?? "",
-        inventory: current[dayKey]?.inventory ?? "",
-        [field]: value
-      }
+      [dayKey]: nextNotes
     }));
+    scheduleDatabaseDayNotesSave(selectedProject.id, workDate, nextNotes);
+  }
+
+  function scheduleDatabaseDayNotesSave(projectId: string, date: string, dayEntryNotes: DayEntryNotes) {
+    const dayKey = getDayKey(projectId, date);
+    const existingTimeout = dayNotesSaveTimeoutsRef.current[dayKey];
+
+    if (existingTimeout) {
+      window.clearTimeout(existingTimeout);
+    }
+
+    dayNotesSaveTimeoutsRef.current[dayKey] = window.setTimeout(() => {
+      delete dayNotesSaveTimeoutsRef.current[dayKey];
+      void saveDatabaseDayNotes(projectId, date, dayEntryNotes).catch((error) => {
+        setEntryNotice(error instanceof Error ? error.message : "Notes saved locally, but did not sync.");
+      });
+    }, 500);
   }
 
   function openDailyEntry(projectId: string, date: string) {
@@ -1181,7 +1175,6 @@ export function TimeAllocationWorkspace() {
     setMyJobsByUser(normalizedState.myJobsByUser);
     setProjectBlacklistById(normalizedState.projectBlacklistById);
     lastSavedDailyReportStateRef.current = options.markSaved ? JSON.stringify(buildDailyReportStatePayload(normalizedState)) : "";
-    lastSavedDayRecordsStateRef.current = options.markSaved ? JSON.stringify(buildDayRecordsStatePayload(normalizedState)) : "";
     lastSavedProjectControlsStateRef.current = options.markSaved ? JSON.stringify(buildProjectControlsStatePayload(normalizedState)) : "";
   }
 
@@ -1791,6 +1784,9 @@ export function TimeAllocationWorkspace() {
       delete next[dayKey];
       return next;
     });
+    void deleteDatabaseDaySubmission(selectedProject.id, workDate).catch((error) => {
+      setEntryNotice(error instanceof Error ? error.message : "Submitted day deleted locally, but day status did not sync.");
+    });
     setEditingEntry(null);
     setDraftsByPayItem({});
   }
@@ -1853,15 +1849,20 @@ export function TimeAllocationWorkspace() {
       return;
     }
 
+    const daySubmission: DaySubmission = {
+      status: "submitted",
+      submittedByUserId: currentUser.id,
+      submittedByName: formatUserName(currentUser),
+      submittedAt: new Date().toISOString()
+    };
+
     setDaySubmissions((current) => ({
       ...current,
-      [getDayKey(selectedProject.id, workDate)]: {
-        status: "submitted",
-        submittedByUserId: currentUser.id,
-        submittedByName: formatUserName(currentUser),
-        submittedAt: new Date().toISOString()
-      }
+      [getDayKey(selectedProject.id, workDate)]: daySubmission
     }));
+    void saveDatabaseDaySubmission(selectedProject.id, workDate, daySubmission).catch((error) => {
+      setEntryNotice(error instanceof Error ? error.message : "Day submitted locally, but did not sync.");
+    });
     setEditingEntry(null);
     setDraftsByPayItem({});
     setEntryNotice("Day submitted.");
@@ -1874,12 +1875,17 @@ export function TimeAllocationWorkspace() {
 
     const dayKey = getDayKey(selectedProject.id, workDate);
 
+    const daySubmission: DaySubmission = {
+      status: "draft"
+    };
+
     setDaySubmissions((current) => ({
       ...current,
-      [dayKey]: {
-        status: "draft"
-      }
+      [dayKey]: daySubmission
     }));
+    void saveDatabaseDaySubmission(selectedProject.id, workDate, daySubmission).catch((error) => {
+      setEntryNotice(error instanceof Error ? error.message : "Submitted day reopened locally, but did not sync.");
+    });
     setEntryNotice("Submitted day reopened.");
   }
 
@@ -5015,13 +5021,6 @@ function buildDailyReportStatePayload(
   };
 }
 
-function buildDayRecordsStatePayload(state: Pick<SharedAppState, "dayEntryNotesByKey" | "daySubmissions">) {
-  return {
-    dayEntryNotesByKey: state.dayEntryNotesByKey,
-    daySubmissions: state.daySubmissions
-  };
-}
-
 function buildProjectControlsStatePayload(
   state: Pick<SharedAppState, "myJobsByUser" | "projectBlacklistById" | "syncLog">
 ) {
@@ -5216,6 +5215,60 @@ async function loadDatabaseDayRecords() {
     };
   } catch {
     return null;
+  }
+}
+
+async function saveDatabaseDayNotes(projectId: string, date: string, dayEntryNotes: DayEntryNotes) {
+  const response = await fetch("/api/day-records", {
+    body: JSON.stringify({
+      action: "save_notes",
+      date,
+      dayEntryNotes,
+      projectId
+    }),
+    headers: {
+      "Content-Type": "application/json"
+    },
+    method: "PATCH"
+  });
+  const data = (await response.json()) as { error?: string; ok?: boolean };
+
+  if (!response.ok || data.ok === false) {
+    throw new Error(data.error ?? "Unable to save notes.");
+  }
+}
+
+async function saveDatabaseDaySubmission(projectId: string, date: string, daySubmission: DaySubmission) {
+  const response = await fetch("/api/day-records", {
+    body: JSON.stringify({
+      action: "save_submission",
+      date,
+      daySubmission,
+      projectId
+    }),
+    headers: {
+      "Content-Type": "application/json"
+    },
+    method: "PATCH"
+  });
+  const data = (await response.json()) as { error?: string; ok?: boolean };
+
+  if (!response.ok || data.ok === false) {
+    throw new Error(data.error ?? "Unable to save day status.");
+  }
+}
+
+async function deleteDatabaseDaySubmission(projectId: string, date: string) {
+  const response = await fetch(
+    `/api/day-records?projectId=${encodeURIComponent(projectId)}&date=${encodeURIComponent(date)}`,
+    {
+      method: "DELETE"
+    }
+  );
+  const data = (await response.json()) as { error?: string; ok?: boolean };
+
+  if (!response.ok || data.ok === false) {
+    throw new Error(data.error ?? "Unable to delete day status.");
   }
 }
 
