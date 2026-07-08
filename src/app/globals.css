@@ -411,7 +411,12 @@ button {
 }
 
 input[type="date"] {
+  -webkit-appearance: none;
+  appearance: none;
   color-scheme: dark;
+  max-width: 100%;
+  min-width: 0;
+  width: 100%;
 }
 
 input[type="date"]::-webkit-calendar-picker-indicator {
@@ -420,11 +425,18 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 }
 
 .date-input-wrap {
+  max-width: 100%;
+  min-width: 0;
   position: relative;
+  width: 100%;
 }
 
 .date-input-wrap input {
+  display: block;
+  max-width: 100%;
+  min-width: 0;
   padding-right: 42px;
+  width: 100%;
 }
 
 .date-input-button {
@@ -2371,6 +2383,13 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
   .report-controls {
     grid-template-columns: 1fr;
+  }
+
+  .date-input-wrap,
+  .report-controls .field-group,
+  .weekly-status-controls .field-group {
+    min-width: 0;
+    width: 100%;
   }
 
   .day-note-grid {

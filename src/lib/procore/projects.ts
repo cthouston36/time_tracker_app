@@ -6,6 +6,7 @@ import { getProcoreIntegrationAccessToken } from "@/lib/procore/session";
 import type { PayItem, Project } from "@/lib/procore/types";
 
 const PROCORE_PROJECT_SYNC_DELAY_MS = 350;
+const DEFAULT_PROCORE_SYNC_NEW_BATCH_SIZE = 6;
 
 export type ProcoreSyncSummary = {
   attempted: number;
@@ -13,6 +14,7 @@ export type ProcoreSyncSummary = {
   failed: number;
   skippedExisting: number;
   failedProjects: string[];
+  remainingNewProjects?: number;
 };
 
 export type ProcoreSyncResult = {
@@ -39,19 +41,32 @@ export async function syncProjectsFromProcore(): Promise<ProcoreSyncResult> {
   const cachedProjects = await getProjects();
   const cachedProjectIds = new Set(cachedProjects.map((project) => project.id));
   const newProjects = procoreProjects.filter((project) => !cachedProjectIds.has(String(project.id)));
-  const { failedProjects, projects: newProjectsWithPayItems } = await loadProjectsWithPayItemsSequentially(newProjects);
+  const projectsToSync = newProjects.slice(0, getSyncNewProjectBatchSize());
+  const remainingNewProjects = Math.max(0, newProjects.length - projectsToSync.length);
+  const { failedProjects, projects: newProjectsWithPayItems } = await loadProjectsWithPayItemsSequentially(projectsToSync);
   const cache = await updateProcoreCache((currentProjects) => [...currentProjects, ...newProjectsWithPayItems]);
 
   return {
     projects: cache.projects,
     summary: {
-      attempted: newProjects.length,
+      attempted: projectsToSync.length,
       synced: newProjectsWithPayItems.length,
       failed: failedProjects.length,
       skippedExisting: procoreProjects.length - newProjects.length,
-      failedProjects
+      failedProjects,
+      remainingNewProjects
     }
   };
+}
+
+function getSyncNewProjectBatchSize() {
+  const configuredBatchSize = Number(process.env.PROCORE_SYNC_NEW_BATCH_SIZE);
+
+  if (Number.isInteger(configuredBatchSize) && configuredBatchSize > 0) {
+    return configuredBatchSize;
+  }
+
+  return DEFAULT_PROCORE_SYNC_NEW_BATCH_SIZE;
 }
 
 export async function syncAllProjectsFromProcore(): Promise<ProcoreSyncResult> {

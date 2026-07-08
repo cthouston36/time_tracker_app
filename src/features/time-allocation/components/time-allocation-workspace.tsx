@@ -30,6 +30,8 @@ import { todayInputValue } from "@/lib/date";
 import type { AuthUser } from "@/lib/auth/types";
 import type { AllocationEntry, Project } from "@/lib/procore/types";
 
+const PROCORE_SYNC_REQUEST_TIMEOUT_MS = 55_000;
+
 type ProjectsResponse = {
   projects: Project[];
   syncedAt?: string | null;
@@ -55,6 +57,7 @@ type ProcoreSyncSummary = {
   failed: number;
   skippedExisting: number;
   failedProjects: string[];
+  remainingNewProjects?: number;
 };
 
 type SyncLogEntry = {
@@ -1749,10 +1752,10 @@ export function TimeAllocationWorkspace() {
     setSyncSummary(null);
 
     try {
-      const response = await fetch("/api/procore/sync", {
-        method: "POST"
-      });
-      const data = (await response.json()) as ProjectsResponse;
+      const { data, response } = await postProjectsWithTimeout(
+        "/api/procore/sync",
+        "Sync New Projects timed out before the server returned. Try again, or use Add/Update Project for a specific job."
+      );
 
       if (!response.ok) {
         throw new Error(data.error ?? "Unable to sync Procore data.");
@@ -1773,7 +1776,7 @@ export function TimeAllocationWorkspace() {
       setDraftsByPayItem({});
       addSyncLog({
         action: "Sync New Projects",
-        status: data.summary && data.summary.failed > 0 ? "warning" : "success",
+        status: hasSyncWarnings(data.summary) ? "warning" : "success",
         message,
         summary: data.summary
       });
@@ -1797,10 +1800,10 @@ export function TimeAllocationWorkspace() {
     setSyncSummary(null);
 
     try {
-      const response = await fetch("/api/procore/sync-all", {
-        method: "POST"
-      });
-      const data = (await response.json()) as ProjectsResponse;
+      const { data, response } = await postProjectsWithTimeout(
+        "/api/procore/sync-all",
+        "Sync All Projects timed out before the server returned. Try again, or use Add/Update Project for a specific job."
+      );
 
       if (!response.ok) {
         throw new Error(data.error ?? "Unable to sync all Procore projects.");
@@ -1821,7 +1824,7 @@ export function TimeAllocationWorkspace() {
       setDraftsByPayItem({});
       addSyncLog({
         action: "Sync All Projects",
-        status: data.summary && data.summary.failed > 0 ? "warning" : "success",
+        status: hasSyncWarnings(data.summary) ? "warning" : "success",
         message,
         summary: data.summary
       });
@@ -4704,12 +4707,19 @@ function CrewPerformanceReport({ entries, projects }: { entries: AllocationEntry
 }
 
 function SyncSummaryCard({ summary }: { summary: ProcoreSyncSummary }) {
+  const remainingNewProjects = summary.remainingNewProjects ?? 0;
+
   return (
-    <div className={summary.failed > 0 ? "sync-summary warning" : "sync-summary"}>
+    <div className={hasSyncWarnings(summary) ? "sync-summary warning" : "sync-summary"}>
       <strong>
         Synced {summary.synced} of {summary.attempted} attempted project{summary.attempted === 1 ? "" : "s"}
       </strong>
       <span>{summary.skippedExisting} existing project{summary.skippedExisting === 1 ? "" : "s"} skipped.</span>
+      {remainingNewProjects > 0 ? (
+        <span>
+          {remainingNewProjects} new project{remainingNewProjects === 1 ? "" : "s"} still queued. Run Sync New Projects again to continue.
+        </span>
+      ) : null}
       {summary.failed > 0 ? (
         <span>{summary.failed} project{summary.failed === 1 ? "" : "s"} failed or returned no budget lines.</span>
       ) : null}
@@ -4747,9 +4757,7 @@ function SyncLogPanel({ entries }: { entries: SyncLogEntry[] }) {
               </div>
               <span>{entry.message}</span>
               {entry.summary ? (
-                <span>
-                  {entry.summary.synced} synced, {entry.summary.skippedExisting} skipped, {entry.summary.failed} failed
-                </span>
+                <span>{formatSyncSummaryLine(entry.summary)}</span>
               ) : null}
               {entry.summary?.failedProjects.length ? (
                 <details>
@@ -6766,7 +6774,48 @@ function buildSyncStatus(prefix: string, summary: ProcoreSyncSummary | undefined
     return `${prefix} complete`;
   }
 
-  return `${prefix}: ${summary.synced} synced, ${summary.failed} failed`;
+  const remainingNewProjects = summary.remainingNewProjects ?? 0;
+  const queuedText = remainingNewProjects > 0 ? `, ${remainingNewProjects} queued` : "";
+
+  return `${prefix}: ${summary.synced} synced, ${summary.failed} failed${queuedText}`;
+}
+
+function hasSyncWarnings(summary: ProcoreSyncSummary | undefined) {
+  return Boolean(summary && (summary.failed > 0 || (summary.remainingNewProjects ?? 0) > 0));
+}
+
+function formatSyncSummaryLine(summary: ProcoreSyncSummary) {
+  const remainingNewProjects = summary.remainingNewProjects ?? 0;
+  const queuedText = remainingNewProjects > 0 ? `, ${remainingNewProjects} queued` : "";
+
+  return `${summary.synced} synced, ${summary.skippedExisting} skipped, ${summary.failed} failed${queuedText}`;
+}
+
+async function postProjectsWithTimeout(path: string, timeoutMessage: string) {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), PROCORE_SYNC_REQUEST_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(path, {
+      method: "POST",
+      signal: controller.signal
+    });
+    const data = (await response.json()) as ProjectsResponse;
+
+    return { data, response };
+  } catch (error) {
+    if (isAbortError(error)) {
+      throw new Error(timeoutMessage);
+    }
+
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof DOMException && error.name === "AbortError";
 }
 
 function formatDate(value: string) {
