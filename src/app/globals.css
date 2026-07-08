@@ -2022,6 +2022,19 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   margin-bottom: 0;
 }
 
+.report-pagination {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.report-pagination span {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
 .report-row {
   align-items: center;
   border-bottom: 1px solid var(--line);
@@ -2520,6 +2533,15 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
   .report-detail-controls {
     grid-template-columns: 1fr;
+  }
+
+  .report-pagination {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .report-pagination .secondary-button {
+    width: 100%;
   }
 
   .detail-analysis-row {

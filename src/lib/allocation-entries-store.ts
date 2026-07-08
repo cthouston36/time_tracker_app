@@ -26,6 +26,13 @@ type CrewAllocationRow = {
   hours: number | string | null;
 };
 
+export type AllocationEntryReportFilters = {
+  endDate?: string;
+  payItemQuery?: string;
+  projectIds?: string[];
+  startDate?: string;
+};
+
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 let dailyEntryTablesReady = false;
@@ -59,6 +66,67 @@ export async function readAllocationEntries() {
     order by work_date desc, project_name nulls last, pay_item_code, pay_item_name
   `) as EntryRow[];
 
+  return readEntriesWithAllocations(entryRows);
+}
+
+export async function readAllocationEntriesForReport(filters: AllocationEntryReportFilters) {
+  const sql = getSql();
+
+  if (!sql) {
+    return null;
+  }
+
+  await ensureDailyEntryTables();
+
+  const projectIds = normalizeStringList(filters.projectIds);
+
+  if (filters.projectIds && projectIds.length === 0) {
+    return [];
+  }
+
+  const startDate = isIsoDate(filters.startDate ?? "") ? filters.startDate : null;
+  const endDate = isIsoDate(filters.endDate ?? "") ? filters.endDate : null;
+  const normalizedPayItemQuery = filters.payItemQuery?.trim().toLowerCase() ?? "";
+  const payItemQuery = normalizedPayItemQuery ? `%${normalizedPayItemQuery}%` : "";
+  const projectIdsJson = JSON.stringify(projectIds);
+  const entryRows = (await sql`
+    select
+      id,
+      project_id,
+      project_name,
+      to_char(work_date, 'YYYY-MM-DD') as date,
+      pay_item_id,
+      pay_item_code,
+      pay_item_name,
+      pay_item_budgeted_quantity,
+      pay_item_unit_of_measure,
+      hours,
+      quantity_completed,
+      saved_by_user_id,
+      saved_by_name,
+      saved_at::text as saved_at
+    from daily_entries
+    where (${projectIds.length === 0}::boolean or project_id in (
+      select value
+      from jsonb_array_elements_text(${projectIdsJson}::jsonb)
+    ))
+      and (${startDate}::date is null or work_date >= ${startDate}::date)
+      and (${endDate}::date is null or work_date <= ${endDate}::date)
+      and (${payItemQuery} = '' or lower(pay_item_code || ' ' || pay_item_name) like ${payItemQuery})
+    order by work_date desc, project_name nulls last, pay_item_code, pay_item_name
+  `) as EntryRow[];
+
+  return readEntriesWithAllocations(entryRows);
+}
+
+async function readEntriesWithAllocations(entryRows: EntryRow[]) {
+  const sql = getSql();
+
+  if (!sql || entryRows.length === 0) {
+    return [];
+  }
+
+  const entryIdsJson = JSON.stringify(entryRows.map((entryRow) => entryRow.id));
   const allocationRows = (await sql`
     select
       entry_id,
@@ -67,6 +135,10 @@ export async function readAllocationEntries() {
       job_title,
       hours
     from daily_entry_crew_allocations
+    where entry_id in (
+      select value
+      from jsonb_array_elements_text(${entryIdsJson}::jsonb)
+    )
     order by crew_member_name, crew_member_id
   `) as CrewAllocationRow[];
 
@@ -465,6 +537,10 @@ function toNullableNumber(value: unknown) {
 
 function isIsoDate(value: string) {
   return ISO_DATE_PATTERN.test(value);
+}
+
+function normalizeStringList(values: string[] | undefined) {
+  return Array.from(new Set((values ?? []).map((value) => value.trim()).filter(Boolean)));
 }
 
 function isValidTimestamp(value: unknown): value is string {

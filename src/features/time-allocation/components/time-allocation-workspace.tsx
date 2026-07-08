@@ -3792,6 +3792,7 @@ type PayItemReportRow = {
   totalQuantity: number;
   hoursPerUnit: number;
   entryCount: number;
+  jobRollupRows?: PayItemJobRollupRow[];
 };
 
 type PayItemReportDetailRow = {
@@ -3861,6 +3862,24 @@ type PayItemDetailAnalysisRow = {
   hoursPerUnit: number;
 };
 
+type ReportPayItemOption = {
+  key: string;
+  label: string;
+  query: string;
+};
+
+type ReportResponse = {
+  databaseConfigured?: boolean;
+  error?: string;
+  filteredEntryCount?: number;
+  mode?: ReportMode;
+  page?: number;
+  pageSize?: number;
+  payItemOptions?: ReportPayItemOption[];
+  rows?: Array<PayItemReportRow | PayItemDetailAnalysisRow | CrewPerformanceRow>;
+  totalRows?: number;
+};
+
 function ReportsView({
   currentUser,
   entries,
@@ -3892,9 +3911,16 @@ function ReportsView({
   const [detailSort, setDetailSort] = useState<DetailSort>("worst_average");
   const [crewPerformanceInfoOpen, setCrewPerformanceInfoOpen] = useState(false);
   const [myJobsEditorOpen, setMyJobsEditorOpen] = useState(false);
+  const [reportPage, setReportPage] = useState(1);
+  const [reportData, setReportData] = useState<ReportResponse | null>(null);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportError, setReportError] = useState("");
+  const [reportsUseServerData, setReportsUseServerData] = useState(true);
   const reportStartInputRef = useRef<HTMLInputElement>(null);
   const reportEndInputRef = useRef<HTMLInputElement>(null);
-  const reportProjectOptions = buildReportProjectOptions(projects, entries);
+  const reportPageSize = getReportPageSize(reportMode);
+  const reportProjectOptions = useMemo(() => buildReportProjectOptions(projects, entries), [entries, projects]);
+  const allowedReportProjectIds = useMemo(() => reportProjectOptions.map((project) => project.id), [reportProjectOptions]);
   const canManageMyJobs = currentUser.role === "project_manager" || currentUser.role === "admin";
   const reportJobPickerOptions = [
     {
@@ -3914,16 +3940,120 @@ function ReportsView({
       label: project.name
     }))
   ];
-  const filteredEntries = entries.filter((entry) => {
-    const matchesProject =
-      reportProjectId === "all" ||
-      (reportProjectId === "my-jobs" ? myJobIds.includes(entry.projectId) : entry.projectId === reportProjectId);
-    const matchesStart = !reportStartDate || entry.date >= reportStartDate;
-    const matchesEnd = !reportEndDate || entry.date <= reportEndDate;
+  const filteredEntries = useMemo(
+    () =>
+      entries.filter((entry) => {
+        const matchesProject =
+          reportProjectId === "all" ||
+          (reportProjectId === "my-jobs" ? myJobIds.includes(entry.projectId) : entry.projectId === reportProjectId);
+        const matchesStart = !reportStartDate || entry.date >= reportStartDate;
+        const matchesEnd = !reportEndDate || entry.date <= reportEndDate;
 
-    return matchesProject && matchesStart && matchesEnd;
-  });
-  const payItemRows = buildPayItemReport(filteredEntries);
+        return matchesProject && matchesStart && matchesEnd;
+      }),
+    [entries, myJobIds, reportEndDate, reportProjectId, reportStartDate]
+  );
+  const normalizedDetailQuery = detailPayItemQuery.trim().toLowerCase();
+  const localPayItemRows = useMemo(() => buildPayItemReport(filteredEntries, projects), [filteredEntries, projects]);
+  const localDetailPayItemOptions = useMemo(() => buildReportPayItemOptions(filteredEntries), [filteredEntries]);
+  const localDetailRows = useMemo(
+    () =>
+      normalizedDetailQuery
+        ? buildPayItemDetailAnalysisRows(
+            filteredEntries.filter((entry) => payItemMatchesQuery(entry, normalizedDetailQuery)),
+            projects,
+            detailGrouping,
+            detailSort
+          )
+        : [],
+    [detailGrouping, detailSort, filteredEntries, normalizedDetailQuery, projects]
+  );
+  const localCrewRows = useMemo(() => buildCrewPerformanceRows(filteredEntries, projects), [filteredEntries, projects]);
+  const serverReportAvailable = Boolean(reportsUseServerData && reportData?.databaseConfigured && reportData.mode === reportMode);
+  const payItemRows =
+    serverReportAvailable && reportMode === "summary" ? (reportData?.rows ?? []) as PayItemReportRow[] : localPayItemRows;
+  const detailRows =
+    serverReportAvailable && reportMode === "detail" ? (reportData?.rows ?? []) as PayItemDetailAnalysisRow[] : localDetailRows;
+  const detailPayItemOptions =
+    serverReportAvailable && reportMode === "detail" ? reportData?.payItemOptions ?? [] : localDetailPayItemOptions;
+  const crewRows = serverReportAvailable && reportMode === "crew" ? (reportData?.rows ?? []) as CrewPerformanceRow[] : localCrewRows;
+  const reportPagination = serverReportAvailable
+    ? {
+        page: reportData?.page ?? reportPage,
+        pageSize: reportData?.pageSize ?? reportPageSize,
+        totalRows: reportData?.totalRows ?? 0
+      }
+    : null;
+  const filteredReportEntryCount = reportData?.filteredEntryCount ?? 0;
+
+  useEffect(() => {
+    setReportPage(1);
+  }, [detailGrouping, detailPayItemQuery, detailSort, reportEndDate, reportMode, reportProjectId, reportStartDate]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    setReportLoading(true);
+    setReportError("");
+
+    fetch("/api/reports", {
+      body: JSON.stringify({
+        allowedProjectIds: allowedReportProjectIds,
+        detailGrouping,
+        detailPayItemQuery,
+        detailSort,
+        endDate: reportEndDate,
+        mode: reportMode,
+        myJobIds,
+        page: reportPage,
+        pageSize: reportPageSize,
+        projectId: reportProjectId,
+        startDate: reportStartDate
+      }),
+      headers: {
+        "Content-Type": "application/json"
+      },
+      method: "POST",
+      signal: controller.signal
+    })
+      .then(async (response) => {
+        const data = (await response.json()) as ReportResponse;
+
+        if (!response.ok) {
+          throw new Error(data.error ?? "Unable to load report.");
+        }
+
+        setReportData(data);
+        setReportsUseServerData(Boolean(data.databaseConfigured));
+      })
+      .catch((error) => {
+        if (isAbortError(error)) {
+          return;
+        }
+
+        setReportError(error instanceof Error ? error.message : "Unable to load report.");
+        setReportsUseServerData(false);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setReportLoading(false);
+        }
+      });
+
+    return () => controller.abort();
+  }, [
+    allowedReportProjectIds,
+    detailGrouping,
+    detailPayItemQuery,
+    detailSort,
+    myJobIds,
+    reportEndDate,
+    reportMode,
+    reportPage,
+    reportPageSize,
+    reportProjectId,
+    reportStartDate
+  ]);
 
   return (
     <section className="allocation-grid">
@@ -4062,21 +4192,62 @@ function ReportsView({
             Clear filters
           </button>
         </div>
+        {reportError ? <div className="inline-alert">{reportError}</div> : null}
+        {reportLoading ? <div className="field-note">Loading report...</div> : null}
+        {reportPagination && !reportLoading ? (
+          <div className="field-note">
+            Showing server-filtered report rows. {filteredReportEntryCount} saved{" "}
+            {filteredReportEntryCount === 1 ? "entry" : "entries"} match the filters.
+          </div>
+        ) : null}
         {reportMode === "summary" ? (
-          <PayItemReportTable entries={filteredEntries} projects={projects} rows={payItemRows} />
+          <>
+            <PayItemReportTable rows={payItemRows} />
+            {reportPagination ? (
+              <ReportPaginationControls
+                loading={reportLoading}
+                page={reportPagination.page}
+                pageSize={reportPagination.pageSize}
+                totalRows={reportPagination.totalRows}
+                onPageChange={setReportPage}
+              />
+            ) : null}
+          </>
         ) : reportMode === "detail" ? (
-          <DetailedPayItemReport
-            detailGrouping={detailGrouping}
-            detailPayItemQuery={detailPayItemQuery}
-            detailSort={detailSort}
-            entries={filteredEntries}
-            projects={projects}
-            setDetailGrouping={setDetailGrouping}
-            setDetailPayItemQuery={setDetailPayItemQuery}
-            setDetailSort={setDetailSort}
-          />
+          <>
+            <DetailedPayItemReport
+              detailGrouping={detailGrouping}
+              detailPayItemOptions={detailPayItemOptions}
+              detailPayItemQuery={detailPayItemQuery}
+              detailRows={detailRows}
+              detailSort={detailSort}
+              setDetailGrouping={setDetailGrouping}
+              setDetailPayItemQuery={setDetailPayItemQuery}
+              setDetailSort={setDetailSort}
+            />
+            {reportPagination ? (
+              <ReportPaginationControls
+                loading={reportLoading}
+                page={reportPagination.page}
+                pageSize={reportPagination.pageSize}
+                totalRows={reportPagination.totalRows}
+                onPageChange={setReportPage}
+              />
+            ) : null}
+          </>
         ) : (
-          <CrewPerformanceReport entries={filteredEntries} projects={projects} />
+          <>
+            <CrewPerformanceReport rows={crewRows} />
+            {reportPagination ? (
+              <ReportPaginationControls
+                loading={reportLoading}
+                page={reportPagination.page}
+                pageSize={reportPagination.pageSize}
+                totalRows={reportPagination.totalRows}
+                onPageChange={setReportPage}
+              />
+            ) : null}
+          </>
         )}
       </div>
     </section>
@@ -4366,15 +4537,7 @@ function getDailyReportCalendarStatus(hasDailyReport: boolean, hasUploadedDailyR
   };
 }
 
-function PayItemReportTable({
-  entries,
-  projects,
-  rows
-}: {
-  entries: AllocationEntry[];
-  projects: Project[];
-  rows: PayItemReportRow[];
-}) {
+function PayItemReportTable({ rows }: { rows: PayItemReportRow[] }) {
   const [expandedPayItemKey, setExpandedPayItemKey] = useState<string | null>(null);
 
   if (rows.length === 0) {
@@ -4392,12 +4555,7 @@ function PayItemReportTable({
       </div>
       {rows.map((row) => {
         const expanded = expandedPayItemKey === row.key;
-        const jobRollupRows = expanded
-          ? buildPayItemJobRollupRows(
-              entries.filter((entry) => getPayItemReportKey(entry) === row.key),
-              projects
-            )
-          : [];
+        const jobRollupRows = expanded ? row.jobRollupRows ?? [] : [];
 
         return (
           <div className="report-row-group" key={row.key}>
@@ -4450,31 +4608,24 @@ function PayItemReportTable({
 
 function DetailedPayItemReport({
   detailGrouping,
+  detailPayItemOptions,
   detailPayItemQuery,
+  detailRows,
   detailSort,
-  entries,
-  projects,
   setDetailGrouping,
   setDetailPayItemQuery,
   setDetailSort
 }: {
   detailGrouping: DetailGrouping;
+  detailPayItemOptions: ReportPayItemOption[];
   detailPayItemQuery: string;
+  detailRows: PayItemDetailAnalysisRow[];
   detailSort: DetailSort;
-  entries: AllocationEntry[];
-  projects: Project[];
   setDetailGrouping: (grouping: DetailGrouping) => void;
   setDetailPayItemQuery: (query: string) => void;
   setDetailSort: (sort: DetailSort) => void;
 }) {
-  const payItemOptions = buildReportPayItemOptions(entries);
   const normalizedQuery = detailPayItemQuery.trim().toLowerCase();
-  const matchingEntries = normalizedQuery
-    ? entries.filter((entry) => payItemMatchesQuery(entry, normalizedQuery))
-    : [];
-  const detailRows = normalizedQuery
-    ? buildPayItemDetailAnalysisRows(matchingEntries, projects, detailGrouping, detailSort)
-    : [];
 
   return (
     <div className="report-detail-analysis">
@@ -4483,14 +4634,14 @@ function DetailedPayItemReport({
           <label htmlFor="detail-pay-item-select">Pay Item</label>
           <select
             id="detail-pay-item-select"
-            disabled={payItemOptions.length === 0}
-            value={payItemOptions.some((option) => option.query === detailPayItemQuery) ? detailPayItemQuery : ""}
+            disabled={detailPayItemOptions.length === 0}
+            value={detailPayItemOptions.some((option) => option.query === detailPayItemQuery) ? detailPayItemQuery : ""}
             onChange={(event) => setDetailPayItemQuery(event.target.value)}
           >
             <option value="">
-              {payItemOptions.length === 0 ? "No pay items with entries" : "Select pay item"}
+              {detailPayItemOptions.length === 0 ? "No pay items with entries" : "Select pay item"}
             </option>
-            {payItemOptions.map((option) => (
+            {detailPayItemOptions.map((option) => (
               <option key={option.key} value={option.query}>
                 {option.label}
               </option>
@@ -4595,9 +4746,8 @@ function CrewPerformanceInfo() {
   );
 }
 
-function CrewPerformanceReport({ entries, projects }: { entries: AllocationEntry[]; projects: Project[] }) {
+function CrewPerformanceReport({ rows }: { rows: CrewPerformanceRow[] }) {
   const [expandedCrewMemberId, setExpandedCrewMemberId] = useState<string | null>(null);
-  const rows = buildCrewPerformanceRows(entries, projects);
 
   if (rows.length === 0) {
     return <div className="empty-state">No crew allocation entries are available for crew performance reporting.</div>;
@@ -4673,6 +4823,50 @@ function CrewPerformanceReport({ entries, projects }: { entries: AllocationEntry
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function ReportPaginationControls({
+  loading,
+  onPageChange,
+  page,
+  pageSize,
+  totalRows
+}: {
+  loading: boolean;
+  onPageChange: (page: number) => void;
+  page: number;
+  pageSize: number;
+  totalRows: number;
+}) {
+  const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
+
+  if (totalRows <= pageSize) {
+    return null;
+  }
+
+  return (
+    <div className="report-pagination">
+      <button
+        className="secondary-button"
+        disabled={loading || page <= 1}
+        onClick={() => onPageChange(page - 1)}
+        type="button"
+      >
+        Previous
+      </button>
+      <span>
+        Page {page} of {totalPages} ({totalRows} rows)
+      </span>
+      <button
+        className="secondary-button"
+        disabled={loading || page >= totalPages}
+        onClick={() => onPageChange(page + 1)}
+        type="button"
+      >
+        Next
+      </button>
     </div>
   );
 }
@@ -5033,7 +5227,7 @@ function AdminUsersPanel({
   );
 }
 
-function buildPayItemReport(entries: AllocationEntry[]): PayItemReportRow[] {
+function buildPayItemReport(entries: AllocationEntry[], projects: Project[] = []): PayItemReportRow[] {
   const rows = new Map<string, PayItemReportRow>();
 
   for (const entry of entries) {
@@ -5055,7 +5249,15 @@ function buildPayItemReport(entries: AllocationEntry[]): PayItemReportRow[] {
     rows.set(key, current);
   }
 
-  return Array.from(rows.values()).sort((a, b) => b.hoursPerUnit - a.hoursPerUnit);
+  return Array.from(rows.values())
+    .map((row) => ({
+      ...row,
+      jobRollupRows: buildPayItemJobRollupRows(
+        entries.filter((entry) => getPayItemReportKey(entry) === row.key),
+        projects
+      )
+    }))
+    .sort((a, b) => b.hoursPerUnit - a.hoursPerUnit);
 }
 
 function buildPayItemJobRollupRows(entries: AllocationEntry[], projects: Project[]): PayItemJobRollupRow[] {
@@ -5354,6 +5556,14 @@ function getReportTitle(reportMode: ReportMode) {
   }
 
   return "Pay Item Production Report";
+}
+
+function getReportPageSize(reportMode: ReportMode) {
+  if (reportMode === "detail") {
+    return 50;
+  }
+
+  return 25;
 }
 
 function formatVariance(variance: number) {
