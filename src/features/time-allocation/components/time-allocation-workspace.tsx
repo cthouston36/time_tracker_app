@@ -338,7 +338,16 @@ type PendingProcoreReturn = {
   viewMode?: ViewMode;
 };
 
+type DailyReportAutosaveDraft = {
+  date: string;
+  draft: DailyReportAnswers;
+  projectId: string;
+  updatedAt: string;
+  userId: string;
+};
+
 const PENDING_PROCORE_RETURN_KEY = "pending-procore-return";
+const DAILY_REPORT_DRAFT_STORAGE_PREFIX = "daily-report-draft";
 
 export function TimeAllocationWorkspace() {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
@@ -372,6 +381,7 @@ export function TimeAllocationWorkspace() {
   const [dailyReportUploadsByKey, setDailyReportUploadsByKey] = useState<DailyReportUploadsByKey>({});
   const [dailyReportDraft, setDailyReportDraft] = useState<DailyReportAnswers>(() => createEmptyDailyReportAnswers());
   const [dailyReportModalOpen, setDailyReportModalOpen] = useState(false);
+  const [dailyReportDraftNotice, setDailyReportDraftNotice] = useState("");
   const [downloadingDailyReportPdf, setDownloadingDailyReportPdf] = useState(false);
   const [uploadingDailyReport, setUploadingDailyReport] = useState(false);
   const [dailyReportUploadNotice, setDailyReportUploadNotice] = useState<{ message: string; status: "success" | "error" } | null>(null);
@@ -404,6 +414,7 @@ export function TimeAllocationWorkspace() {
   const [appStateHydrated, setAppStateHydrated] = useState(false);
   const dateInputRef = useRef<HTMLInputElement>(null);
   const dayNotesSaveTimeoutsRef = useRef<Record<string, number>>({});
+  const dailyReportDraftAutosaveTimeoutRef = useRef<number | null>(null);
 
   const projects = useMemo(
     () => allProjects.filter((project) => !projectBlacklistById[project.id]),
@@ -726,6 +737,56 @@ export function TimeAllocationWorkspace() {
     projectBlacklistById,
     syncLog
   ]);
+
+  useEffect(() => {
+    if (!dailyReportModalOpen || !currentUser || !selectedProject) {
+      clearPendingDailyReportAutosaveTimeout(dailyReportDraftAutosaveTimeoutRef);
+      return;
+    }
+
+    clearPendingDailyReportAutosaveTimeout(dailyReportDraftAutosaveTimeoutRef);
+
+    const draftToSave = dailyReportDraft;
+    const projectId = selectedProject.id;
+    const date = workDate;
+    const userId = currentUser.id;
+
+    function saveDraft(showNotice: boolean) {
+      const updatedAt = new Date().toISOString();
+
+      writeDailyReportAutosaveDraft({
+        date,
+        draft: draftToSave,
+        projectId,
+        updatedAt,
+        userId
+      });
+
+      if (showNotice) {
+        setDailyReportDraftNotice(
+          `Draft autosaved ${new Date(updatedAt).toLocaleTimeString(undefined, {
+            hour: "numeric",
+            minute: "2-digit"
+          })}.`
+        );
+      }
+    }
+
+    function saveDraftBeforeUnload() {
+      saveDraft(false);
+    }
+
+    dailyReportDraftAutosaveTimeoutRef.current = window.setTimeout(() => {
+      saveDraft(true);
+      dailyReportDraftAutosaveTimeoutRef.current = null;
+    }, 700);
+    window.addEventListener("beforeunload", saveDraftBeforeUnload);
+
+    return () => {
+      window.removeEventListener("beforeunload", saveDraftBeforeUnload);
+      clearPendingDailyReportAutosaveTimeout(dailyReportDraftAutosaveTimeoutRef);
+    };
+  }, [currentUser, dailyReportDraft, dailyReportModalOpen, selectedProject, workDate]);
 
   useEffect(() => {
     if (!currentUser || projects.length === 0 || entries.length === 0) {
@@ -1153,12 +1214,16 @@ export function TimeAllocationWorkspace() {
   }
 
   function openDailyReportModal() {
-    if (!selectedProject) {
+    if (!selectedProject || !currentUser) {
       return;
     }
 
+    const autosavedDraft = readDailyReportAutosaveDraft(currentUser.id, selectedProject.id, workDate);
+
     setDailyReportDraft(
-      currentDailyReport
+      autosavedDraft
+        ? autosavedDraft.draft
+        : currentDailyReport
         ? getDailyReportAnswers(currentDailyReport)
         : {
             ...createEmptyDailyReportAnswers(),
@@ -1166,7 +1231,22 @@ export function TimeAllocationWorkspace() {
             itsfmCabinetEquipment: currentDayEntryNotes.inventory
           }
     );
+    setDailyReportDraftNotice(
+      autosavedDraft
+        ? `Restored autosaved draft from ${new Date(autosavedDraft.updatedAt).toLocaleString()}.`
+        : "Draft autosaves while this form is open."
+    );
     setDailyReportModalOpen(true);
+  }
+
+  function closeDailyReportModal() {
+    if (selectedProject && currentUser) {
+      clearDailyReportAutosaveDraft(currentUser.id, selectedProject.id, workDate);
+    }
+
+    clearPendingDailyReportAutosaveTimeout(dailyReportDraftAutosaveTimeoutRef);
+    setDailyReportModalOpen(false);
+    setDailyReportDraftNotice("");
   }
 
   function updateDailyReportDraft(field: keyof DailyReportAnswers, value: string) {
@@ -1337,7 +1417,10 @@ export function TimeAllocationWorkspace() {
         setEntryNotice(error instanceof Error ? error.message : "Daily upload status cleared locally, but did not sync.");
       });
     }
+    clearDailyReportAutosaveDraft(currentUser.id, selectedProject.id, workDate);
+    clearPendingDailyReportAutosaveTimeout(dailyReportDraftAutosaveTimeoutRef);
     setDailyReportModalOpen(false);
+    setDailyReportDraftNotice("");
     setDailyReportUploadNotice(null);
     setEntryNotice("Daily report saved.");
   }
@@ -3156,7 +3239,8 @@ export function TimeAllocationWorkspace() {
           onItsfmChange={updateDailyReportItsfmDraft}
           onPayItemChange={updateDailyReportPayItemDraft}
           canCopyPreviousCrewTime={Boolean(previousDailyReportCrewTime)}
-          onClose={() => setDailyReportModalOpen(false)}
+          draftNotice={dailyReportDraftNotice}
+          onClose={closeDailyReportModal}
           onSave={saveDailyReport}
         />
       ) : null}
@@ -3173,6 +3257,7 @@ function DailyReportModal({
   canCopyPreviousCrewTime,
   date,
   draft,
+  draftNotice,
   payItems,
   previousCrewTimeLabel,
   projectName,
@@ -3188,6 +3273,7 @@ function DailyReportModal({
   canCopyPreviousCrewTime: boolean;
   date: string;
   draft: DailyReportAnswers;
+  draftNotice: string;
   payItems: Project["payItems"];
   previousCrewTimeLabel: string;
   projectName: string;
@@ -3217,6 +3303,7 @@ function DailyReportModal({
             <X aria-hidden="true" size={18} />
           </button>
         </div>
+        {draftNotice ? <div className="field-note daily-draft-notice">{draftNotice}</div> : null}
 
         <div className="daily-report-form">
           <section>
@@ -7173,6 +7260,61 @@ function formatYesNoAnswer(value: string) {
   }
 
   return "Not answered";
+}
+
+function readDailyReportAutosaveDraft(
+  userId: string,
+  projectId: string,
+  date: string
+): DailyReportAutosaveDraft | null {
+  const value = readLocalJson<Partial<DailyReportAutosaveDraft> | null>(
+    getDailyReportDraftStorageKey(userId, projectId, date),
+    null
+  );
+
+  if (!value || value.userId !== userId || value.projectId !== projectId || value.date !== date || !value.draft) {
+    return null;
+  }
+
+  return {
+    date,
+    draft: normalizeDailyReportDraftAnswers(value.draft),
+    projectId,
+    updatedAt: typeof value.updatedAt === "string" && value.updatedAt ? value.updatedAt : new Date().toISOString(),
+    userId
+  };
+}
+
+function writeDailyReportAutosaveDraft(draft: DailyReportAutosaveDraft) {
+  window.localStorage.setItem(getDailyReportDraftStorageKey(draft.userId, draft.projectId, draft.date), JSON.stringify(draft));
+}
+
+function clearDailyReportAutosaveDraft(userId: string, projectId: string, date: string) {
+  window.localStorage.removeItem(getDailyReportDraftStorageKey(userId, projectId, date));
+}
+
+function getDailyReportDraftStorageKey(userId: string, projectId: string, date: string) {
+  return `${DAILY_REPORT_DRAFT_STORAGE_PREFIX}:${userId}:${projectId}:${date}`;
+}
+
+function clearPendingDailyReportAutosaveTimeout(timeoutRef: { current: number | null }) {
+  if (timeoutRef.current !== null) {
+    window.clearTimeout(timeoutRef.current);
+    timeoutRef.current = null;
+  }
+}
+
+function normalizeDailyReportDraftAnswers(value: unknown): DailyReportAnswers {
+  const draft = value && typeof value === "object" && !Array.isArray(value) ? (value as Partial<DailyReportAnswers>) : {};
+  const emptyDraft = createEmptyDailyReportAnswers();
+
+  return {
+    ...emptyDraft,
+    ...draft,
+    employeeRows: normalizeDailyReportEmployeeRows(draft.employeeRows),
+    payItemRows: normalizeDailyReportPayItemRows(draft.payItemRows),
+    itsfmRows: normalizeDailyReportItsfmRows(draft.itsfmRows)
+  };
 }
 
 function readPendingProcoreReturn(): PendingProcoreReturn | null {

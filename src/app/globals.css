@@ -572,6 +572,10 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   gap: 16px;
 }
 
+.daily-draft-notice {
+  margin-bottom: 12px;
+}
+
 .daily-report-form section {
   border: 1px solid var(--line);
   border-radius: 8px;
