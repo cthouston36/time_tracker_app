@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/session";
+import { getAuditRequestMetadata, recordAuditLog } from "@/lib/audit-log";
 import { uploadDailyReportToProcore } from "@/lib/procore/documents";
 
 export async function POST(request: NextRequest) {
@@ -13,10 +14,59 @@ export async function POST(request: NextRequest) {
     const payload = await request.json();
     const result = await uploadDailyReportToProcore(payload);
 
+    await recordAuditLog({
+      action: "procore.daily_report_uploaded",
+      actor: user,
+      metadata: {
+        fileName: result.fileName,
+        folderPath: result.folderPath,
+        procoreFileId: result.procoreFileId,
+        projectId: readProjectId(payload)
+      },
+      targetId: readProjectDayTargetId(payload),
+      targetType: "project_day",
+      ...getAuditRequestMetadata(request.headers)
+    });
+
     return NextResponse.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to upload daily report to Procore.";
 
+    await recordAuditLog({
+      action: "procore.daily_report_upload_failed",
+      actor: user,
+      metadata: {
+        error: message
+      },
+      targetType: "project_day",
+      ...getAuditRequestMetadata(request.headers)
+    });
+
     return NextResponse.json({ error: message }, { status: 502 });
   }
+}
+
+function readProjectId(payload: unknown) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return undefined;
+  }
+
+  const value = (payload as { project?: { id?: unknown }; projectId?: unknown }).projectId ?? (payload as { project?: { id?: unknown } }).project?.id;
+
+  return typeof value === "string" ? value : undefined;
+}
+
+function readProjectDayTargetId(payload: unknown) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return undefined;
+  }
+
+  const projectId = readProjectId(payload);
+  const date = (payload as { date?: unknown }).date;
+
+  if (!projectId || typeof date !== "string") {
+    return projectId;
+  }
+
+  return `${projectId}|${date}`;
 }

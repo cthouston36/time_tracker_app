@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/session";
+import { getAuditRequestMetadata, recordAuditLog } from "@/lib/audit-log";
 import { getProcoreConfig } from "@/lib/procore/config";
 import { exchangeCodeForToken } from "@/lib/procore/oauth";
 import { consumeOAuthState, saveProcoreIntegrationTokens } from "@/lib/procore/session";
@@ -34,6 +35,15 @@ export async function GET(request: NextRequest) {
     const tokenResponse = await exchangeCodeForToken(code);
     await saveProcoreIntegrationTokens(tokenResponse, {
       connectedBy: `${user.firstName} ${user.lastName}`.trim() || user.id
+    });
+    await recordAuditLog({
+      action: "procore.configured",
+      actor: user,
+      metadata: {
+        connectedBy: `${user.firstName} ${user.lastName}`.trim() || user.id
+      },
+      targetType: "procore_integration",
+      ...getAuditRequestMetadata(request.headers)
     });
   } catch (callbackError) {
     console.error("Procore OAuth callback failed", callbackError);

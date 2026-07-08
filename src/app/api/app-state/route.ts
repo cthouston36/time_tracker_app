@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/session";
+import { getAuditRequestMetadata, recordAuditLog } from "@/lib/audit-log";
 import { mirrorSharedAppStateToTables, type AppStateMirrorStatus } from "@/lib/app-state-normalized";
 import { readAppSetting, writeAppSetting } from "@/lib/db";
 
@@ -62,6 +63,16 @@ export async function PUT(request: NextRequest) {
     mirrorStatus = "failed";
     console.error("App state normalized table mirror failed", error);
   }
+
+  await recordAuditLog({
+    action: "app_state.replaced",
+    actor: user,
+    metadata: {
+      mirrorStatus
+    },
+    targetType: "app_state",
+    ...getAuditRequestMetadata(request.headers)
+  });
 
   return NextResponse.json({
     ok: true,

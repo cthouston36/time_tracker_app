@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/session";
+import { getAuditRequestMetadata, recordAuditLog } from "@/lib/audit-log";
 import {
   insertSyncLogEntry,
   readProjectControls,
@@ -64,6 +65,18 @@ export async function PUT(request: NextRequest) {
       ok: true
     });
   }
+
+  await recordAuditLog({
+    action: "project_controls.replaced",
+    actor: user,
+    metadata: {
+      myJobsUserCount: Object.keys(body.myJobsByUser).length,
+      projectBlacklistCount: Object.keys(body.projectBlacklistById).length,
+      syncLogCount: body.syncLog.length
+    },
+    targetType: "project_controls",
+    ...getAuditRequestMetadata(request.headers)
+  });
 
   return NextResponse.json({
     databaseConfigured: true,
@@ -137,6 +150,31 @@ export async function PATCH(request: NextRequest) {
 
   if (!result) {
     return NextResponse.json({ error: "Invalid project controls payload." }, { status: 400 });
+  }
+
+  if (body.action === "save_my_jobs") {
+    await recordAuditLog({
+      action: "user.my_jobs_updated",
+      actor: user,
+      metadata: {
+        projectCount: Array.isArray(body.projectIds) ? body.projectIds.length : 0,
+        updatedByAdmin: user.id !== body.userId
+      },
+      targetId: body.userId,
+      targetType: "app_user",
+      ...getAuditRequestMetadata(request.headers)
+    });
+  } else if (body.action === "set_blacklist") {
+    await recordAuditLog({
+      action: body.blacklisted ? "project.blacklisted" : "project.unblacklisted",
+      actor: user,
+      metadata: {
+        blacklisted: body.blacklisted
+      },
+      targetId: body.projectId,
+      targetType: "project",
+      ...getAuditRequestMetadata(request.headers)
+    });
   }
 
   return NextResponse.json({

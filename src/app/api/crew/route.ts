@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/session";
+import { getAuditRequestMetadata, recordAuditLog } from "@/lib/audit-log";
 import {
   addCrewMemberToProject,
   mergeCrewMember,
@@ -64,6 +65,17 @@ export async function PUT(request: NextRequest) {
     });
   }
 
+  await recordAuditLog({
+    action: "crew.replaced",
+    actor: user,
+    metadata: {
+      crewDirectoryCount: body.crewDirectory.length,
+      projectCrewCount: Object.keys(body.crewMembersByProject).length
+    },
+    targetType: "crew",
+    ...getAuditRequestMetadata(request.headers)
+  });
+
   return NextResponse.json({
     databaseConfigured: true,
     ok: true,
@@ -103,6 +115,19 @@ export async function POST(request: NextRequest) {
   if (!result) {
     return NextResponse.json({ error: "Invalid crew member or project." }, { status: 400 });
   }
+
+  await recordAuditLog({
+    action: body.action === "add_to_project" ? "crew.added_to_project" : "crew.saved",
+    actor: user,
+    metadata: {
+      crewMemberName: body.crewMember.name,
+      jobTitle: body.crewMember.jobTitle,
+      projectId: body.projectId
+    },
+    targetId: body.action === "add_to_project" ? body.projectId : body.crewMember.id,
+    targetType: body.action === "add_to_project" ? "project" : "crew_member",
+    ...getAuditRequestMetadata(request.headers)
+  });
 
   return NextResponse.json({
     databaseConfigured: true,
@@ -144,6 +169,26 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "Invalid crew member merge or update." }, { status: 400 });
   }
 
+  await recordAuditLog({
+    action: body.action === "merge" ? "crew.merged" : "crew.updated",
+    actor: user,
+    metadata:
+      body.action === "merge"
+        ? {
+            sourceCrewMemberId: body.sourceCrewMemberId,
+            targetCrewMemberId: body.targetCrewMember?.id,
+            targetCrewMemberName: body.targetCrewMember?.name
+          }
+        : {
+            crewMemberId: body.crewMember?.id,
+            crewMemberName: body.crewMember?.name,
+            jobTitle: body.crewMember?.jobTitle
+          },
+    targetId: body.action === "merge" ? body.targetCrewMember?.id : body.crewMember?.id,
+    targetType: "crew_member",
+    ...getAuditRequestMetadata(request.headers)
+  });
+
   return NextResponse.json({
     databaseConfigured: true,
     ok: true
@@ -176,6 +221,18 @@ export async function DELETE(request: NextRequest) {
   if (!result) {
     return NextResponse.json({ error: "Invalid project or crew member." }, { status: 400 });
   }
+
+  await recordAuditLog({
+    action: "crew.removed_from_project",
+    actor: user,
+    metadata: {
+      crewMemberId,
+      projectId
+    },
+    targetId: projectId,
+    targetType: "project",
+    ...getAuditRequestMetadata(request.headers)
+  });
 
   return NextResponse.json({
     databaseConfigured: true,

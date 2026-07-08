@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getAuditRequestMetadata, recordAuditLog } from "@/lib/audit-log";
 import { getCurrentUser } from "@/lib/auth/session";
 import { changeCurrentUserPassword } from "@/lib/auth/users";
 
@@ -33,6 +34,17 @@ export async function POST(request: NextRequest) {
   if (result === "invalid_user") {
     return NextResponse.json({ error: "Your account is no longer active." }, { status: 403 });
   }
+
+  await recordAuditLog({
+    action: "user.password_changed",
+    actor: currentUser,
+    metadata: {
+      selfService: true
+    },
+    targetId: currentUser.id,
+    targetType: "app_user",
+    ...getAuditRequestMetadata(request.headers)
+  });
 
   return NextResponse.json({ ok: true });
 }

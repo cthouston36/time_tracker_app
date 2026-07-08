@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/session";
+import { getAuditRequestMetadata, recordAuditLog } from "@/lib/audit-log";
 import {
   deleteDailyReportUpload,
   readDailyReportData,
@@ -66,6 +67,17 @@ export async function PUT(request: NextRequest) {
     });
   }
 
+  await recordAuditLog({
+    action: "daily_reports.replaced",
+    actor: user,
+    metadata: {
+      dailyReportCount: Object.keys(body.dailyReportsByKey).length,
+      uploadStatusCount: Object.keys(body.dailyReportUploadsByKey).length
+    },
+    targetType: "daily_reports",
+    ...getAuditRequestMetadata(request.headers)
+  });
+
   return NextResponse.json({
     databaseConfigured: true,
     ok: true,
@@ -123,6 +135,19 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "Invalid daily report payload." }, { status: 400 });
   }
 
+  await recordAuditLog({
+    action: body.action === "save_report" ? "daily_report.saved" : "daily_report_upload.saved",
+    actor: user,
+    metadata: {
+      date,
+      fileName: body.dailyReportUpload?.fileName,
+      projectId
+    },
+    targetId: `${projectId}|${date}`,
+    targetType: "project_day",
+    ...getAuditRequestMetadata(request.headers)
+  });
+
   return NextResponse.json({
     databaseConfigured: true,
     ok: true
@@ -160,6 +185,18 @@ export async function DELETE(request: NextRequest) {
   if (!result) {
     return NextResponse.json({ error: "Invalid daily report payload." }, { status: 400 });
   }
+
+  await recordAuditLog({
+    action: "daily_report_upload.deleted",
+    actor: user,
+    metadata: {
+      date,
+      projectId
+    },
+    targetId: `${projectId}|${date}`,
+    targetType: "project_day",
+    ...getAuditRequestMetadata(request.headers)
+  });
 
   return NextResponse.json({
     databaseConfigured: true,

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/session";
+import { getAuditRequestMetadata, recordAuditLog } from "@/lib/audit-log";
 import {
   deleteAllocationEntriesForDay,
   deleteAllocationEntry,
@@ -60,6 +61,16 @@ export async function PUT(request: NextRequest) {
     });
   }
 
+  await recordAuditLog({
+    action: "entries.replaced",
+    actor: user,
+    metadata: {
+      entryCount: body.entries.length
+    },
+    targetType: "entries",
+    ...getAuditRequestMetadata(request.headers)
+  });
+
   return NextResponse.json({
     databaseConfigured: true,
     ok: true,
@@ -118,6 +129,17 @@ export async function DELETE(request: NextRequest) {
 
     const result = await deleteAllocationEntry(entryId);
 
+    await recordAuditLog({
+      action: "entry.deleted",
+      actor: user,
+      metadata: {
+        entryId
+      },
+      targetId: entryId,
+      targetType: "entry",
+      ...getAuditRequestMetadata(request.headers)
+    });
+
     return NextResponse.json({
       databaseConfigured: Boolean(result),
       ok: true
@@ -133,6 +155,18 @@ export async function DELETE(request: NextRequest) {
   }
 
   const result = await deleteAllocationEntriesForDay(projectId, date);
+
+  await recordAuditLog({
+    action: "day_entries.deleted",
+    actor: user,
+    metadata: {
+      date,
+      projectId
+    },
+    targetId: `${projectId}|${date}`,
+    targetType: "project_day",
+    ...getAuditRequestMetadata(request.headers)
+  });
 
   return NextResponse.json({
     databaseConfigured: Boolean(result),

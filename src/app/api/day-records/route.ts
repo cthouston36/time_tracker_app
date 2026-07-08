@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/session";
+import { getAuditRequestMetadata, recordAuditLog } from "@/lib/audit-log";
 import {
   deleteDaySubmission,
   readDayRecords,
@@ -65,6 +66,17 @@ export async function PUT(request: NextRequest) {
       ok: true
     });
   }
+
+  await recordAuditLog({
+    action: "day_records.replaced",
+    actor: user,
+    metadata: {
+      dayNotesCount: Object.keys(body.dayEntryNotesByKey).length,
+      daySubmissionCount: Object.keys(body.daySubmissions).length
+    },
+    targetType: "day_records",
+    ...getAuditRequestMetadata(request.headers)
+  });
 
   return NextResponse.json({
     databaseConfigured: true,
@@ -139,6 +151,21 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "Invalid day record payload." }, { status: 400 });
   }
 
+  if (body.action === "save_submission") {
+    await recordAuditLog({
+      action: body.daySubmission?.status === "submitted" ? "day.submitted" : "day.reopened",
+      actor: user,
+      metadata: {
+        date,
+        projectId,
+        status: body.daySubmission?.status
+      },
+      targetId: `${projectId}|${date}`,
+      targetType: "project_day",
+      ...getAuditRequestMetadata(request.headers)
+    });
+  }
+
   return NextResponse.json({
     databaseConfigured: true,
     ok: true
@@ -175,6 +202,18 @@ export async function DELETE(request: NextRequest) {
   if (!result) {
     return NextResponse.json({ error: "Invalid day record payload." }, { status: 400 });
   }
+
+  await recordAuditLog({
+    action: "day_submission.deleted",
+    actor: user,
+    metadata: {
+      date,
+      projectId
+    },
+    targetId: `${projectId}|${date}`,
+    targetType: "project_day",
+    ...getAuditRequestMetadata(request.headers)
+  });
 
   return NextResponse.json({
     databaseConfigured: true,
