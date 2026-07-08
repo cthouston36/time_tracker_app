@@ -770,7 +770,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .daily-report-summary {
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 }
 
 .daily-report-summary div {
@@ -793,6 +793,18 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .daily-report-summary strong {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.daily-report-procore-status.uploaded {
+  color: #7ee2a3;
+}
+
+.daily-report-procore-status.pending {
+  color: #f8dea0;
+}
+
+.daily-report-procore-status.failed {
+  color: #ffc7d1;
 }
 
 .daily-report-upload-status {
@@ -1976,6 +1988,11 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .status-badge.created {
   background: #2d2611;
   color: #f8dea0;
+}
+
+.status-badge.failed {
+  background: #2d1820;
+  color: #ffc7d1;
 }
 
 .status-badge.missing {

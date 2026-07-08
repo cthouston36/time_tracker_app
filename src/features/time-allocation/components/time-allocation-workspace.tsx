@@ -264,11 +264,16 @@ type DailyReport = DailyReportAnswers & {
 
 type DailyReportsByKey = Record<string, DailyReport>;
 
+type DailyReportUploadStatus = "failed" | "uploaded";
+
 type DailyReportUpload = {
+  attemptedAt?: string;
+  error?: string;
   fileName: string;
   folderPath: string;
   procoreFileId?: string;
-  uploadedAt: string;
+  status?: DailyReportUploadStatus;
+  uploadedAt?: string;
 };
 
 type DailyReportUploadsByKey = Record<string, DailyReportUpload>;
@@ -434,7 +439,10 @@ export function TimeAllocationWorkspace() {
   const currentDayEntryNotes = selectedProject
     ? dayEntryNotesByKey[getDayKey(selectedProject.id, workDate)] ?? { notes: "", inventory: "" }
     : { notes: "", inventory: "" };
-  const currentDailyReport = selectedProject ? dailyReportsByKey[getDayKey(selectedProject.id, workDate)] : undefined;
+  const currentDayKey = selectedProject ? getDayKey(selectedProject.id, workDate) : "";
+  const currentDailyReport = selectedProject ? dailyReportsByKey[currentDayKey] : undefined;
+  const currentDailyReportUpload = selectedProject ? dailyReportUploadsByKey[currentDayKey] : undefined;
+  const currentDailyReportProcoreStatus = getDailyReportProcoreStatus(currentDailyReport, currentDailyReportUpload);
   const dayIsSubmitted = currentDaySubmission.status === "submitted";
   const currentUserMyJobIds = useMemo(
     () => (currentUser ? (myJobsByUser[currentUser.id] ?? []).filter((projectId) => visibleProjectIds.has(projectId)) : []),
@@ -1388,6 +1396,7 @@ export function TimeAllocationWorkspace() {
         fileName: data.fileName ?? "daily report",
         folderPath: data.folderPath ?? "Daily Reports",
         procoreFileId: data.procoreFileId,
+        status: "uploaded",
         uploadedAt: new Date().toISOString()
       };
 
@@ -1406,8 +1415,27 @@ export function TimeAllocationWorkspace() {
         status: "success"
       });
     } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to upload daily report to Procore.";
+      const failedDailyReportUpload: DailyReportUpload = {
+        attemptedAt: new Date().toISOString(),
+        error: message,
+        fileName: buildDailyReportUploadFileName(selectedProject.name, workDate),
+        folderPath: "Daily Reports",
+        status: "failed"
+      };
+
+      setDailyReportUploadsByKey((current) => ({
+        ...current,
+        [getDayKey(selectedProject.id, workDate)]: failedDailyReportUpload
+      }));
+      void saveDatabaseDailyReportUpload(selectedProject.id, workDate, failedDailyReportUpload).catch((syncError) => {
+        setDailyReportUploadNotice({
+          message: syncError instanceof Error ? syncError.message : "Upload failed, but failure status did not sync.",
+          status: "error"
+        });
+      });
       setDailyReportUploadNotice({
-        message: error instanceof Error ? error.message : "Unable to upload daily report to Procore.",
+        message,
         status: "error"
       });
     } finally {
@@ -3001,6 +3029,12 @@ export function TimeAllocationWorkspace() {
                     <strong>Saved</strong>
                   </div>
                   <div>
+                    <span>Procore Upload</span>
+                    <strong className={`daily-report-procore-status ${currentDailyReportProcoreStatus.className}`}>
+                      {currentDailyReportProcoreStatus.label}
+                    </strong>
+                  </div>
+                  <div>
                     <span>Updated</span>
                     <strong>{new Date(currentDailyReport.updatedAt).toLocaleString()}</strong>
                   </div>
@@ -3023,8 +3057,16 @@ export function TimeAllocationWorkspace() {
                       {dailyReportUploadNotice.message}
                     </div>
                   ) : (
-                    <div className="field-note">
-                      Upload saves the generated PDF in the Daily Reports folder in Procore Documents.
+                    <div
+                      className={
+                        currentDailyReportProcoreStatus.className === "failed"
+                          ? "inline-alert"
+                          : currentDailyReportProcoreStatus.className === "uploaded"
+                            ? "success-alert"
+                            : "field-note"
+                      }
+                    >
+                      {currentDailyReportProcoreStatus.message}
                     </div>
                   )}
                 </div>
@@ -4578,7 +4620,7 @@ function WeeklyStatusReport({
                 const dayKey = getDayKey(project.id, date);
                 const status =
                   calendarStatusMode === "daily_reports"
-                    ? getDailyReportCalendarStatus(Boolean(dailyReportsByKey[dayKey]), Boolean(dailyReportUploadsByKey[dayKey]))
+                    ? getDailyReportCalendarStatus(dailyReportsByKey[dayKey], dailyReportUploadsByKey[dayKey])
                     : getEntryCalendarStatus(daySubmissions[dayKey]);
 
                 return (
@@ -4616,18 +4658,25 @@ function getEntryCalendarStatus(daySubmission: DaySubmission | undefined) {
   };
 }
 
-function getDailyReportCalendarStatus(hasDailyReport: boolean, hasUploadedDailyReport: boolean) {
-  if (hasUploadedDailyReport) {
+function getDailyReportCalendarStatus(dailyReport: DailyReport | undefined, upload: DailyReportUpload | undefined) {
+  if (isUploadedDailyReportUpload(upload)) {
     return {
       className: "uploaded",
       label: "Uploaded"
     };
   }
 
-  if (hasDailyReport) {
+  if (upload?.status === "failed") {
+    return {
+      className: "failed",
+      label: "Failed"
+    };
+  }
+
+  if (dailyReport) {
     return {
       className: "created",
-      label: "Created"
+      label: "Pending"
     };
   }
 
@@ -4635,6 +4684,48 @@ function getDailyReportCalendarStatus(hasDailyReport: boolean, hasUploadedDailyR
     className: "missing",
     label: "Missing"
   };
+}
+
+function getDailyReportProcoreStatus(dailyReport: DailyReport | undefined, upload: DailyReportUpload | undefined) {
+  if (!dailyReport) {
+    return {
+      className: "missing",
+      label: "Not created",
+      message: "Create and save a daily report before uploading to Procore."
+    };
+  }
+
+  if (isUploadedDailyReportUpload(upload)) {
+    const uploadedAt = upload?.uploadedAt ? ` on ${new Date(upload.uploadedAt).toLocaleString()}` : "";
+    const fileName = upload?.fileName ? ` File: ${upload.fileName}.` : "";
+    const folderPath = upload?.folderPath ? ` Folder: ${upload.folderPath}.` : "";
+
+    return {
+      className: "uploaded",
+      label: "Uploaded",
+      message: `Uploaded to Procore${uploadedAt}.${fileName}${folderPath}`
+    };
+  }
+
+  if (upload?.status === "failed") {
+    const attemptedAt = upload.attemptedAt ? ` on ${new Date(upload.attemptedAt).toLocaleString()}` : "";
+
+    return {
+      className: "failed",
+      label: "Upload failed",
+      message: `Last Procore upload failed${attemptedAt}: ${upload.error ?? "Unknown error."}`
+    };
+  }
+
+  return {
+    className: "pending",
+    label: "Pending upload",
+    message: "Pending upload to Procore. Click Upload to Procore when the daily report is ready."
+  };
+}
+
+function isUploadedDailyReportUpload(upload: DailyReportUpload | undefined) {
+  return Boolean(upload && (upload.status === "uploaded" || (!upload.status && upload.uploadedAt)));
 }
 
 function PayItemReportTable({ rows }: { rows: PayItemReportRow[] }) {
@@ -7352,6 +7443,16 @@ function readDownloadFileName(headers: Headers) {
   }
 
   return quotedMatch?.[1] ?? plainMatch?.[1]?.trim();
+}
+
+function buildDailyReportUploadFileName(projectName: string, date: string) {
+  const projectNumber = projectName.trim().split(/\s+/)[0]?.slice(0, 8) || "Project";
+
+  return `${date}_${sanitizeDailyReportFileName(projectNumber)}_Daily_Report.pdf`;
+}
+
+function sanitizeDailyReportFileName(value: string) {
+  return value.replace(/[<>:"/\\|?*\u0000-\u001F]/g, "_");
 }
 
 function exportPayItemSummaryToCsv(payItemRows: PayItemReportRow[]) {
