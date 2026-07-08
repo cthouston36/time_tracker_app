@@ -491,6 +491,157 @@ export function TimeAllocationWorkspace() {
   const draftEntryCount = selectedProject
     ? selectedProject.payItems.filter((item) => draftIsSaveable(draftsByPayItem[item.id])).length
     : 0;
+  const hasUnsavedPayItemDrafts = Object.values(draftsByPayItem).some(draftHasAnyInput);
+  const hasUnsavedChanges =
+    hasUnsavedPayItemDrafts || Boolean(editingEntry) || Boolean(editingCrewMember) || dailyReportModalOpen;
+
+  function confirmDiscardUnsavedChanges(actionDescription: string) {
+    if (!hasUnsavedChanges) {
+      return true;
+    }
+
+    return window.confirm(
+      `You have unsaved changes. Continue to ${actionDescription}? Unsaved pay item inputs or daily report edits will be discarded.`
+    );
+  }
+
+  function clearDailyReportDraftForCurrentContext() {
+    if (dailyReportModalOpen && selectedProject && currentUser) {
+      clearDailyReportAutosaveDraft(currentUser.id, selectedProject.id, workDate);
+    }
+
+    clearPendingDailyReportAutosaveTimeout(dailyReportDraftAutosaveTimeoutRef);
+    setDailyReportModalOpen(false);
+    setDailyReportDraftNotice("");
+  }
+
+  function clearTransientEntryState() {
+    setMobileSelectedPayItemId("");
+    setEditingEntry(null);
+    setEditingCrewMember(null);
+    setSelectedExistingCrewMemberId("");
+    setDraftsByPayItem({});
+    clearDailyReportDraftForCurrentContext();
+  }
+
+  function changeSelectedProject(nextProjectId: string) {
+    if (nextProjectId === selectedProjectId) {
+      return;
+    }
+
+    if (!confirmDiscardUnsavedChanges("change jobs")) {
+      return;
+    }
+
+    clearTransientEntryState();
+    setSelectedProjectId(nextProjectId);
+  }
+
+  function changeWorkDate(nextWorkDate: string) {
+    if (nextWorkDate === workDate) {
+      return;
+    }
+
+    if (!confirmDiscardUnsavedChanges("change dates")) {
+      return;
+    }
+
+    clearTransientEntryState();
+    setWorkDate(nextWorkDate);
+  }
+
+  function changeViewMode(nextViewMode: ViewMode) {
+    if (nextViewMode === viewMode) {
+      return;
+    }
+
+    if (nextViewMode !== "entry" && !confirmDiscardUnsavedChanges("leave the entry view")) {
+      return;
+    }
+
+    if (nextViewMode !== "entry") {
+      clearTransientEntryState();
+    }
+
+    setViewMode(nextViewMode);
+  }
+
+  function replaceEntriesForDay(projectId: string, date: string, dayEntries: AllocationEntry[]) {
+    setEntries((current) => [
+      ...current.filter((entry) => !(entry.projectId === projectId && entry.date === date)),
+      ...dayEntries
+    ]);
+  }
+
+  async function ensureEntriesAreCurrent(projectId: string, date: string) {
+    const databaseEntries = await loadDatabaseEntries();
+
+    if (!databaseEntries) {
+      return true;
+    }
+
+    const databaseDayEntries = databaseEntries.filter((entry) => entry.projectId === projectId && entry.date === date);
+    const currentDayEntries = entries.filter((entry) => entry.projectId === projectId && entry.date === date);
+
+    if (buildEntryConflictSignature(databaseDayEntries) === buildEntryConflictSignature(currentDayEntries)) {
+      return true;
+    }
+
+    replaceEntriesForDay(projectId, date, databaseDayEntries);
+    setDraftsByPayItem({});
+    setEditingEntry(null);
+    setEntryNotice("This job/day was changed by another user. Review the latest entries before saving again.");
+    return false;
+  }
+
+  async function ensureDaySubmissionIsCurrent(projectId: string, date: string) {
+    const databaseDayRecords = await loadDatabaseDayRecords();
+
+    if (!databaseDayRecords) {
+      return true;
+    }
+
+    const dayKey = getDayKey(projectId, date);
+    const databaseSubmission = databaseDayRecords.daySubmissions[dayKey] ?? { status: "draft" };
+    const currentSubmission = daySubmissions[dayKey] ?? { status: "draft" };
+
+    if (buildDaySubmissionConflictSignature(databaseSubmission) === buildDaySubmissionConflictSignature(currentSubmission)) {
+      return true;
+    }
+
+    setDaySubmissions(databaseDayRecords.daySubmissions);
+    setDayEntryNotesByKey(databaseDayRecords.dayEntryNotesByKey);
+    setDraftsByPayItem({});
+    setEditingEntry(null);
+    setEntryNotice("This day status was changed by another user. Review the latest status before trying again.");
+    return false;
+  }
+
+  async function ensureDailyReportIsCurrent(projectId: string, date: string) {
+    const databaseDailyReportData = await loadDatabaseDailyReportData();
+
+    if (!databaseDailyReportData) {
+      return true;
+    }
+
+    const dayKey = getDayKey(projectId, date);
+    const databaseDailyReport = databaseDailyReportData.dailyReportsByKey[dayKey];
+    const currentDailyReportForDay = dailyReportsByKey[dayKey];
+
+    if (
+      !databaseDailyReport ||
+      buildDailyReportConflictSignature(databaseDailyReport) === buildDailyReportConflictSignature(currentDailyReportForDay)
+    ) {
+      return true;
+    }
+
+    setDailyReportsByKey(databaseDailyReportData.dailyReportsByKey);
+    setDailyReportUploadsByKey(databaseDailyReportData.dailyReportUploadsByKey);
+    setDailyReportDraft(getDailyReportAnswers(databaseDailyReport));
+    setDailyReportDraftNotice("This daily report was changed by another user. Review the latest saved version before saving again.");
+    setEntryNotice("This daily report was changed by another user. Review the latest saved version before saving again.");
+    return false;
+  }
 
   useEffect(() => {
     async function loadCurrentUser() {
@@ -804,6 +955,23 @@ export function TimeAllocationWorkspace() {
   }, [currentUser, dailyReportDraft, dailyReportModalOpen, selectedProject, workDate]);
 
   useEffect(() => {
+    if (!hasUnsavedChanges) {
+      return;
+    }
+
+    function warnBeforeUnload(event: BeforeUnloadEvent) {
+      event.preventDefault();
+      event.returnValue = "";
+    }
+
+    window.addEventListener("beforeunload", warnBeforeUnload);
+
+    return () => {
+      window.removeEventListener("beforeunload", warnBeforeUnload);
+    };
+  }, [hasUnsavedChanges]);
+
+  useEffect(() => {
     if (!currentUser || projects.length === 0 || entries.length === 0) {
       return;
     }
@@ -899,6 +1067,10 @@ export function TimeAllocationWorkspace() {
   }
 
   async function logout() {
+    if (!confirmDiscardUnsavedChanges("sign out")) {
+      return;
+    }
+
     await fetch("/api/auth/logout", {
       method: "POST"
     });
@@ -1219,6 +1391,13 @@ export function TimeAllocationWorkspace() {
       return;
     }
 
+    if (
+      (projectId !== selectedProject?.id || date !== workDate || viewMode !== "entry") &&
+      !confirmDiscardUnsavedChanges("open that day")
+    ) {
+      return;
+    }
+
     setSelectedProjectId(projectId);
     setWorkDate(date);
     setViewMode("entry");
@@ -1257,6 +1436,10 @@ export function TimeAllocationWorkspace() {
   }
 
   function closeDailyReportModal() {
+    if (!window.confirm("Close the daily report without saving? Unsaved report edits will be discarded.")) {
+      return;
+    }
+
     if (selectedProject && currentUser) {
       clearDailyReportAutosaveDraft(currentUser.id, selectedProject.id, workDate);
     }
@@ -1389,8 +1572,12 @@ export function TimeAllocationWorkspace() {
     setEntryNotice(`Copied crew/time from ${formatDate(previousDailyReportCrewTime.date)}.`);
   }
 
-  function saveDailyReport() {
+  async function saveDailyReport() {
     if (!selectedProject || !currentUser) {
+      return;
+    }
+
+    if (!(await ensureDailyReportIsCurrent(selectedProject.id, workDate))) {
       return;
     }
 
@@ -1451,6 +1638,14 @@ export function TimeAllocationWorkspace() {
       return;
     }
 
+    if (!(await ensureDailyReportIsCurrent(selectedProject.id, workDate))) {
+      setDailyReportUploadNotice({
+        message: "The daily report changed in the database. Review the latest version before downloading.",
+        status: "error"
+      });
+      return;
+    }
+
     setDownloadingDailyReportPdf(true);
     setDailyReportUploadNotice(null);
 
@@ -1494,6 +1689,14 @@ export function TimeAllocationWorkspace() {
     if (!selectedProject || !currentDailyReport) {
       setDailyReportUploadNotice({
         message: "Create and save a daily report before uploading to Procore.",
+        status: "error"
+      });
+      return;
+    }
+
+    if (!(await ensureDailyReportIsCurrent(selectedProject.id, workDate))) {
+      setDailyReportUploadNotice({
+        message: "The daily report changed in the database. Review the latest version before uploading to Procore.",
         status: "error"
       });
       return;
@@ -1573,6 +1776,10 @@ export function TimeAllocationWorkspace() {
   }
 
   function connectProcore(intent: PendingProcoreReturn["intent"] = "connect") {
+    if (!confirmDiscardUnsavedChanges("connect to Procore")) {
+      return;
+    }
+
     window.localStorage.setItem(
       PENDING_PROCORE_RETURN_KEY,
       JSON.stringify({
@@ -2110,8 +2317,12 @@ export function TimeAllocationWorkspace() {
     });
   }
 
-  function saveAllocationEntries() {
+  async function saveAllocationEntries() {
     if (!selectedProject || !currentUser || dayIsSubmitted) {
+      return;
+    }
+
+    if (!(await ensureEntriesAreCurrent(selectedProject.id, workDate))) {
       return;
     }
 
@@ -2185,8 +2396,14 @@ export function TimeAllocationWorkspace() {
     setEntryNotice("Draft inputs cleared.");
   }
 
-  function removeEntry(entryId: string) {
+  async function removeEntry(entryId: string) {
     if (dayIsSubmitted) {
+      return;
+    }
+
+    const entryToRemove = entries.find((entry) => entry.id === entryId);
+
+    if (!entryToRemove || !(await ensureEntriesAreCurrent(entryToRemove.projectId, entryToRemove.date))) {
       return;
     }
 
@@ -2196,8 +2413,15 @@ export function TimeAllocationWorkspace() {
     });
   }
 
-  function deleteSubmittedDay() {
+  async function deleteSubmittedDay() {
     if (currentUser?.role !== "admin" || !selectedProject) {
+      return;
+    }
+
+    if (
+      !(await ensureEntriesAreCurrent(selectedProject.id, workDate)) ||
+      !(await ensureDaySubmissionIsCurrent(selectedProject.id, workDate))
+    ) {
       return;
     }
 
@@ -2229,8 +2453,14 @@ export function TimeAllocationWorkspace() {
     });
   }
 
-  function saveEditedEntry() {
+  async function saveEditedEntry() {
     if (!editingEntry || dayIsSubmitted || !currentUser) {
+      return;
+    }
+
+    const entryToEdit = entries.find((entry) => entry.id === editingEntry.entryId);
+
+    if (!entryToEdit || !(await ensureEntriesAreCurrent(entryToEdit.projectId, entryToEdit.date))) {
       return;
     }
 
@@ -2270,8 +2500,15 @@ export function TimeAllocationWorkspace() {
     setEntryNotice("Daily allocation row updated.");
   }
 
-  function submitDay() {
+  async function submitDay() {
     if (!selectedProject || !currentUser || visibleEntries.length === 0) {
+      return;
+    }
+
+    if (
+      !(await ensureEntriesAreCurrent(selectedProject.id, workDate)) ||
+      !(await ensureDaySubmissionIsCurrent(selectedProject.id, workDate))
+    ) {
       return;
     }
 
@@ -2298,8 +2535,12 @@ export function TimeAllocationWorkspace() {
     setEntryNotice("Day submitted.");
   }
 
-  function reopenSubmittedDay() {
+  async function reopenSubmittedDay() {
     if (currentUser?.role !== "admin" || !selectedProject || !dayIsSubmitted) {
+      return;
+    }
+
+    if (!(await ensureDaySubmissionIsCurrent(selectedProject.id, workDate))) {
       return;
     }
 
@@ -2454,14 +2695,14 @@ export function TimeAllocationWorkspace() {
           <div className="view-tabs" aria-label="View">
             <button
               className={viewMode === "entry" ? "tab-button active" : "tab-button"}
-              onClick={() => setViewMode("entry")}
+              onClick={() => changeViewMode("entry")}
               type="button"
             >
               Entry
             </button>
             <button
               className={viewMode === "calendar" ? "tab-button active" : "tab-button"}
-              onClick={() => setViewMode("calendar")}
+              onClick={() => changeViewMode("calendar")}
               type="button"
             >
               <CalendarDays aria-hidden="true" size={16} />
@@ -2470,7 +2711,7 @@ export function TimeAllocationWorkspace() {
             {currentUser.role === "project_manager" || currentUser.role === "admin" ? (
               <button
                 className={viewMode === "reports" ? "tab-button active" : "tab-button"}
-                onClick={() => setViewMode("reports")}
+                onClick={() => changeViewMode("reports")}
                 type="button"
               >
                 <BarChart3 aria-hidden="true" size={16} />
@@ -2487,12 +2728,7 @@ export function TimeAllocationWorkspace() {
               disabled={jobPickerProjects.length === 0}
               value={selectedProjectId}
               onChange={(event) => {
-                setSelectedProjectId(event.target.value);
-                setMobileSelectedPayItemId("");
-                setEditingEntry(null);
-                setEditingCrewMember(null);
-                setSelectedExistingCrewMemberId("");
-                setDraftsByPayItem({});
+                changeSelectedProject(event.target.value);
               }}
             >
               {jobPickerProjects.map((project) => (
@@ -2510,12 +2746,7 @@ export function TimeAllocationWorkspace() {
               }))}
               value={selectedProjectId}
               onChange={(value) => {
-                setSelectedProjectId(value);
-                setMobileSelectedPayItemId("");
-                setEditingEntry(null);
-                setEditingCrewMember(null);
-                setSelectedExistingCrewMemberId("");
-                setDraftsByPayItem({});
+                changeSelectedProject(value);
               }}
             />
           </div>
@@ -2597,9 +2828,7 @@ export function TimeAllocationWorkspace() {
                 type="date"
                 value={workDate}
                 onChange={(event) => {
-                  setWorkDate(event.target.value);
-                  setEditingEntry(null);
-                  setDraftsByPayItem({});
+                  changeWorkDate(event.target.value);
                 }}
               />
               <button
@@ -6989,6 +7218,58 @@ function payItemHasWork(payItemId: string, draftsByPayItem: DraftsByPayItem, vis
   return visibleEntries.some((entry) => entry.payItemId === payItemId) || draftHasAnyInput(draftsByPayItem[payItemId]);
 }
 
+function buildEntryConflictSignature(entries: AllocationEntry[]) {
+  return entries
+    .map((entry) => {
+      const crewSignature = (entry.crewAllocations ?? [])
+        .map((allocation) =>
+          [
+            allocation.crewMemberId,
+            allocation.crewMemberName,
+            allocation.jobTitle,
+            formatConflictNumber(allocation.hours)
+          ].join(":")
+        )
+        .sort()
+        .join(",");
+
+      return [
+        entry.id,
+        entry.payItemId,
+        formatConflictNumber(entry.hours),
+        formatConflictNumber(entry.quantityCompleted),
+        entry.savedAt ?? "",
+        crewSignature
+      ].join("|");
+    })
+    .sort()
+    .join(";");
+}
+
+function buildDaySubmissionConflictSignature(daySubmission: DaySubmission) {
+  return [
+    daySubmission.status,
+    daySubmission.submittedByUserId ?? "",
+    daySubmission.submittedByName ?? "",
+    daySubmission.submittedAt ?? ""
+  ].join("|");
+}
+
+function buildDailyReportConflictSignature(dailyReport: DailyReport | undefined) {
+  if (!dailyReport) {
+    return "";
+  }
+
+  return JSON.stringify({
+    updatedAt: dailyReport.updatedAt,
+    report: normalizeDailyReportAnswersForSave(getDailyReportAnswers(dailyReport))
+  });
+}
+
+function formatConflictNumber(value: number) {
+  return Number.isFinite(value) ? value.toFixed(6) : "";
+}
+
 function entryNoticeIsError(message: string) {
   return [
     "Add at least",
@@ -7002,7 +7283,10 @@ function entryNoticeIsError(message: string) {
     "Remove duplicate",
     "Select at least",
     "Select both",
-    "Select two different"
+    "Select two different",
+    "This daily report",
+    "This day status",
+    "This job/day"
   ].some((prefix) => message.startsWith(prefix)) || message.includes(" is already saved to this job.");
 }
 
