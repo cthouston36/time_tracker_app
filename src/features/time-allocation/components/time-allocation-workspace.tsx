@@ -4848,7 +4848,6 @@ function ReportsView({
         totalRows: reportData?.totalRows ?? 0
       }
     : null;
-  const filteredReportEntryCount = reportData?.filteredEntryCount ?? 0;
 
   useEffect(() => {
     setReportPage(1);
@@ -5139,12 +5138,6 @@ function ReportsView({
         </div>
         {reportError ? <div className="inline-alert">{reportError}</div> : null}
         {reportLoading ? <div className="field-note">Loading report...</div> : null}
-        {reportPagination && !reportLoading ? (
-          <div className="field-note">
-            Showing server-filtered report rows. {filteredReportEntryCount} saved{" "}
-            {filteredReportEntryCount === 1 ? "entry" : "entries"} match the filters.
-          </div>
-        ) : null}
         {reportMode === "summary" ? (
           <>
             <PayItemReportTable rows={payItemRows} />
