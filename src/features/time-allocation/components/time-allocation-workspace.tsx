@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   Download,
   Edit3,
+  ExternalLink,
   Info,
   KeyRound,
   ListChecks,
@@ -2176,6 +2177,15 @@ export function TimeAllocationWorkspace() {
           <span className="user-chip">
             {formatUserName(currentUser)} - {formatRole(currentUser.role)}
           </span>
+          <a
+            className="secondary-button training-link"
+            href="https://fdot-field-app.streamlit.app/"
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            <ExternalLink aria-hidden="true" size={16} />
+            Training on various FDOT pay items
+          </a>
           <IconLabel icon={CheckCircle2} text={connectionStatus} />
           {currentUser.role === "project_manager" || currentUser.role === "admin" ? (
             <>
