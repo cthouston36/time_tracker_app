@@ -385,6 +385,7 @@ export function TimeAllocationWorkspace() {
   const [dailyReportDraftNotice, setDailyReportDraftNotice] = useState("");
   const [downloadingDailyReportPdf, setDownloadingDailyReportPdf] = useState(false);
   const [uploadingDailyReport, setUploadingDailyReport] = useState(false);
+  const [retryingDailyReportUploadKey, setRetryingDailyReportUploadKey] = useState("");
   const [dailyReportUploadNotice, setDailyReportUploadNotice] = useState<{ message: string; status: "success" | "error" } | null>(null);
   const [myJobsByUser, setMyJobsByUser] = useState<MyJobsByUser>({});
   const [crewDirectory, setCrewDirectory] = useState<CrewMember[]>([]);
@@ -473,6 +474,39 @@ export function TimeAllocationWorkspace() {
   const previousDailyReportCrewTime = useMemo(
     () => (selectedProject ? findPreviousDailyReportWithCrewTime(dailyReportsByKey, selectedProject.id, workDate) : null),
     [dailyReportsByKey, selectedProject, workDate]
+  );
+  const previousDailyReportWorkRows = useMemo(
+    () => (selectedProject ? findPreviousDailyReportWithWorkRows(dailyReportsByKey, selectedProject.id, workDate) : null),
+    [dailyReportsByKey, selectedProject, workDate]
+  );
+  const dailyReportUploadRetryQueue = useMemo(
+    () =>
+      Object.entries(dailyReportUploadsByKey)
+        .flatMap(([dayKey, upload]) => {
+          if (upload.status !== "failed") {
+            return [];
+          }
+
+          const dayKeyParts = parseDayKey(dayKey);
+          const report = dailyReportsByKey[dayKey];
+          const project = dayKeyParts ? projects.find((candidate) => candidate.id === dayKeyParts.projectId) : undefined;
+
+          if (!dayKeyParts || !report || !project) {
+            return [];
+          }
+
+          return [
+            {
+              date: dayKeyParts.date,
+              dayKey,
+              project,
+              report,
+              upload
+            }
+          ];
+        })
+        .sort((a, b) => b.date.localeCompare(a.date) || a.project.name.localeCompare(b.project.name)),
+    [dailyReportUploadsByKey, dailyReportsByKey, projects]
   );
   const dayIsSubmitted = currentDaySubmission.status === "submitted";
   const currentUserMyJobIds = useMemo(
@@ -1572,6 +1606,63 @@ export function TimeAllocationWorkspace() {
     setEntryNotice(`Copied crew/time from ${formatDate(previousDailyReportCrewTime.date)}.`);
   }
 
+  function copySavedEntriesToDailyReportWorkRows() {
+    if (!selectedProject || visibleEntries.length === 0) {
+      setDailyReportDraftNotice("No saved pay item entries are available for this job/day.");
+      return;
+    }
+
+    const currentHasWorkRows = dailyReportDraft.payItemRows.some(dailyReportPayItemRowHasContent);
+
+    if (
+      currentHasWorkRows &&
+      !window.confirm("Replace current Work Performed pay item rows with the saved entries for this job/day?")
+    ) {
+      return;
+    }
+
+    const sortedEntries = selectedProject.payItems.flatMap((payItem) =>
+      visibleEntries.filter((entry) => entry.payItemId === payItem.id)
+    );
+
+    setDailyReportDraft((current) => ({
+      ...current,
+      payItemRows: normalizeDailyReportPayItemRows(
+        sortedEntries.map((entry) => ({
+          payItemId: entry.payItemId,
+          quantity: Number.isFinite(entry.quantityCompleted) ? String(entry.quantityCompleted) : ""
+        }))
+      )
+    }));
+    setDailyReportDraftNotice(
+      sortedEntries.length > createEmptyDailyReportPayItemRows().length
+        ? "Copied the first 8 saved pay item entries. Add remaining items manually if needed."
+        : "Copied saved pay item entries into Work Performed rows."
+    );
+  }
+
+  function copyPreviousDailyReportWorkRows() {
+    if (!previousDailyReportWorkRows) {
+      setDailyReportDraftNotice("No previous Work Performed rows found for this job.");
+      return;
+    }
+
+    const currentHasWorkRows = dailyReportDraft.payItemRows.some(dailyReportPayItemRowHasContent);
+
+    if (
+      currentHasWorkRows &&
+      !window.confirm(`Replace current Work Performed rows with rows from ${formatDate(previousDailyReportWorkRows.date)}?`)
+    ) {
+      return;
+    }
+
+    setDailyReportDraft((current) => ({
+      ...current,
+      payItemRows: normalizeDailyReportPayItemRows(previousDailyReportWorkRows.report.payItemRows)
+    }));
+    setDailyReportDraftNotice(`Copied Work Performed rows from ${formatDate(previousDailyReportWorkRows.date)}.`);
+  }
+
   async function saveDailyReport() {
     if (!selectedProject || !currentUser) {
       return;
@@ -1706,12 +1797,75 @@ export function TimeAllocationWorkspace() {
     setDailyReportUploadNotice(null);
 
     try {
+      await uploadDailyReportForDay({
+        date: workDate,
+        dayNotes: currentDayEntryNotes,
+        project: selectedProject,
+        report: currentDailyReport,
+        showCurrentDayNotice: true
+      });
+    } finally {
+      setUploadingDailyReport(false);
+    }
+  }
+
+  async function retryDailyReportUpload(dayKey: string) {
+    const dayKeyParts = parseDayKey(dayKey);
+
+    if (!dayKeyParts) {
+      return;
+    }
+
+    const project = projects.find((candidate) => candidate.id === dayKeyParts.projectId);
+    const report = dailyReportsByKey[dayKey];
+
+    if (!project || !report) {
+      setEntryNotice("Unable to retry upload because the report or project is no longer available.");
+      return;
+    }
+
+    if (!(await ensureDailyReportIsCurrent(project.id, dayKeyParts.date))) {
+      return;
+    }
+
+    setRetryingDailyReportUploadKey(dayKey);
+    setEntryNotice("");
+
+    try {
+      await uploadDailyReportForDay({
+        date: dayKeyParts.date,
+        dayNotes: dayEntryNotesByKey[dayKey] ?? { inventory: "", notes: "" },
+        project,
+        report,
+        showCurrentDayNotice: selectedProject?.id === project.id && workDate === dayKeyParts.date
+      });
+    } finally {
+      setRetryingDailyReportUploadKey("");
+    }
+  }
+
+  async function uploadDailyReportForDay({
+    date,
+    dayNotes,
+    project,
+    report,
+    showCurrentDayNotice
+  }: {
+    date: string;
+    dayNotes: DayEntryNotes;
+    project: Project;
+    report: DailyReport;
+    showCurrentDayNotice: boolean;
+  }) {
+    const dayKey = getDayKey(project.id, date);
+
+    try {
       const response = await fetch("/api/procore/daily-reports/upload", {
         body: JSON.stringify({
-          date: workDate,
-          dayNotes: currentDayEntryNotes,
-          project: selectedProject,
-          report: currentDailyReport
+          date,
+          dayNotes,
+          project,
+          report
         }),
         headers: {
           "Content-Type": "application/json"
@@ -1734,45 +1888,61 @@ export function TimeAllocationWorkspace() {
 
       setDailyReportUploadsByKey((current) => ({
         ...current,
-        [getDayKey(selectedProject.id, workDate)]: dailyReportUpload
+        [dayKey]: dailyReportUpload
       }));
-      void saveDatabaseDailyReportUpload(selectedProject.id, workDate, dailyReportUpload).catch((error) => {
-        setDailyReportUploadNotice({
-          message: error instanceof Error ? error.message : "Daily uploaded, but upload status did not sync.",
-          status: "error"
-        });
-      });
-      setDailyReportUploadNotice({
-        message: `Uploaded ${data.fileName ?? "daily report"} to ${data.folderPath ?? "Procore Documents"}.`,
-        status: "success"
-      });
+      try {
+        await saveDatabaseDailyReportUpload(project.id, date, dailyReportUpload);
+      } catch (syncError) {
+        showDailyReportUploadMessage(
+          syncError instanceof Error ? syncError.message : "Daily uploaded, but upload status did not sync.",
+          "error",
+          showCurrentDayNotice
+        );
+        return;
+      }
+      showDailyReportUploadMessage(
+        `Uploaded ${data.fileName ?? "daily report"} to ${data.folderPath ?? "Procore Documents"}.`,
+        "success",
+        showCurrentDayNotice
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to upload daily report to Procore.";
       const failedDailyReportUpload: DailyReportUpload = {
         attemptedAt: new Date().toISOString(),
         error: message,
-        fileName: buildDailyReportUploadFileName(selectedProject.name, workDate),
+        fileName: buildDailyReportUploadFileName(project.name, date),
         folderPath: "Daily Reports",
         status: "failed"
       };
 
       setDailyReportUploadsByKey((current) => ({
         ...current,
-        [getDayKey(selectedProject.id, workDate)]: failedDailyReportUpload
+        [dayKey]: failedDailyReportUpload
       }));
-      void saveDatabaseDailyReportUpload(selectedProject.id, workDate, failedDailyReportUpload).catch((syncError) => {
-        setDailyReportUploadNotice({
-          message: syncError instanceof Error ? syncError.message : "Upload failed, but failure status did not sync.",
-          status: "error"
-        });
-      });
+      try {
+        await saveDatabaseDailyReportUpload(project.id, date, failedDailyReportUpload);
+      } catch (syncError) {
+        showDailyReportUploadMessage(
+          syncError instanceof Error ? syncError.message : "Upload failed, but failure status did not sync.",
+          "error",
+          showCurrentDayNotice
+        );
+        return;
+      }
+      showDailyReportUploadMessage(message, "error", showCurrentDayNotice);
+    }
+  }
+
+  function showDailyReportUploadMessage(message: string, status: "error" | "success", showCurrentDayNotice: boolean) {
+    if (showCurrentDayNotice) {
       setDailyReportUploadNotice({
         message,
-        status: "error"
+        status
       });
-    } finally {
-      setUploadingDailyReport(false);
+      return;
     }
+
+    setEntryNotice(message);
   }
 
   function connectProcore(intent: PendingProcoreReturn["intent"] = "connect") {
@@ -3211,16 +3381,18 @@ export function TimeAllocationWorkspace() {
 
             <div className="panel">
               <div className="panel-heading">
-                <h2>Daily Allocation</h2>
-                <button
-                  className="primary-button"
-                  disabled={dayIsSubmitted || visibleEntries.length === 0}
-                  onClick={submitDay}
-                  type="button"
-                >
-                  <Send aria-hidden="true" size={18} />
-                  Submit day
-                </button>
+                <h2>{dayIsSubmitted ? "Submitted Day Summary" : "Daily Allocation"}</h2>
+                {!dayIsSubmitted ? (
+                  <button
+                    className="primary-button"
+                    disabled={visibleEntries.length === 0}
+                    onClick={submitDay}
+                    type="button"
+                  >
+                    <Send aria-hidden="true" size={18} />
+                    Submit day
+                  </button>
+                ) : null}
               </div>
               <div className="daily-actions">
                 <span className="field-note">
@@ -3240,76 +3412,102 @@ export function TimeAllocationWorkspace() {
                   </div>
                 ) : null}
               </div>
-              <div className="entry-list">
-                {visibleEntries.length === 0 ? (
-                  <div className="empty-state">No pay item entries for this job and date.</div>
-                ) : (
-                  visibleEntries.map((entry) => (
-                    <div className="entry-row" key={entry.id}>
-                      <span>
-                        <strong>{entry.payItemCode}</strong> {entry.payItemName}
-                      </span>
-                      {editingEntry?.entryId === entry.id ? (
-                        <>
-                          <input
-                            aria-label={`Edit hours for ${entry.payItemCode}`}
-                            className="compact-input number-entry"
-                            min="0"
-                            placeholder="Hours"
-                            step="0.25"
-                            type="number"
-                            value={editingEntry.hours}
-                            onChange={(event) =>
-                              setEditingEntry((current) => (current ? { ...current, hours: event.target.value } : current))
-                            }
-                            onWheel={(event) => event.currentTarget.blur()}
-                          />
-                          <input
-                            aria-label={`Edit quantity for ${entry.payItemCode}`}
-                            className="compact-input number-entry"
-                            min="0"
-                            placeholder="Quantity"
-                            step="0.01"
-                            type="number"
-                            value={editingEntry.quantity}
-                            onChange={(event) =>
-                              setEditingEntry((current) => (current ? { ...current, quantity: event.target.value } : current))
-                            }
-                            onWheel={(event) => event.currentTarget.blur()}
-                          />
-                          <button className="secondary-button" onClick={saveEditedEntry} type="button">
-                            Save
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <span>{entry.hours.toFixed(2)} hrs</span>
-                          <span>{entry.quantityCompleted.toFixed(2)} qty</span>
-                          <span className="entry-crew">{formatEntryCrew(entry)}</span>
-                          <button
-                            aria-label={`Edit ${entry.payItemCode}`}
-                            className="icon-button"
-                            disabled={dayIsSubmitted}
-                            onClick={() => startEditingEntry(entry)}
-                            type="button"
-                          >
-                            <Edit3 aria-hidden="true" size={17} />
-                          </button>
-                        </>
-                      )}
-                      <button
-                        aria-label={`Remove ${entry.payItemCode}`}
-                        className="icon-button"
-                        disabled={dayIsSubmitted}
-                        onClick={() => removeEntry(entry.id)}
-                        type="button"
-                      >
-                        <Trash2 aria-hidden="true" size={17} />
-                      </button>
-                    </div>
-                  ))
-                )}
-              </div>
+              {dayIsSubmitted ? (
+                <div className="submitted-day-summary">
+                  <div>
+                    <span>Pay Item Rows</span>
+                    <strong>{visibleEntries.length}</strong>
+                  </div>
+                  <div>
+                    <span>Total Hours</span>
+                    <strong>{totalHours.toFixed(2)}</strong>
+                  </div>
+                  <div>
+                    <span>Daily Report</span>
+                    <strong>{currentDailyReport ? "Saved" : "Not created"}</strong>
+                  </div>
+                  <div>
+                    <span>Procore Upload</span>
+                    <strong className={`daily-report-procore-status ${currentDailyReportProcoreStatus.className}`}>
+                      {currentDailyReportProcoreStatus.label}
+                    </strong>
+                  </div>
+                </div>
+              ) : null}
+              {dayIsSubmitted && visibleEntries.length > 0 ? (
+                <SubmittedDayEntryTable entries={visibleEntries} />
+              ) : (
+                <div className="entry-list">
+                  {visibleEntries.length === 0 ? (
+                    <div className="empty-state">No pay item entries for this job and date.</div>
+                  ) : (
+                    visibleEntries.map((entry) => (
+                      <div className="entry-row" key={entry.id}>
+                        <span>
+                          <strong>{entry.payItemCode}</strong> {entry.payItemName}
+                        </span>
+                        {editingEntry?.entryId === entry.id ? (
+                          <>
+                            <input
+                              aria-label={`Edit hours for ${entry.payItemCode}`}
+                              className="compact-input number-entry"
+                              min="0"
+                              placeholder="Hours"
+                              step="0.25"
+                              type="number"
+                              value={editingEntry.hours}
+                              onChange={(event) =>
+                                setEditingEntry((current) => (current ? { ...current, hours: event.target.value } : current))
+                              }
+                              onWheel={(event) => event.currentTarget.blur()}
+                            />
+                            <input
+                              aria-label={`Edit quantity for ${entry.payItemCode}`}
+                              className="compact-input number-entry"
+                              min="0"
+                              placeholder="Quantity"
+                              step="0.01"
+                              type="number"
+                              value={editingEntry.quantity}
+                              onChange={(event) =>
+                                setEditingEntry((current) => (current ? { ...current, quantity: event.target.value } : current))
+                              }
+                              onWheel={(event) => event.currentTarget.blur()}
+                            />
+                            <button className="secondary-button" onClick={saveEditedEntry} type="button">
+                              Save
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <span>{entry.hours.toFixed(2)} hrs</span>
+                            <span>{entry.quantityCompleted.toFixed(2)} qty</span>
+                            <span className="entry-crew">{formatEntryCrew(entry)}</span>
+                            <button
+                              aria-label={`Edit ${entry.payItemCode}`}
+                              className="icon-button"
+                              disabled={dayIsSubmitted}
+                              onClick={() => startEditingEntry(entry)}
+                              type="button"
+                            >
+                              <Edit3 aria-hidden="true" size={17} />
+                            </button>
+                          </>
+                        )}
+                        <button
+                          aria-label={`Remove ${entry.payItemCode}`}
+                          className="icon-button"
+                          disabled={dayIsSubmitted}
+                          onClick={() => removeEntry(entry.id)}
+                          type="button"
+                        >
+                          <Trash2 aria-hidden="true" size={17} />
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="panel">
@@ -3446,6 +3644,45 @@ export function TimeAllocationWorkspace() {
                   )}
                 </div>
               ) : null}
+              {dailyReportUploadRetryQueue.length > 0 ? (
+                <div className="daily-report-retry-queue">
+                  <div className="retry-queue-heading">
+                    <h3>Upload Retry Queue</h3>
+                    <span>
+                      {dailyReportUploadRetryQueue.length} failed upload
+                      {dailyReportUploadRetryQueue.length === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                  <div className="retry-queue-list">
+                    {dailyReportUploadRetryQueue.map((item) => (
+                      <div className="retry-queue-row" key={item.dayKey}>
+                        <div>
+                          <strong>{item.project.name}</strong>
+                          <span>
+                            {formatDate(item.date)}
+                            {item.upload.attemptedAt ? ` - last tried ${new Date(item.upload.attemptedAt).toLocaleString()}` : ""}
+                          </span>
+                          <p>{item.upload.error ?? "Upload failed."}</p>
+                        </div>
+                        <div className="retry-queue-actions">
+                          <button className="secondary-button" onClick={() => openDailyEntry(item.project.id, item.date)} type="button">
+                            Open day
+                          </button>
+                          <button
+                            className="primary-button"
+                            disabled={retryingDailyReportUploadKey === item.dayKey}
+                            onClick={() => retryDailyReportUpload(item.dayKey)}
+                            type="button"
+                          >
+                            <UploadCloud aria-hidden="true" size={18} />
+                            {retryingDailyReportUploadKey === item.dayKey ? "Retrying..." : "Retry upload"}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             <div className="mobile-sticky-action-bar" aria-label="Entry actions">
@@ -3513,26 +3750,58 @@ export function TimeAllocationWorkspace() {
       </div>
       {dailyReportModalOpen && selectedProject ? (
         <DailyReportModal
+          canCopyPreviousCrewTime={Boolean(previousDailyReportCrewTime)}
+          canCopyPreviousWorkRows={Boolean(previousDailyReportWorkRows)}
+          canUseSavedEntries={visibleEntries.length > 0}
           date={workDate}
           draft={dailyReportDraft}
+          draftNotice={dailyReportDraftNotice}
           payItems={selectedProject.payItems}
           previousCrewTimeLabel={
             previousDailyReportCrewTime ? `Copy Crew/Time from ${formatDate(previousDailyReportCrewTime.date)}` : "No Previous Crew/Time"
           }
+          previousWorkRowsLabel={
+            previousDailyReportWorkRows ? `Copy Rows from ${formatDate(previousDailyReportWorkRows.date)}` : "No Previous Rows"
+          }
           projectName={selectedProject.name}
           onChange={updateDailyReportDraft}
           onCopyPreviousCrewTime={copyPreviousDailyReportCrewTime}
+          onCopyPreviousWorkRows={copyPreviousDailyReportWorkRows}
+          onCopySavedEntriesToWorkRows={copySavedEntriesToDailyReportWorkRows}
           onEmployeeChange={updateDailyReportEmployeeDraft}
           onEmployeeTimeBlur={normalizeDailyReportEmployeeTimeDraft}
           onItsfmChange={updateDailyReportItsfmDraft}
           onPayItemChange={updateDailyReportPayItemDraft}
-          canCopyPreviousCrewTime={Boolean(previousDailyReportCrewTime)}
-          draftNotice={dailyReportDraftNotice}
           onClose={closeDailyReportModal}
           onSave={saveDailyReport}
         />
       ) : null}
     </main>
+  );
+}
+
+function SubmittedDayEntryTable({ entries }: { entries: AllocationEntry[] }) {
+  return (
+    <div className="submitted-entry-table" role="table" aria-label="Submitted pay item entries">
+      <div className="submitted-entry-row submitted-entry-header" role="row">
+        <span>Code</span>
+        <span>Pay Item</span>
+        <span>Hours</span>
+        <span>Quantity</span>
+        <span>Crew</span>
+      </div>
+      {entries.map((entry) => (
+        <div className="submitted-entry-row" key={entry.id} role="row">
+          <span data-label="Code">
+            <strong>{entry.payItemCode}</strong>
+          </span>
+          <span data-label="Pay Item">{entry.payItemName}</span>
+          <span data-label="Hours">{entry.hours.toFixed(2)}</span>
+          <span data-label="Quantity">{entry.quantityCompleted.toFixed(2)}</span>
+          <span data-label="Crew">{formatEntryCrew(entry).replace(/^Crew: /, "")}</span>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -3543,14 +3812,19 @@ type MobileOption = {
 
 function DailyReportModal({
   canCopyPreviousCrewTime,
+  canCopyPreviousWorkRows,
+  canUseSavedEntries,
   date,
   draft,
   draftNotice,
   payItems,
   previousCrewTimeLabel,
+  previousWorkRowsLabel,
   projectName,
   onChange,
   onCopyPreviousCrewTime,
+  onCopyPreviousWorkRows,
+  onCopySavedEntriesToWorkRows,
   onEmployeeChange,
   onEmployeeTimeBlur,
   onItsfmChange,
@@ -3559,14 +3833,19 @@ function DailyReportModal({
   onSave
 }: {
   canCopyPreviousCrewTime: boolean;
+  canCopyPreviousWorkRows: boolean;
+  canUseSavedEntries: boolean;
   date: string;
   draft: DailyReportAnswers;
   draftNotice: string;
   payItems: Project["payItems"];
   previousCrewTimeLabel: string;
+  previousWorkRowsLabel: string;
   projectName: string;
   onChange: (field: keyof DailyReportAnswers, value: string) => void;
   onCopyPreviousCrewTime: () => void;
+  onCopyPreviousWorkRows: () => void;
+  onCopySavedEntriesToWorkRows: () => void;
   onEmployeeChange: (rowIndex: number, field: keyof DailyReportEmployeeRow, value: string | boolean) => void;
   onEmployeeTimeBlur: (rowIndex: number, field: DailyReportTimeField) => void;
   onItsfmChange: (itemKey: string, field: keyof Omit<DailyReportItsfmRow, "itemKey">, value: string) => void;
@@ -3735,7 +4014,29 @@ function DailyReportModal({
           </section>
 
           <section>
-            <h3>Work Performed</h3>
+            <div className="daily-section-heading">
+              <h3>Work Performed</h3>
+              <div className="daily-section-actions">
+                <button
+                  className="secondary-button compact-button"
+                  disabled={!canUseSavedEntries}
+                  onClick={onCopySavedEntriesToWorkRows}
+                  type="button"
+                >
+                  <Copy aria-hidden="true" size={16} />
+                  Use Saved Entries
+                </button>
+                <button
+                  className="secondary-button compact-button"
+                  disabled={!canCopyPreviousWorkRows}
+                  onClick={onCopyPreviousWorkRows}
+                  type="button"
+                >
+                  <Copy aria-hidden="true" size={16} />
+                  {previousWorkRowsLabel}
+                </button>
+              </div>
+            </div>
             <div className="daily-pay-item-table" role="table" aria-label="Daily report pay item quantities">
               <div className="daily-pay-item-row daily-pay-item-header" role="row">
                 <span>#</span>
@@ -7619,6 +7920,26 @@ function findPreviousDailyReportWithCrewTime(dailyReportsByKey: DailyReportsByKe
     : null;
 }
 
+function findPreviousDailyReportWithWorkRows(dailyReportsByKey: DailyReportsByKey, projectId: string, date: string) {
+  const previousReports = Object.values(dailyReportsByKey)
+    .filter(
+      (report) =>
+        report.projectId === projectId &&
+        report.date < date &&
+        normalizeDailyReportPayItemRows(report.payItemRows).some(dailyReportPayItemRowHasContent)
+    )
+    .sort((a, b) => b.date.localeCompare(a.date));
+
+  const previousReport = previousReports[0];
+
+  return previousReport
+    ? {
+        date: previousReport.date,
+        report: previousReport
+      }
+    : null;
+}
+
 function dailyReportEmployeeRowHasContent(row: DailyReportEmployeeRow) {
   return (
     Boolean(row.employeeClassification.trim()) ||
@@ -7631,6 +7952,10 @@ function dailyReportEmployeeRowHasContent(row: DailyReportEmployeeRow) {
     row.driver ||
     row.passenger
   );
+}
+
+function dailyReportPayItemRowHasContent(row: DailyReportPayItemRow) {
+  return Boolean(row.payItemId.trim()) || Boolean(row.quantity.trim());
 }
 
 function formatYesNoAnswer(value: string) {
@@ -7729,6 +8054,19 @@ function getLastProjectStorageKey(userId: string) {
 
 function getDayKey(projectId: string, date: string) {
   return `${projectId}|${date}`;
+}
+
+function parseDayKey(dayKey: string) {
+  const [projectId, date] = dayKey.split("|");
+
+  if (!projectId || !date) {
+    return null;
+  }
+
+  return {
+    date,
+    projectId
+  };
 }
 
 function formatUserName(user: AuthUser) {
