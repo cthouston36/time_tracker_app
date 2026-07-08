@@ -1,5 +1,6 @@
 import { getProcoreConfig } from "@/lib/procore/config";
 import { getProcoreIntegrationAccessToken } from "@/lib/procore/session";
+import { buildDailyReportPdf, buildDailyReportPdfFileName } from "@/lib/daily-report-pdf";
 import type { Project } from "@/lib/procore/types";
 
 const DEFAULT_FOLDERS_PATH = "/rest/v1.0/folders";
@@ -64,37 +65,6 @@ type DailyReportItsfmRow = {
   location: string;
 };
 
-type DailyReportItsfmItem = {
-  group: "Aboveground Equipment" | "Cabinet Equipment";
-  key: string;
-  label: string;
-};
-
-const DAILY_REPORT_ITSFM_ITEMS: DailyReportItsfmItem[] = [
-  { group: "Aboveground Equipment", key: "cctv-1", label: "CCTV #1" },
-  { group: "Aboveground Equipment", key: "cctv-2", label: "CCTV #2" },
-  { group: "Aboveground Equipment", key: "cctv-3", label: "CCTV #3" },
-  { group: "Aboveground Equipment", key: "cctv-4", label: "CCTV #4" },
-  { group: "Aboveground Equipment", key: "cctv-5", label: "CCTV #5" },
-  { group: "Aboveground Equipment", key: "cctv-6", label: "CCTV #6" },
-  { group: "Aboveground Equipment", key: "preemption-unit-1", label: "#1 Preemtion Unit" },
-  { group: "Aboveground Equipment", key: "preemption-unit-2", label: "#2 Preemtion Unit" },
-  { group: "Aboveground Equipment", key: "rsu", label: "RSU" },
-  { group: "Aboveground Equipment", key: "antenna", label: "Antenna" },
-  { group: "Cabinet Equipment", key: "cabinet", label: "Cabinet" },
-  { group: "Cabinet Equipment", key: "controller", label: "Controller" },
-  { group: "Cabinet Equipment", key: "mmu", label: "MMU" },
-  { group: "Cabinet Equipment", key: "biu-1", label: "BIU #1" },
-  { group: "Cabinet Equipment", key: "biu-2", label: "BIU #2" },
-  { group: "Cabinet Equipment", key: "detection-ccu", label: "Detection CCU" },
-  { group: "Cabinet Equipment", key: "rpm", label: "RPM" },
-  { group: "Cabinet Equipment", key: "ups", label: "UPS" },
-  { group: "Cabinet Equipment", key: "ethernet-switch", label: "Ethernet Switch" },
-  { group: "Cabinet Equipment", key: "preemption-card", label: "Preemtion Card" },
-  { group: "Cabinet Equipment", key: "misc-1", label: "Misc" },
-  { group: "Cabinet Equipment", key: "misc-2", label: "Misc" }
-];
-
 type ProcoreFolder = {
   id: string;
   name: string;
@@ -142,8 +112,8 @@ export async function uploadDailyReportToProcore(payload: DailyReportUploadPaylo
     throw new Error("Unable to resolve the Procore Daily Reports folder.");
   }
 
-  const fileName = buildDailyReportFileName(payload.project.name, payload.date);
-  const html = renderDailyReportHtml(payload);
+  const fileName = buildDailyReportPdfFileName(payload.project.name, payload.date);
+  const pdf = await buildDailyReportPdf(payload);
   const uploadResult = await uploadProjectFileWithDirectUpload({
     accessToken,
     baseUrl: config.baseUrl,
@@ -151,7 +121,8 @@ export async function uploadDailyReportToProcore(payload: DailyReportUploadPaylo
     projectId: payload.project.id,
     folderId: folder.id,
     fileName,
-    html
+    file: pdf,
+    contentType: "application/pdf"
   });
 
   return {
@@ -368,31 +339,35 @@ async function uploadProjectFileWithDirectUpload({
   accessToken,
   baseUrl,
   companyId,
+  contentType,
+  file,
   projectId,
   folderId,
-  fileName,
-  html
+  fileName
 }: {
   accessToken: string;
   baseUrl: string;
   companyId: string;
+  contentType: string;
+  file: Uint8Array;
   projectId: string;
   folderId: string;
   fileName: string;
-  html: string;
 }) {
   const directUpload = await createProjectUpload({
     accessToken,
     baseUrl,
     companyId,
     projectId,
-    fileName
+    fileName,
+    contentType
   });
 
   await uploadFileToStorageService({
     directUpload,
     fileName,
-    html
+    file,
+    contentType
   });
 
   try {
@@ -426,13 +401,15 @@ async function uploadProjectFileWithDirectUpload({
       baseUrl,
       companyId,
       projectId,
-      fileName: fallbackFileName
+      fileName: fallbackFileName,
+      contentType
     });
 
     await uploadFileToStorageService({
       directUpload: fallbackDirectUpload,
       fileName: fallbackFileName,
-      html
+      file,
+      contentType
     });
 
     const fallbackCreateFileResult = await createProjectFileFromUpload({
@@ -462,13 +439,15 @@ async function createProjectUpload({
   baseUrl,
   companyId,
   projectId,
-  fileName
+  fileName,
+  contentType
 }: {
   accessToken: string;
   baseUrl: string;
   companyId: string;
   projectId: string;
   fileName: string;
+  contentType: string;
 }) {
   const params = new URLSearchParams({
     company_id: companyId
@@ -482,7 +461,7 @@ async function createProjectUpload({
     params,
     body: JSON.stringify({
       response_filename: fileName,
-      response_content_type: "text/html"
+      response_content_type: contentType
     }),
     stage: `create upload for "${fileName}"`
   });
@@ -494,21 +473,24 @@ function buildCreateProjectUploadPath(projectId: string) {
 
 async function uploadFileToStorageService({
   directUpload,
-  fileName,
-  html
+  contentType,
+  file,
+  fileName
 }: {
   directUpload: ProcoreDirectUpload;
+  contentType: string;
+  file: Uint8Array;
   fileName: string;
-  html: string;
 }) {
-  const file = new Blob([html], { type: "text/html" });
+  const fileArrayBuffer = file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength) as ArrayBuffer;
+  const fileBlob = new Blob([fileArrayBuffer], { type: contentType });
   const formData = new FormData();
 
   for (const [key, value] of Object.entries(directUpload.fields)) {
     formData.set(key, value);
   }
 
-  formData.set("file", file, fileName);
+  formData.set("file", fileBlob, fileName);
 
   const response = await fetch(directUpload.url, {
     body: formData,
@@ -698,238 +680,6 @@ function flattenFolderRecords(value: unknown): unknown[] {
   return folders;
 }
 
-function renderDailyReportHtml({ project, date, report, dayNotes }: DailyReportUploadPayload) {
-  const payItemMap = new Map(project.payItems.map((payItem) => [payItem.id, payItem]));
-  const employeeRows = (report.employeeRows ?? []).filter((row) =>
-    [
-      row.employeeClassification,
-      row.truckNumber,
-      row.timeIn,
-      row.lunchOut,
-      row.lunchIn,
-      row.timeOut,
-      row.totalHours
-    ].some(Boolean)
-  );
-  const payItemRows = (report.payItemRows ?? []).filter((row) => row.payItemId || row.quantity);
-  const itsfmRows = normalizeDailyReportItsfmRows(report.itsfmRows);
-  const legacyItsfmNotes = renderLegacyItsfmNotes(report);
-  const inspectorQuantitiesTurnedIn = report.quantitiesTurnedIn === "yes";
-  const incidentOccurred = report.incidentOccurred === "yes";
-
-  return `<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <title>${escapeHtml(buildDailyReportFileName(project.name, date))}</title>
-    <style>
-      body { color: #111827; font-family: Arial, sans-serif; font-size: 13px; margin: 28px; }
-      h1 { font-size: 22px; margin: 0 0 4px; }
-      h2 { border-bottom: 1px solid #9ca3af; font-size: 16px; margin: 24px 0 8px; padding-bottom: 4px; }
-      table { border-collapse: collapse; margin-top: 8px; width: 100%; }
-      th, td { border: 1px solid #9ca3af; padding: 6px; text-align: left; vertical-align: top; }
-      th { background: #f3f4f6; }
-      .meta { color: #4b5563; margin-bottom: 16px; }
-      .note { border: 1px solid #d1d5db; min-height: 52px; padding: 8px; white-space: pre-wrap; }
-      .grid { display: grid; gap: 10px; grid-template-columns: 1fr 1fr; }
-      .mot-table { max-width: 100%; min-width: 720px; table-layout: auto; width: auto; }
-      .mot-table th { min-width: 210px; white-space: nowrap; }
-      .mot-table td { min-width: 70px; }
-      .mot-table .wide-value { min-width: 360px; }
-      .itsfm-table th:first-child, .itsfm-table td:first-child { width: 28%; }
-      .section-row th { background: #dbeafe; color: #111827; text-transform: uppercase; }
-    </style>
-  </head>
-  <body>
-    <h1>Daily Report</h1>
-    <div class="meta">
-      <strong>Project:</strong> ${escapeHtml(project.name)}<br />
-      <strong>Date:</strong> ${escapeHtml(date)}<br />
-      <strong>Created By:</strong> ${escapeHtml(report.createdByName ?? "")}<br />
-      <strong>Last Updated:</strong> ${escapeHtml(report.updatedAt ? new Date(report.updatedAt).toLocaleString() : "")}
-    </div>
-
-    <h2>Employee Time on Site</h2>
-    <table>
-      <thead>
-        <tr>
-          <th>Employee Name - Classification</th>
-          <th>Truck #</th>
-          <th>Time In</th>
-          <th>Lunch Out</th>
-          <th>Lunch In</th>
-          <th>Time Out</th>
-          <th>Total Hours</th>
-          <th>Driver</th>
-          <th>Passenger</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${employeeRows.map((row) => `
-          <tr>
-            <td>${escapeHtml(row.employeeClassification)}</td>
-            <td>${escapeHtml(row.truckNumber)}</td>
-            <td>${escapeHtml(row.timeIn)}</td>
-            <td>${escapeHtml(row.lunchOut)}</td>
-            <td>${escapeHtml(row.lunchIn)}</td>
-            <td>${escapeHtml(row.timeOut)}</td>
-            <td>${escapeHtml(row.totalHours)}</td>
-            <td>${row.driver ? "Yes" : ""}</td>
-            <td>${row.passenger ? "Yes" : ""}</td>
-          </tr>
-        `).join("") || `<tr><td colspan="9">No employee time entered.</td></tr>`}
-      </tbody>
-    </table>
-
-    <h2>Work Performed Pay Items</h2>
-    <table>
-      <thead>
-        <tr>
-          <th>Pay Item #</th>
-          <th>Description</th>
-          <th>Quantity</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${payItemRows.map((row) => {
-          const payItem = payItemMap.get(row.payItemId);
-
-          return `
-          <tr>
-            <td>${escapeHtml(payItem?.code ?? "")}</td>
-            <td>${escapeHtml(payItem?.name ?? "")}</td>
-            <td>${escapeHtml(row.quantity)} ${escapeHtml(payItem?.unitOfMeasure ?? "")}</td>
-          </tr>`;
-        }).join("") || `<tr><td colspan="3">No pay item quantities entered.</td></tr>`}
-      </tbody>
-    </table>
-
-    <h2>Inspector / Quantities</h2>
-    <div class="grid">
-      <div><strong>Quantities turned into inspector:</strong> ${escapeHtml(formatYesNo(report.quantitiesTurnedIn))}</div>
-      ${
-        inspectorQuantitiesTurnedIn
-          ? `<div><strong>Inspector Name:</strong> ${escapeHtml(report.inspectorName ?? "")}</div>`
-          : ""
-      }
-    </div>
-    ${
-      inspectorQuantitiesTurnedIn
-        ? `<h3>Quantities and Items Turned Into Inspector</h3>
-    <div class="note">${escapeHtml(report.inspectorQuantityDetails ?? "")}</div>`
-        : ""
-    }
-
-    <h2>Work Description</h2>
-    <div class="note">${escapeHtml(report.workDescription ?? "")}</div>
-    <h2>Plan Sheet Numbers</h2>
-    <div class="note">${escapeHtml(report.planSheetNumbers ?? "")}</div>
-    <h2>Work Details</h2>
-    <div class="note">${escapeHtml(report.workDetails ?? "")}</div>
-
-    <h2>Notes</h2>
-    <div class="note">${escapeHtml(dayNotes?.notes ?? "")}</div>
-    <h2>Inventory</h2>
-    <div class="note">${escapeHtml(dayNotes?.inventory ?? "")}</div>
-
-    <h2>Incidents / Accidents</h2>
-    <div class="grid">
-      <div><strong>Incident occurred:</strong> ${escapeHtml(formatYesNo(report.incidentOccurred))}</div>
-      ${
-        incidentOccurred
-          ? `<div><strong>Accident report filed:</strong> ${escapeHtml(formatYesNo(report.accidentReportFiled))}</div>`
-          : ""
-      }
-    </div>
-    ${incidentOccurred ? `<div class="note">${escapeHtml(report.incidentDetails ?? "")}</div>` : ""}
-
-    <h2>MOT Quantities</h2>
-    <table class="mot-table">
-      <tbody>
-        <tr><th>Total MOT Signs</th><td>${escapeHtml(report.motSigns ?? "")}</td><th>Cones / Barrels</th><td>${escapeHtml(report.conesBarrels ?? "")}</td></tr>
-        <tr><th>Type II Sidewalk Barricades</th><td>${escapeHtml(report.typeIISidewalkBarricades ?? "")}</td><th>Type III Barricades</th><td>${escapeHtml(report.typeIIIBarricades ?? "")}</td></tr>
-        <tr><th>LCD Count</th><td>${escapeHtml(report.lcdCount ?? "")}</td><th>LCD Footage</th><td>${escapeHtml(report.lcdFootage ?? "")}</td></tr>
-        <tr><th>Arrow Boards</th><td>${escapeHtml(report.arrowBoards ?? "")}</td><th>VMS Boards</th><td>${escapeHtml(report.vmsBoards ?? "")}</td></tr>
-        <tr><th>FDOT Index Used</th><td class="wide-value" colspan="3">${escapeHtml(report.fdotIndex ?? "")}</td></tr>
-      </tbody>
-    </table>
-
-    <h2>ITSFM Itemized List</h2>
-    <table class="itsfm-table">
-      <thead>
-        <tr>
-          <th>Item</th>
-          <th>Model #</th>
-          <th>S/N</th>
-          <th>Location</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${renderItsfmRows(itsfmRows)}
-      </tbody>
-    </table>
-    ${legacyItsfmNotes}
-  </body>
-</html>`;
-}
-
-function renderItsfmRows(rows: DailyReportItsfmRow[]) {
-  const rowsByKey = new Map(rows.map((row) => [row.itemKey, row]));
-  const groups = Array.from(new Set(DAILY_REPORT_ITSFM_ITEMS.map((item) => item.group)));
-
-  return groups.map((group) => `
-        <tr class="section-row">
-          <th colspan="4">${escapeHtml(group)}</th>
-        </tr>
-        ${DAILY_REPORT_ITSFM_ITEMS.filter((item) => item.group === group).map((item) => {
-          const row = rowsByKey.get(item.key) ?? createEmptyDailyReportItsfmRow(item.key);
-
-          return `<tr>
-          <td>${escapeHtml(item.label)}</td>
-          <td>${escapeHtml(row.modelNumber)}</td>
-          <td>${escapeHtml(row.serialNumber)}</td>
-          <td>${escapeHtml(row.location)}</td>
-        </tr>`;
-        }).join("")}`).join("");
-}
-
-function renderLegacyItsfmNotes(report: DailyReportUploadPayload["report"]) {
-  const abovegroundEquipment = report.itsfmAbovegroundEquipment?.trim();
-  const cabinetEquipment = report.itsfmCabinetEquipment?.trim();
-
-  if (!abovegroundEquipment && !cabinetEquipment) {
-    return "";
-  }
-
-  return `
-    <h3>Legacy ITSFM Notes</h3>
-    ${abovegroundEquipment ? `<h4>Aboveground Equipment</h4><div class="note">${escapeHtml(abovegroundEquipment)}</div>` : ""}
-    ${cabinetEquipment ? `<h4>Cabinet Equipment</h4><div class="note">${escapeHtml(cabinetEquipment)}</div>` : ""}`;
-}
-
-function createEmptyDailyReportItsfmRow(itemKey: string): DailyReportItsfmRow {
-  return {
-    itemKey,
-    location: "",
-    modelNumber: "",
-    serialNumber: ""
-  };
-}
-
-function normalizeDailyReportItsfmRows(rows: DailyReportItsfmRow[] | undefined) {
-  const rowsByKey = new Map((rows ?? []).map((row) => [row.itemKey, row]));
-
-  return DAILY_REPORT_ITSFM_ITEMS.map((item) => ({
-    ...createEmptyDailyReportItsfmRow(item.key),
-    ...(rowsByKey.get(item.key) ?? {})
-  }));
-}
-
-function buildDailyReportFileName(projectName: string, date: string) {
-  const projectNumber = projectName.trim().split(/\s+/)[0]?.slice(0, 8) || "Project";
-  return `${date}_${sanitizeFileName(projectNumber)}_Daily_Report.html`;
-}
-
 function buildCollisionSafeFileName(fileName: string) {
   const timestamp = new Date().toISOString().replace(/\D/g, "").slice(0, 14);
   const extensionIndex = fileName.lastIndexOf(".");
@@ -939,22 +689,6 @@ function buildCollisionSafeFileName(fileName: string) {
   }
 
   return `${fileName.slice(0, extensionIndex)}_${timestamp}${fileName.slice(extensionIndex)}`;
-}
-
-function sanitizeFileName(value: string) {
-  return value.replace(/[<>:"/\\|?*\u0000-\u001F]/g, "_");
-}
-
-function formatYesNo(value: string | undefined) {
-  if (value === "yes") {
-    return "Yes";
-  }
-
-  if (value === "no") {
-    return "No";
-  }
-
-  return "";
 }
 
 function firstString(...values: unknown[]) {
@@ -980,15 +714,6 @@ function extractId(response: unknown) {
   const id = firstString(record.id, record.file_id, record.document_id);
 
   return id || undefined;
-}
-
-function escapeHtml(value: string) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

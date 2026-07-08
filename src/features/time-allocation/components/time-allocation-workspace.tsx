@@ -366,6 +366,7 @@ export function TimeAllocationWorkspace() {
   const [dailyReportUploadsByKey, setDailyReportUploadsByKey] = useState<DailyReportUploadsByKey>({});
   const [dailyReportDraft, setDailyReportDraft] = useState<DailyReportAnswers>(() => createEmptyDailyReportAnswers());
   const [dailyReportModalOpen, setDailyReportModalOpen] = useState(false);
+  const [downloadingDailyReportPdf, setDownloadingDailyReportPdf] = useState(false);
   const [uploadingDailyReport, setUploadingDailyReport] = useState(false);
   const [dailyReportUploadNotice, setDailyReportUploadNotice] = useState<{ message: string; status: "success" | "error" } | null>(null);
   const [myJobsByUser, setMyJobsByUser] = useState<MyJobsByUser>({});
@@ -834,6 +835,7 @@ export function TimeAllocationWorkspace() {
     setDailyReportUploadsByKey({});
     setDailyReportModalOpen(false);
     setDailyReportUploadNotice(null);
+    setDownloadingDailyReportPdf(false);
     setUploadingDailyReport(false);
     setMyJobsByUser({});
     setProjectBlacklistById({});
@@ -1301,6 +1303,54 @@ export function TimeAllocationWorkspace() {
     setDailyReportModalOpen(false);
     setDailyReportUploadNotice(null);
     setEntryNotice("Daily report saved.");
+  }
+
+  async function downloadDailyReportPdf() {
+    if (!selectedProject || !currentDailyReport) {
+      setDailyReportUploadNotice({
+        message: "Create and save a daily report before downloading the PDF.",
+        status: "error"
+      });
+      return;
+    }
+
+    setDownloadingDailyReportPdf(true);
+    setDailyReportUploadNotice(null);
+
+    try {
+      const response = await fetch("/api/daily-reports/pdf", {
+        body: JSON.stringify({
+          date: workDate,
+          dayNotes: currentDayEntryNotes,
+          project: selectedProject,
+          report: currentDailyReport
+        }),
+        headers: {
+          "Content-Type": "application/json"
+        },
+        method: "POST"
+      });
+
+      if (!response.ok) {
+        throw new Error(await readApiError(response, "Unable to download daily report PDF."));
+      }
+
+      const blob = await response.blob();
+      const fileName = readDownloadFileName(response.headers) ?? `daily-report-${workDate}.pdf`;
+
+      downloadBlob(blob, fileName);
+      setDailyReportUploadNotice({
+        message: `Downloaded ${fileName}.`,
+        status: "success"
+      });
+    } catch (error) {
+      setDailyReportUploadNotice({
+        message: error instanceof Error ? error.message : "Unable to download daily report PDF.",
+        status: "error"
+      });
+    } finally {
+      setDownloadingDailyReportPdf(false);
+    }
   }
 
   async function uploadDailyReportToProcoreDocuments() {
@@ -2921,13 +2971,24 @@ export function TimeAllocationWorkspace() {
                     {currentDailyReport ? "Edit Daily Report" : "Create Daily Report"}
                   </button>
                   {currentDailyReport ? (
-                  <button
-                    className="secondary-button"
-                    disabled={!selectedProject || uploadingDailyReport}
-                    onClick={uploadDailyReportToProcoreDocuments}
-                    type="button"
-                  >
-                    <UploadCloud aria-hidden="true" size={18} />
+                    <button
+                      className="secondary-button"
+                      disabled={!selectedProject || downloadingDailyReportPdf}
+                      onClick={downloadDailyReportPdf}
+                      type="button"
+                    >
+                      <Download aria-hidden="true" size={18} />
+                      {downloadingDailyReportPdf ? "Downloading..." : "Download PDF"}
+                    </button>
+                  ) : null}
+                  {currentDailyReport ? (
+                    <button
+                      className="secondary-button"
+                      disabled={!selectedProject || uploadingDailyReport}
+                      onClick={uploadDailyReportToProcoreDocuments}
+                      type="button"
+                    >
+                      <UploadCloud aria-hidden="true" size={18} />
                       {uploadingDailyReport ? "Uploading..." : "Upload to Procore"}
                     </button>
                   ) : null}
@@ -2963,7 +3024,7 @@ export function TimeAllocationWorkspace() {
                     </div>
                   ) : (
                     <div className="field-note">
-                      Upload creates a Daily Reports folder in Procore Documents when needed.
+                      Upload saves the generated PDF in the Daily Reports folder in Procore Documents.
                     </div>
                   )}
                 </div>
@@ -4082,7 +4143,7 @@ function ReportsView({
       });
 
       if (!response.ok) {
-        throw new Error(await readCsvExportError(response));
+        throw new Error(await readApiError(response, "Unable to export report CSV."));
       }
 
       const blob = await response.blob();
@@ -7270,9 +7331,7 @@ function downloadBlob(blob: Blob, fileName: string) {
   URL.revokeObjectURL(url);
 }
 
-async function readCsvExportError(response: Response) {
-  const fallbackMessage = "Unable to export report CSV.";
-
+async function readApiError(response: Response, fallbackMessage: string) {
   try {
     const data = (await response.json()) as { error?: string };
 
@@ -7280,6 +7339,19 @@ async function readCsvExportError(response: Response) {
   } catch {
     return fallbackMessage;
   }
+}
+
+function readDownloadFileName(headers: Headers) {
+  const contentDisposition = headers.get("content-disposition") ?? "";
+  const encodedMatch = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+  const quotedMatch = contentDisposition.match(/filename="([^"]+)"/i);
+  const plainMatch = contentDisposition.match(/filename=([^;]+)/i);
+
+  if (encodedMatch) {
+    return decodeURIComponent(encodedMatch[1]);
+  }
+
+  return quotedMatch?.[1] ?? plainMatch?.[1]?.trim();
 }
 
 function exportPayItemSummaryToCsv(payItemRows: PayItemReportRow[]) {

@@ -3,6 +3,8 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { getAuditRequestMetadata, recordAuditLog } from "@/lib/audit-log";
 import { uploadDailyReportToProcore } from "@/lib/procore/documents";
 
+export const runtime = "nodejs";
+
 export async function POST(request: NextRequest) {
   const user = await getCurrentUser();
 
