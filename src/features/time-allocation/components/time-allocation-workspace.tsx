@@ -3914,6 +3914,7 @@ function ReportsView({
   const [reportPage, setReportPage] = useState(1);
   const [reportData, setReportData] = useState<ReportResponse | null>(null);
   const [reportLoading, setReportLoading] = useState(false);
+  const [reportExporting, setReportExporting] = useState(false);
   const [reportError, setReportError] = useState("");
   const [reportsUseServerData, setReportsUseServerData] = useState(true);
   const reportStartInputRef = useRef<HTMLInputElement>(null);
@@ -4055,15 +4056,53 @@ function ReportsView({
     reportStartDate
   ]);
 
+  async function exportSummaryReportCsv() {
+    if (!reportsUseServerData) {
+      exportPayItemSummaryToCsv(localPayItemRows);
+      return;
+    }
+
+    setReportExporting(true);
+    setReportError("");
+
+    try {
+      const response = await fetch("/api/reports/export", {
+        body: JSON.stringify({
+          allowedProjectIds: allowedReportProjectIds,
+          endDate: reportEndDate,
+          mode: "summary",
+          myJobIds,
+          projectId: reportProjectId,
+          startDate: reportStartDate
+        }),
+        headers: {
+          "Content-Type": "application/json"
+        },
+        method: "POST"
+      });
+
+      if (!response.ok) {
+        throw new Error(await readCsvExportError(response));
+      }
+
+      const blob = await response.blob();
+      downloadBlob(blob, `time-allocation-summary-${todayInputValue()}.csv`);
+    } catch (error) {
+      setReportError(error instanceof Error ? error.message : "Unable to export report CSV.");
+    } finally {
+      setReportExporting(false);
+    }
+  }
+
   return (
     <section className="allocation-grid">
       <div className="panel">
         <div className="panel-heading">
           <h2>{getReportTitle(reportMode)}</h2>
           {reportMode === "summary" ? (
-            <button className="secondary-button" onClick={() => exportPayItemSummaryToCsv(payItemRows)} type="button">
+            <button className="secondary-button" disabled={reportExporting} onClick={exportSummaryReportCsv} type="button">
               <Download aria-hidden="true" size={18} />
-              Export CSV
+              {reportExporting ? "Exporting..." : "Export CSV"}
             </button>
           ) : reportMode === "crew" ? (
             <button
@@ -7219,6 +7258,28 @@ function escapeCsvCell(value: string) {
   }
 
   return safeValue;
+}
+
+function downloadBlob(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = fileName;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+async function readCsvExportError(response: Response) {
+  const fallbackMessage = "Unable to export report CSV.";
+
+  try {
+    const data = (await response.json()) as { error?: string };
+
+    return data.error ?? fallbackMessage;
+  } catch {
+    return fallbackMessage;
+  }
 }
 
 function exportPayItemSummaryToCsv(payItemRows: PayItemReportRow[]) {
