@@ -2184,7 +2184,7 @@ export function TimeAllocationWorkspace() {
             target="_blank"
           >
             <ExternalLink aria-hidden="true" size={16} />
-            Training on various FDOT pay items
+            FDOT Pay Items
           </a>
           <IconLabel icon={CheckCircle2} text={connectionStatus} />
           {currentUser.role === "project_manager" || currentUser.role === "admin" ? (
@@ -2995,12 +2995,8 @@ export function TimeAllocationWorkspace() {
         ) : (
           <ReportsView
             currentUser={currentUser}
-            dailyReportUploadsByKey={dailyReportUploadsByKey}
-            dailyReportsByKey={dailyReportsByKey}
-            daySubmissions={daySubmissions}
             entries={reportEntries}
             myJobIds={currentUserMyJobIds}
-            onOpenDay={openDailyEntry}
             projects={projects}
             reportProjectId={reportProjectId}
             reportStartDate={reportStartDate}
@@ -3848,7 +3844,7 @@ type CrewPerformanceRow = {
   payItems: CrewPerformancePayItemRow[];
 };
 
-type ReportMode = "summary" | "detail" | "crew" | "weekly_status";
+type ReportMode = "summary" | "detail" | "crew";
 type DetailGrouping = "crew_day" | "crew_project" | "job_day";
 type DetailSort = "worst_average" | "best_average" | "most_hours" | "most_quantity";
 
@@ -3867,12 +3863,8 @@ type PayItemDetailAnalysisRow = {
 
 function ReportsView({
   currentUser,
-  dailyReportUploadsByKey,
-  dailyReportsByKey,
-  daySubmissions,
   entries,
   myJobIds,
-  onOpenDay,
   projects,
   reportProjectId,
   reportStartDate,
@@ -3883,12 +3875,8 @@ function ReportsView({
   setReportEndDate
 }: {
   currentUser: AuthUser;
-  dailyReportUploadsByKey: DailyReportUploadsByKey;
-  dailyReportsByKey: DailyReportsByKey;
-  daySubmissions: DaySubmissionsByKey;
   entries: AllocationEntry[];
   myJobIds: string[];
-  onOpenDay: (projectId: string, date: string) => void;
   projects: Project[];
   reportProjectId: string;
   reportStartDate: string;
@@ -3904,9 +3892,6 @@ function ReportsView({
   const [detailSort, setDetailSort] = useState<DetailSort>("worst_average");
   const [crewPerformanceInfoOpen, setCrewPerformanceInfoOpen] = useState(false);
   const [myJobsEditorOpen, setMyJobsEditorOpen] = useState(false);
-  const [weeklyStatusWeekStart, setWeeklyStatusWeekStart] = useState(getWeekStart(todayInputValue()));
-  const [weeklyStatusProjectIds, setWeeklyStatusProjectIds] = useState<string[]>([]);
-  const [weeklyStatusUseMyJobs, setWeeklyStatusUseMyJobs] = useState(true);
   const reportStartInputRef = useRef<HTMLInputElement>(null);
   const reportEndInputRef = useRef<HTMLInputElement>(null);
   const reportProjectOptions = buildReportProjectOptions(projects, entries);
@@ -3984,13 +3969,6 @@ function ReportsView({
           >
             Crew Performance
           </button>
-          <button
-            className={reportMode === "weekly_status" ? "tab-button active" : "tab-button"}
-            onClick={() => setReportMode("weekly_status")}
-            type="button"
-          >
-            Weekly Status
-          </button>
         </div>
         {canManageMyJobs ? (
           <div className="report-admin-toolbar">
@@ -4009,83 +3987,81 @@ function ReportsView({
           <MyJobsManager myJobIds={myJobIds} projects={projects} setMyJobIds={setMyJobIds} />
         ) : null}
         {reportMode === "crew" && crewPerformanceInfoOpen ? <CrewPerformanceInfo /> : null}
-        {reportMode !== "weekly_status" ? (
-          <div className="report-controls">
-            <div className="field-group">
-              <label htmlFor="report-project">Job</label>
-              <select
-                className="desktop-select"
-                id="report-project"
-                value={reportProjectId}
-                onChange={(event) => setReportProjectId(event.target.value)}
-              >
-                {reportJobPickerOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              <MobileOptionPicker
-                label="Report Job"
-                options={reportJobPickerOptions}
-                value={reportProjectId}
-                onChange={setReportProjectId}
-              />
-            </div>
-            <div className="field-group">
-              <label htmlFor="report-start-date">From</label>
-              <div className="date-input-wrap">
-                <input
-                  id="report-start-date"
-                  ref={reportStartInputRef}
-                  type="date"
-                  value={reportStartDate}
-                  onChange={(event) => setReportStartDate(event.target.value)}
-                />
-                <button
-                  aria-label="Open report start date picker"
-                  className="date-input-button"
-                  onClick={() => openDatePicker(reportStartInputRef.current)}
-                  type="button"
-                >
-                  <CalendarDays aria-hidden="true" size={18} />
-                </button>
-              </div>
-            </div>
-            <div className="field-group">
-              <label htmlFor="report-end-date">To</label>
-              <div className="date-input-wrap">
-                <input
-                  id="report-end-date"
-                  ref={reportEndInputRef}
-                  type="date"
-                  value={reportEndDate}
-                  onChange={(event) => setReportEndDate(event.target.value)}
-                />
-                <button
-                  aria-label="Open report end date picker"
-                  className="date-input-button"
-                  onClick={() => openDatePicker(reportEndInputRef.current)}
-                  type="button"
-                >
-                  <CalendarDays aria-hidden="true" size={18} />
-                </button>
-              </div>
-            </div>
-            <button
-              className="secondary-button report-clear-button"
-              disabled={reportProjectId === "all" && !reportStartDate && !reportEndDate}
-              onClick={() => {
-                setReportProjectId("all");
-                setReportStartDate("");
-                setReportEndDate("");
-              }}
-              type="button"
+        <div className="report-controls">
+          <div className="field-group">
+            <label htmlFor="report-project">Job</label>
+            <select
+              className="desktop-select"
+              id="report-project"
+              value={reportProjectId}
+              onChange={(event) => setReportProjectId(event.target.value)}
             >
-              Clear filters
-            </button>
+              {reportJobPickerOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <MobileOptionPicker
+              label="Report Job"
+              options={reportJobPickerOptions}
+              value={reportProjectId}
+              onChange={setReportProjectId}
+            />
           </div>
-        ) : null}
+          <div className="field-group">
+            <label htmlFor="report-start-date">From</label>
+            <div className="date-input-wrap">
+              <input
+                id="report-start-date"
+                ref={reportStartInputRef}
+                type="date"
+                value={reportStartDate}
+                onChange={(event) => setReportStartDate(event.target.value)}
+              />
+              <button
+                aria-label="Open report start date picker"
+                className="date-input-button"
+                onClick={() => openDatePicker(reportStartInputRef.current)}
+                type="button"
+              >
+                <CalendarDays aria-hidden="true" size={18} />
+              </button>
+            </div>
+          </div>
+          <div className="field-group">
+            <label htmlFor="report-end-date">To</label>
+            <div className="date-input-wrap">
+              <input
+                id="report-end-date"
+                ref={reportEndInputRef}
+                type="date"
+                value={reportEndDate}
+                onChange={(event) => setReportEndDate(event.target.value)}
+              />
+              <button
+                aria-label="Open report end date picker"
+                className="date-input-button"
+                onClick={() => openDatePicker(reportEndInputRef.current)}
+                type="button"
+              >
+                <CalendarDays aria-hidden="true" size={18} />
+              </button>
+            </div>
+          </div>
+          <button
+            className="secondary-button report-clear-button"
+            disabled={reportProjectId === "all" && !reportStartDate && !reportEndDate}
+            onClick={() => {
+              setReportProjectId("all");
+              setReportStartDate("");
+              setReportEndDate("");
+            }}
+            type="button"
+          >
+            Clear filters
+          </button>
+        </div>
         {reportMode === "summary" ? (
           <PayItemReportTable entries={filteredEntries} projects={projects} rows={payItemRows} />
         ) : reportMode === "detail" ? (
@@ -4098,21 +4074,6 @@ function ReportsView({
             setDetailGrouping={setDetailGrouping}
             setDetailPayItemQuery={setDetailPayItemQuery}
             setDetailSort={setDetailSort}
-          />
-        ) : reportMode === "weekly_status" ? (
-          <WeeklyStatusReport
-            dailyReportUploadsByKey={dailyReportUploadsByKey}
-            dailyReportsByKey={dailyReportsByKey}
-            daySubmissions={daySubmissions}
-            myJobIds={myJobIds}
-            onOpenDay={onOpenDay}
-            projects={projects}
-            selectedProjectIds={weeklyStatusProjectIds}
-            setSelectedProjectIds={setWeeklyStatusProjectIds}
-            setUseMyJobs={setWeeklyStatusUseMyJobs}
-            setWeekStart={setWeeklyStatusWeekStart}
-            useMyJobs={weeklyStatusUseMyJobs}
-            weekStart={weeklyStatusWeekStart}
           />
         ) : (
           <CrewPerformanceReport entries={filteredEntries} projects={projects} />
@@ -5390,10 +5351,6 @@ function getReportTitle(reportMode: ReportMode) {
 
   if (reportMode === "crew") {
     return "Crew Performance Summary";
-  }
-
-  if (reportMode === "weekly_status") {
-    return "Weekly Job Status";
   }
 
   return "Pay Item Production Report";

@@ -1706,7 +1706,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   border-radius: 8px;
   display: grid;
   gap: 4px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   margin-bottom: 14px;
   padding: 4px;
 }
@@ -2430,7 +2430,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   }
 
   .report-mode-tabs {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: 1fr;
   }
 
   .report-admin-toolbar,
