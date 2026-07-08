@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import PDFDocument from "pdfkit/js/pdfkit.standalone";
+import PDFDocument from "pdfkit";
 import type { Project } from "@/lib/procore/types";
 
 export type DailyReportPdfPayload = {

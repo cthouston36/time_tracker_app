@@ -57,6 +57,10 @@ const securityHeaders = [
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  outputFileTracingIncludes: {
+    "/api/daily-reports/pdf": ["./node_modules/pdfkit/js/data/**/*", "./public/chinchor-logo.png"],
+    "/api/procore/daily-reports/upload": ["./node_modules/pdfkit/js/data/**/*", "./public/chinchor-logo.png"]
+  },
   async headers() {
     return [
       {
@@ -66,6 +70,7 @@ const nextConfig = {
     ];
   },
   reactStrictMode: true,
+  serverExternalPackages: ["pdfkit"],
   webpack: (config) => {
     config.cache = false;
     return config;
