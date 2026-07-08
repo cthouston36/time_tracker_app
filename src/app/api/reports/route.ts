@@ -9,6 +9,7 @@ import {
   paginateRows,
   type DetailGrouping,
   type DetailSort,
+  type ReportMetric,
   type ReportMode
 } from "@/lib/report-builders";
 import { getProjects } from "@/lib/procore/projects";
@@ -34,6 +35,10 @@ export async function POST(request: NextRequest) {
 
   const body = (await request.json()) as ReportRequestBody;
   const mode = parseReportMode(body.mode);
+  const reportOptions = {
+    excludeOutliers: body.excludeOutliers === true,
+    metric: parseReportMetric(body.reportMetric)
+  };
   const page = parsePositiveInteger(body.page, 1);
   const pageSize = Math.min(parsePositiveInteger(body.pageSize, DEFAULT_PAGE_SIZE_BY_MODE[mode]), MAX_PAGE_SIZE);
   const projects = await getProjects();
@@ -59,7 +64,7 @@ export async function POST(request: NextRequest) {
   }
 
   if (mode === "summary") {
-    const reportRows = buildPayItemReport(entries, projects);
+    const reportRows = buildPayItemReport(entries, projects, reportOptions);
     const pagedRows = paginateRows(reportRows, page, pageSize);
 
     return NextResponse.json({
@@ -74,7 +79,7 @@ export async function POST(request: NextRequest) {
   }
 
   if (mode === "crew") {
-    const reportRows = buildCrewPerformanceRows(entries, projects);
+    const reportRows = buildCrewPerformanceRows(entries, projects, reportOptions);
     const pagedRows = paginateRows(reportRows, page, pageSize);
 
     return NextResponse.json({
@@ -98,7 +103,7 @@ export async function POST(request: NextRequest) {
       })
     : [];
   const reportRows = detailPayItemQuery && detailEntries
-    ? buildPayItemDetailAnalysisRows(detailEntries, projects, detailGrouping, detailSort)
+    ? buildPayItemDetailAnalysisRows(detailEntries, projects, detailGrouping, detailSort, reportOptions)
     : [];
   const pagedRows = paginateRows(reportRows, page, pageSize);
   const filteredEntryCount = detailPayItemQuery && detailEntries ? detailEntries.length : entries.length;
@@ -153,6 +158,10 @@ function parseDetailSort(value: unknown): DetailSort {
   return "worst_average";
 }
 
+function parseReportMetric(value: unknown): ReportMetric {
+  return value === "mean" ? "mean" : "median";
+}
+
 function parseIsoDate(value: unknown) {
   return typeof value === "string" && ISO_DATE_PATTERN.test(value) ? value : undefined;
 }
@@ -176,10 +185,12 @@ type ReportRequestBody = {
   detailPayItemQuery?: unknown;
   detailSort?: unknown;
   endDate?: unknown;
+  excludeOutliers?: unknown;
   mode?: unknown;
   myJobIds?: unknown;
   page?: unknown;
   pageSize?: unknown;
   projectId?: unknown;
+  reportMetric?: unknown;
   startDate?: unknown;
 };

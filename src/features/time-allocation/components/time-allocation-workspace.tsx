@@ -4622,6 +4622,8 @@ type PayItemReportRow = {
   totalQuantity: number;
   hoursPerUnit: number;
   entryCount: number;
+  excludedEntryCount: number;
+  sampleSize: number;
   jobRollupRows?: PayItemJobRollupRow[];
 };
 
@@ -4637,6 +4639,7 @@ type PayItemReportDetailRow = {
   hours: number;
   quantityCompleted: number;
   hoursPerUnit: number;
+  isOutlier?: boolean;
   savedByName?: string;
 };
 
@@ -4644,6 +4647,8 @@ type PayItemJobRollupRow = {
   id: string;
   projectName: string;
   entryCount: number;
+  excludedEntryCount: number;
+  sampleSize: number;
   hours: number;
   quantityCompleted: number;
   hoursPerUnit: number;
@@ -4658,6 +4663,8 @@ type CrewPerformancePayItemRow = {
   companyHoursPerUnit: number;
   variance: number;
   entryCount: number;
+  excludedEntryCount: number;
+  sampleSize: number;
   jobCount: number;
 };
 
@@ -4668,6 +4675,8 @@ type CrewPerformanceRow = {
   totalHours: number;
   totalQuantity: number;
   entryCount: number;
+  excludedEntryCount: number;
+  sampleSize: number;
   jobCount: number;
   payItemCount: number;
   weightedVariance: number;
@@ -4678,6 +4687,12 @@ type CrewPerformanceRow = {
 type ReportMode = "summary" | "detail" | "crew";
 type DetailGrouping = "crew_day" | "crew_project" | "job_day";
 type DetailSort = "worst_average" | "best_average" | "most_hours" | "most_quantity";
+type ReportMetric = "mean" | "median";
+
+type ReportOptions = {
+  excludeOutliers?: boolean;
+  metric?: ReportMetric;
+};
 
 type PayItemDetailAnalysisRow = {
   id: string;
@@ -4687,6 +4702,8 @@ type PayItemDetailAnalysisRow = {
   crewMemberName?: string;
   jobTitle?: string;
   entryCount: number;
+  excludedEntryCount: number;
+  sampleSize: number;
   hours: number;
   quantityCompleted: number;
   hoursPerUnit: number;
@@ -4739,6 +4756,8 @@ function ReportsView({
   const [detailPayItemQuery, setDetailPayItemQuery] = useState("");
   const [detailGrouping, setDetailGrouping] = useState<DetailGrouping>("crew_day");
   const [detailSort, setDetailSort] = useState<DetailSort>("worst_average");
+  const [reportMetric, setReportMetric] = useState<ReportMetric>("median");
+  const [excludeReportOutliers, setExcludeReportOutliers] = useState(false);
   const [crewPerformanceInfoOpen, setCrewPerformanceInfoOpen] = useState(false);
   const [myJobsEditorOpen, setMyJobsEditorOpen] = useState(false);
   const [reportPage, setReportPage] = useState(1);
@@ -4750,6 +4769,13 @@ function ReportsView({
   const reportStartInputRef = useRef<HTMLInputElement>(null);
   const reportEndInputRef = useRef<HTMLInputElement>(null);
   const reportPageSize = getReportPageSize(reportMode);
+  const reportOptions = useMemo(
+    () => ({
+      excludeOutliers: excludeReportOutliers,
+      metric: reportMetric
+    }),
+    [excludeReportOutliers, reportMetric]
+  );
   const reportProjectOptions = useMemo(() => buildReportProjectOptions(projects, entries), [entries, projects]);
   const allowedReportProjectIds = useMemo(() => reportProjectOptions.map((project) => project.id), [reportProjectOptions]);
   const canManageMyJobs = currentUser.role === "project_manager" || currentUser.role === "admin";
@@ -4785,7 +4811,10 @@ function ReportsView({
     [entries, myJobIds, reportEndDate, reportProjectId, reportStartDate]
   );
   const normalizedDetailQuery = detailPayItemQuery.trim().toLowerCase();
-  const localPayItemRows = useMemo(() => buildPayItemReport(filteredEntries, projects), [filteredEntries, projects]);
+  const localPayItemRows = useMemo(
+    () => buildPayItemReport(filteredEntries, projects, reportOptions),
+    [filteredEntries, projects, reportOptions]
+  );
   const localDetailPayItemOptions = useMemo(() => buildReportPayItemOptions(filteredEntries), [filteredEntries]);
   const localDetailRows = useMemo(
     () =>
@@ -4794,12 +4823,16 @@ function ReportsView({
             filteredEntries.filter((entry) => payItemMatchesQuery(entry, normalizedDetailQuery)),
             projects,
             detailGrouping,
-            detailSort
+            detailSort,
+            reportOptions
           )
         : [],
-    [detailGrouping, detailSort, filteredEntries, normalizedDetailQuery, projects]
+    [detailGrouping, detailSort, filteredEntries, normalizedDetailQuery, projects, reportOptions]
   );
-  const localCrewRows = useMemo(() => buildCrewPerformanceRows(filteredEntries, projects), [filteredEntries, projects]);
+  const localCrewRows = useMemo(
+    () => buildCrewPerformanceRows(filteredEntries, projects, reportOptions),
+    [filteredEntries, projects, reportOptions]
+  );
   const serverReportAvailable = Boolean(reportsUseServerData && reportData?.databaseConfigured && reportData.mode === reportMode);
   const payItemRows =
     serverReportAvailable && reportMode === "summary" ? (reportData?.rows ?? []) as PayItemReportRow[] : localPayItemRows;
@@ -4819,7 +4852,17 @@ function ReportsView({
 
   useEffect(() => {
     setReportPage(1);
-  }, [detailGrouping, detailPayItemQuery, detailSort, reportEndDate, reportMode, reportProjectId, reportStartDate]);
+  }, [
+    detailGrouping,
+    detailPayItemQuery,
+    detailSort,
+    excludeReportOutliers,
+    reportEndDate,
+    reportMetric,
+    reportMode,
+    reportProjectId,
+    reportStartDate
+  ]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -4834,11 +4877,13 @@ function ReportsView({
         detailPayItemQuery,
         detailSort,
         endDate: reportEndDate,
+        excludeOutliers: excludeReportOutliers,
         mode: reportMode,
         myJobIds,
         page: reportPage,
         pageSize: reportPageSize,
         projectId: reportProjectId,
+        reportMetric,
         startDate: reportStartDate
       }),
       headers: {
@@ -4877,8 +4922,10 @@ function ReportsView({
     detailGrouping,
     detailPayItemQuery,
     detailSort,
+    excludeReportOutliers,
     myJobIds,
     reportEndDate,
+    reportMetric,
     reportMode,
     reportPage,
     reportPageSize,
@@ -4900,9 +4947,11 @@ function ReportsView({
         body: JSON.stringify({
           allowedProjectIds: allowedReportProjectIds,
           endDate: reportEndDate,
+          excludeOutliers: excludeReportOutliers,
           mode: "summary",
           myJobIds,
           projectId: reportProjectId,
+          reportMetric,
           startDate: reportStartDate
         }),
         headers: {
@@ -5048,6 +5097,25 @@ function ReportsView({
               </button>
             </div>
           </div>
+          <div className="field-group">
+            <label htmlFor="report-metric">Hrs / Unit Metric</label>
+            <select
+              id="report-metric"
+              value={reportMetric}
+              onChange={(event) => setReportMetric(event.target.value as ReportMetric)}
+            >
+              <option value="median">Median</option>
+              <option value="mean">Mean</option>
+            </select>
+          </div>
+          <label className="report-toggle-row">
+            <input
+              checked={excludeReportOutliers}
+              onChange={(event) => setExcludeReportOutliers(event.target.checked)}
+              type="checkbox"
+            />
+            <span>Exclude outliers</span>
+          </label>
           <button
             className="secondary-button report-clear-button"
             disabled={reportProjectId === "all" && !reportStartDate && !reportEndDate}
@@ -5060,6 +5128,14 @@ function ReportsView({
           >
             Clear filters
           </button>
+        </div>
+        <div className="report-methodology-note">
+          {reportMetric === "median"
+            ? "Median uses the middle row-level hours/unit value for each pay item group."
+            : "Mean uses total hours divided by total quantity for each pay item group."}
+          {excludeReportOutliers
+            ? " Outliers are excluded with the 1.5x IQR rule within each pay item when at least 5 comparable rows exist."
+            : " Outlier filtering is off."}
         </div>
         {reportError ? <div className="inline-alert">{reportError}</div> : null}
         {reportLoading ? <div className="field-note">Loading report...</div> : null}
@@ -5469,7 +5545,7 @@ function PayItemReportTable({ rows }: { rows: PayItemReportRow[] }) {
         <span>Entries</span>
         <span>Hours</span>
         <span>Quantity</span>
-        <span>Avg Hrs / Unit</span>
+        <span>Hrs / Unit</span>
       </div>
       {rows.map((row) => {
         const expanded = expandedPayItemKey === row.key;
@@ -5492,10 +5568,10 @@ function PayItemReportTable({ rows }: { rows: PayItemReportRow[] }) {
                   {row.code} - {row.name}
                 </span>
               </button>
-              <span data-label="Entries">{row.entryCount}</span>
+              <span data-label="Entries">{formatReportEntryCount(row)}</span>
               <span data-label="Hours">{row.totalHours.toFixed(2)}</span>
               <span data-label="Quantity">{row.totalQuantity.toFixed(2)}</span>
-              <span data-label="Avg Hrs / Unit">{row.hoursPerUnit.toFixed(3)}</span>
+              <span data-label="Hrs / Unit">{row.hoursPerUnit.toFixed(3)}</span>
             </div>
             {expanded ? (
               <div className="report-detail-panel">
@@ -5504,15 +5580,15 @@ function PayItemReportTable({ rows }: { rows: PayItemReportRow[] }) {
                   <span>Entries</span>
                   <span>Hours</span>
                   <span>Quantity</span>
-                  <span>Avg Hrs / Unit</span>
+                  <span>Hrs / Unit</span>
                 </div>
                 {jobRollupRows.map((jobRow) => (
                   <div className="report-detail-row summary-detail-row" key={jobRow.id}>
                     <span data-label="Job">{jobRow.projectName}</span>
-                    <span data-label="Entries">{jobRow.entryCount}</span>
+                    <span data-label="Entries">{formatReportEntryCount(jobRow)}</span>
                     <span data-label="Hours">{jobRow.hours.toFixed(2)}</span>
                     <span data-label="Quantity">{jobRow.quantityCompleted.toFixed(2)}</span>
-                    <span data-label="Avg Hrs / Unit">{jobRow.hoursPerUnit.toFixed(3)}</span>
+                    <span data-label="Hrs / Unit">{jobRow.hoursPerUnit.toFixed(3)}</span>
                   </div>
                 ))}
               </div>
@@ -5624,7 +5700,7 @@ function DetailedPayItemReport({
             <span>Entries</span>
             <span>Hours</span>
             <span>Quantity</span>
-            <span>Avg Hrs / Unit</span>
+            <span>Hrs / Unit</span>
           </div>
           {detailRows.map((row) => (
             <div className="report-row detail-analysis-row" key={row.id}>
@@ -5641,10 +5717,10 @@ function DetailedPayItemReport({
                   "All crew"
                 )}
               </span>
-              <span data-label="Entries">{row.entryCount}</span>
+              <span data-label="Entries">{formatReportEntryCount(row)}</span>
               <span data-label="Hours">{row.hours.toFixed(2)}</span>
               <span data-label="Quantity">{row.quantityCompleted.toFixed(2)}</span>
-              <span data-label="Avg Hrs / Unit">{row.hoursPerUnit.toFixed(3)}</span>
+              <span data-label="Hrs / Unit">{row.hoursPerUnit.toFixed(3)}</span>
             </div>
           ))}
         </div>
@@ -5659,7 +5735,8 @@ function CrewPerformanceInfo() {
       This report compares each crew member against the company average for the same pay items they worked on. Each
       pay-item variance is weighted by that crew member&apos;s hours, so larger work samples matter more than small
       one-off entries. Lower hours per unit is treated as better performance. Rows marked limited data have less than
-      20 hours or fewer than 3 entries.
+      20 hours or fewer than 3 entries. If outlier filtering is enabled, the app uses the 1.5x IQR rule within each
+      pay item and only applies it when at least 5 comparable rows exist.
     </div>
   );
 }
@@ -5704,7 +5781,7 @@ function CrewPerformanceReport({ rows }: { rows: CrewPerformanceRow[] }) {
                 </span>
               </button>
               <span data-label="Hours">{row.totalHours.toFixed(2)}</span>
-              <span data-label="Entries">{row.entryCount}</span>
+              <span data-label="Entries">{formatReportEntryCount(row)}</span>
               <span data-label="Pay Items">{row.payItemCount}</span>
               <span data-label="Jobs">{row.jobCount}</span>
               <span data-label="Avg vs Company">{formatVariance(row.weightedVariance)}</span>
@@ -5732,7 +5809,7 @@ function CrewPerformanceReport({ rows }: { rows: CrewPerformanceRow[] }) {
                     <span data-label="Crew Hrs / Unit">{payItem.hoursPerUnit.toFixed(3)}</span>
                     <span data-label="Company Hrs / Unit">{payItem.companyHoursPerUnit.toFixed(3)}</span>
                     <span data-label="Difference">{formatVariance(payItem.variance)}</span>
-                    <span data-label="Entries">{payItem.entryCount}</span>
+                    <span data-label="Entries">{formatReportEntryCount(payItem)}</span>
                     <span data-label="Jobs">{payItem.jobCount}</span>
                   </div>
                 ))}
@@ -6145,60 +6222,108 @@ function AdminUsersPanel({
   );
 }
 
-function buildPayItemReport(entries: AllocationEntry[], projects: Project[] = []): PayItemReportRow[] {
-  const rows = new Map<string, PayItemReportRow>();
+function buildPayItemReport(entries: AllocationEntry[], projects: Project[] = [], options?: ReportOptions): PayItemReportRow[] {
+  const resolvedOptions = resolveReportOptions(options);
+  const samples = applyOutlierFlags(
+    entries.map((entry) => ({
+      entry,
+      hours: entry.hours,
+      hoursPerUnit: entry.quantityCompleted > 0 ? entry.hours / entry.quantityCompleted : 0,
+      payItemKey: getPayItemReportKey(entry),
+      quantityCompleted: entry.quantityCompleted
+    })),
+    resolvedOptions
+  );
+  const rows = new Map<string, PayItemReportRow & { rateSamples: RateSample[] }>();
 
-  for (const entry of entries) {
-    const key = getPayItemReportKey(entry);
-    const current = rows.get(key) ?? {
-      key,
-      code: entry.payItemCode,
-      name: entry.payItemName,
+  for (const sample of samples.filter((row) => !row.isOutlier)) {
+    const current = rows.get(sample.payItemKey) ?? {
+      key: sample.payItemKey,
+      code: sample.entry.payItemCode,
+      name: sample.entry.payItemName,
       totalHours: 0,
       totalQuantity: 0,
       hoursPerUnit: 0,
-      entryCount: 0
+      entryCount: 0,
+      excludedEntryCount: 0,
+      sampleSize: 0,
+      jobRollupRows: [],
+      rateSamples: []
     };
 
-    current.totalHours += entry.hours;
-    current.totalQuantity += entry.quantityCompleted;
+    current.totalHours += sample.hours;
+    current.totalQuantity += sample.quantityCompleted;
     current.entryCount += 1;
-    current.hoursPerUnit = current.totalQuantity > 0 ? current.totalHours / current.totalQuantity : 0;
-    rows.set(key, current);
+    current.rateSamples.push(sample);
+    current.hoursPerUnit = calculateHoursPerUnit(current.rateSamples, resolvedOptions.metric);
+    rows.set(sample.payItemKey, current);
+  }
+
+  for (const sample of samples) {
+    const current = rows.get(sample.payItemKey);
+
+    if (current) {
+      current.sampleSize += 1;
+      current.excludedEntryCount += sample.isOutlier ? 1 : 0;
+    }
   }
 
   return Array.from(rows.values())
-    .map((row) => ({
-      ...row,
-      jobRollupRows: buildPayItemJobRollupRows(
-        entries.filter((entry) => getPayItemReportKey(entry) === row.key),
-        projects
-      )
-    }))
+    .map((rowWithSamples) => {
+      const row = omitRateSamples(rowWithSamples);
+
+      return {
+        ...row,
+        jobRollupRows: buildPayItemJobRollupRows(
+          samples.filter((sample) => sample.payItemKey === row.key),
+          projects,
+          resolvedOptions.metric
+        )
+      };
+    })
     .sort((a, b) => b.hoursPerUnit - a.hoursPerUnit);
 }
 
-function buildPayItemJobRollupRows(entries: AllocationEntry[], projects: Project[]): PayItemJobRollupRow[] {
-  const rows = new Map<string, PayItemJobRollupRow>();
+function buildPayItemJobRollupRows(
+  samples: Array<OutlierEvaluatedRow<EntryRateSample>>,
+  projects: Project[],
+  metric: ReportMetric
+): PayItemJobRollupRow[] {
+  const rows = new Map<string, PayItemJobRollupRow & { rateSamples: RateSample[] }>();
 
-  for (const entry of entries) {
-    const current = rows.get(entry.projectId) ?? {
-      id: entry.projectId,
-      projectName: getEntryProjectName(entry, projects),
+  for (const sample of samples.filter((row) => !row.isOutlier)) {
+    const current = rows.get(sample.entry.projectId) ?? {
+      id: sample.entry.projectId,
+      projectName: getEntryProjectName(sample.entry, projects),
       entryCount: 0,
+      excludedEntryCount: 0,
+      sampleSize: 0,
       hours: 0,
       quantityCompleted: 0,
-      hoursPerUnit: 0
+      hoursPerUnit: 0,
+      rateSamples: []
     };
 
     current.entryCount += 1;
-    current.hours += entry.hours;
-    current.quantityCompleted += entry.quantityCompleted;
-    current.hoursPerUnit = current.quantityCompleted > 0 ? current.hours / current.quantityCompleted : 0;
-    rows.set(entry.projectId, current);
+    current.hours += sample.hours;
+    current.quantityCompleted += sample.quantityCompleted;
+    current.rateSamples.push(sample);
+    current.hoursPerUnit = calculateHoursPerUnit(current.rateSamples, metric);
+    rows.set(sample.entry.projectId, current);
   }
 
-  return Array.from(rows.values()).sort((a, b) => a.projectName.localeCompare(b.projectName));
+  for (const sample of samples) {
+    const current = rows.get(sample.entry.projectId);
+
+    if (current) {
+      current.sampleSize += 1;
+      current.excludedEntryCount += sample.isOutlier ? 1 : 0;
+    }
+  }
+
+  return Array.from(rows.values())
+    .map(omitRateSamples)
+    .sort((a, b) => a.projectName.localeCompare(b.projectName));
 }
 
 function buildPayItemReportDetailRows(entries: AllocationEntry[], projects: Project[]): PayItemReportDetailRow[] {
@@ -6253,12 +6378,14 @@ function buildPayItemDetailAnalysisRows(
   entries: AllocationEntry[],
   projects: Project[],
   grouping: DetailGrouping,
-  sort: DetailSort
+  sort: DetailSort,
+  options?: ReportOptions
 ): PayItemDetailAnalysisRow[] {
-  const detailRows = buildPayItemReportDetailRows(entries, projects);
-  const rows = new Map<string, PayItemDetailAnalysisRow>();
+  const resolvedOptions = resolveReportOptions(options);
+  const detailRows = applyOutlierFlags(buildPayItemReportDetailRows(entries, projects), resolvedOptions);
+  const rows = new Map<string, PayItemDetailAnalysisRow & { rateSamples: RateSample[] }>();
 
-  for (const detailRow of detailRows) {
+  for (const detailRow of detailRows.filter((row) => !row.isOutlier)) {
     const key = getDetailAnalysisKey(detailRow, grouping);
     const current = rows.get(key) ?? {
       id: key,
@@ -6268,46 +6395,72 @@ function buildPayItemDetailAnalysisRows(
       crewMemberName: grouping === "crew_day" || grouping === "crew_project" ? detailRow.crewMemberName : undefined,
       jobTitle: grouping === "crew_day" || grouping === "crew_project" ? detailRow.jobTitle : undefined,
       entryCount: 0,
+      excludedEntryCount: 0,
+      sampleSize: 0,
       hours: 0,
       quantityCompleted: 0,
-      hoursPerUnit: 0
+      hoursPerUnit: 0,
+      rateSamples: []
     };
 
     current.entryCount += 1;
     current.hours += detailRow.hours;
     current.quantityCompleted += detailRow.quantityCompleted;
-    current.hoursPerUnit = current.quantityCompleted > 0 ? current.hours / current.quantityCompleted : 0;
+    current.rateSamples.push(detailRow);
+    current.hoursPerUnit = calculateHoursPerUnit(current.rateSamples, resolvedOptions.metric);
     rows.set(key, current);
   }
 
-  return sortDetailAnalysisRows(Array.from(rows.values()), sort);
+  for (const detailRow of detailRows) {
+    const current = rows.get(getDetailAnalysisKey(detailRow, grouping));
+
+    if (current) {
+      current.sampleSize += 1;
+      current.excludedEntryCount += detailRow.isOutlier ? 1 : 0;
+    }
+  }
+
+  return sortDetailAnalysisRows(Array.from(rows.values()).map(omitRateSamples), sort);
 }
 
-function buildCrewPerformanceRows(entries: AllocationEntry[], projects: Project[]): CrewPerformanceRow[] {
-  const detailRows = buildPayItemReportDetailRows(entries, projects).filter(
-    (row) => row.crewMemberId !== "unassigned" && row.quantityCompleted > 0 && row.hours > 0
+function buildCrewPerformanceRows(entries: AllocationEntry[], projects: Project[], options?: ReportOptions): CrewPerformanceRow[] {
+  const resolvedOptions = resolveReportOptions(options);
+  const detailRows = applyOutlierFlags(
+    buildPayItemReportDetailRows(entries, projects).filter(
+      (row) => row.crewMemberId !== "unassigned" && row.quantityCompleted > 0 && row.hours > 0
+    ),
+    resolvedOptions
   );
-  const companyPayItemStats = new Map<string, { hours: number; quantity: number; hoursPerUnit: number }>();
+  const includedDetailRows = detailRows.filter((row) => !row.isOutlier);
+  const companyPayItemStats = new Map<string, { hours: number; quantity: number; hoursPerUnit: number; rateSamples: RateSample[] }>();
 
-  for (const row of detailRows) {
+  for (const row of includedDetailRows) {
     const current = companyPayItemStats.get(row.payItemKey) ?? {
       hours: 0,
       quantity: 0,
-      hoursPerUnit: 0
+      hoursPerUnit: 0,
+      rateSamples: []
     };
 
     current.hours += row.hours;
     current.quantity += row.quantityCompleted;
-    current.hoursPerUnit = current.quantity > 0 ? current.hours / current.quantity : 0;
+    current.rateSamples.push(row);
+    current.hoursPerUnit = calculateHoursPerUnit(current.rateSamples, resolvedOptions.metric);
     companyPayItemStats.set(row.payItemKey, current);
   }
 
   const crewPayItemRows = new Map<
     string,
-    CrewPerformancePayItemRow & { crewMemberName: string; crewMemberId: string; jobTitle: string; jobIds: Set<string> }
+    CrewPerformancePayItemRow & {
+      crewMemberName: string;
+      crewMemberId: string;
+      jobTitle: string;
+      jobIds: Set<string>;
+      rateSamples: RateSample[];
+    }
   >();
 
-  for (const row of detailRows) {
+  for (const row of includedDetailRows) {
     const companyStats = companyPayItemStats.get(row.payItemKey);
 
     if (!companyStats || companyStats.hoursPerUnit <= 0) {
@@ -6327,8 +6480,11 @@ function buildCrewPerformanceRows(entries: AllocationEntry[], projects: Project[
       companyHoursPerUnit: companyStats.hoursPerUnit,
       variance: 0,
       entryCount: 0,
+      excludedEntryCount: 0,
+      sampleSize: 0,
       jobCount: 0,
-      jobIds: new Set<string>()
+      jobIds: new Set<string>(),
+      rateSamples: []
     };
 
     current.hours += row.hours;
@@ -6336,13 +6492,23 @@ function buildCrewPerformanceRows(entries: AllocationEntry[], projects: Project[
     current.entryCount += 1;
     current.jobIds.add(row.projectName);
     current.jobCount = current.jobIds.size;
-    current.hoursPerUnit = current.quantityCompleted > 0 ? current.hours / current.quantityCompleted : 0;
+    current.rateSamples.push(row);
+    current.hoursPerUnit = calculateHoursPerUnit(current.rateSamples, resolvedOptions.metric);
     current.companyHoursPerUnit = companyStats.hoursPerUnit;
     current.variance =
       current.companyHoursPerUnit > 0
         ? (current.hoursPerUnit - current.companyHoursPerUnit) / current.companyHoursPerUnit
         : 0;
     crewPayItemRows.set(key, current);
+  }
+
+  for (const row of detailRows) {
+    const current = crewPayItemRows.get(`${row.crewMemberId}|${row.payItemKey}`);
+
+    if (current) {
+      current.sampleSize += 1;
+      current.excludedEntryCount += row.isOutlier ? 1 : 0;
+    }
   }
 
   const crewRows = new Map<string, CrewPerformanceRow & { jobIds: Set<string> }>();
@@ -6355,6 +6521,8 @@ function buildCrewPerformanceRows(entries: AllocationEntry[], projects: Project[
       totalHours: 0,
       totalQuantity: 0,
       entryCount: 0,
+      excludedEntryCount: 0,
+      sampleSize: 0,
       jobCount: 0,
       payItemCount: 0,
       weightedVariance: 0,
@@ -6366,6 +6534,8 @@ function buildCrewPerformanceRows(entries: AllocationEntry[], projects: Project[
     current.totalHours += payItemRow.hours;
     current.totalQuantity += payItemRow.quantityCompleted;
     current.entryCount += payItemRow.entryCount;
+    current.excludedEntryCount += payItemRow.excludedEntryCount;
+    current.sampleSize += payItemRow.sampleSize;
     for (const jobId of payItemRow.jobIds) {
       current.jobIds.add(jobId);
     }
@@ -6378,6 +6548,8 @@ function buildCrewPerformanceRows(entries: AllocationEntry[], projects: Project[
       companyHoursPerUnit: payItemRow.companyHoursPerUnit,
       variance: payItemRow.variance,
       entryCount: payItemRow.entryCount,
+      excludedEntryCount: payItemRow.excludedEntryCount,
+      sampleSize: payItemRow.sampleSize,
       jobCount: payItemRow.jobCount
     });
     current.jobCount = current.jobIds.size;
@@ -6395,6 +6567,8 @@ function buildCrewPerformanceRows(entries: AllocationEntry[], projects: Project[
       totalHours: row.totalHours,
       totalQuantity: row.totalQuantity,
       entryCount: row.entryCount,
+      excludedEntryCount: row.excludedEntryCount,
+      sampleSize: row.sampleSize,
       jobCount: row.jobCount,
       payItemCount: row.payItemCount,
       weightedVariance: row.weightedVariance,
@@ -6402,6 +6576,143 @@ function buildCrewPerformanceRows(entries: AllocationEntry[], projects: Project[
       payItems: [...row.payItems].sort((a, b) => b.hours - a.hours)
     }))
     .sort((a, b) => b.weightedVariance - a.weightedVariance);
+}
+
+const DEFAULT_REPORT_OPTIONS: Required<ReportOptions> = {
+  excludeOutliers: false,
+  metric: "median"
+};
+const OUTLIER_MIN_SAMPLE_SIZE = 5;
+const OUTLIER_IQR_MULTIPLIER = 1.5;
+
+type RateSample = {
+  hours: number;
+  hoursPerUnit: number;
+  payItemKey: string;
+  quantityCompleted: number;
+};
+
+type EntryRateSample = RateSample & {
+  entry: AllocationEntry;
+};
+
+type OutlierEvaluatedRow<TRow> = TRow & {
+  isOutlier: boolean;
+};
+
+function omitRateSamples<TRow>(row: TRow & { rateSamples: RateSample[] }) {
+  const { rateSamples, ...reportRow } = row;
+
+  void rateSamples;
+
+  return reportRow;
+}
+
+function resolveReportOptions(options: ReportOptions | undefined): Required<ReportOptions> {
+  return {
+    excludeOutliers: options?.excludeOutliers ?? DEFAULT_REPORT_OPTIONS.excludeOutliers,
+    metric: options?.metric ?? DEFAULT_REPORT_OPTIONS.metric
+  };
+}
+
+function applyOutlierFlags<TRow extends RateSample>(
+  rows: TRow[],
+  options: Required<ReportOptions>
+): Array<OutlierEvaluatedRow<TRow>> {
+  const rowsWithFlags = rows.map((row) => ({
+    ...row,
+    isOutlier: false
+  }));
+
+  if (!options.excludeOutliers) {
+    return rowsWithFlags;
+  }
+
+  const rowsByPayItemKey = new Map<string, Array<OutlierEvaluatedRow<TRow>>>();
+
+  for (const row of rowsWithFlags) {
+    if (!isUsableRateSample(row)) {
+      continue;
+    }
+
+    rowsByPayItemKey.set(row.payItemKey, [...(rowsByPayItemKey.get(row.payItemKey) ?? []), row]);
+  }
+
+  for (const rowsInGroup of rowsByPayItemKey.values()) {
+    if (rowsInGroup.length < OUTLIER_MIN_SAMPLE_SIZE) {
+      continue;
+    }
+
+    const rates = rowsInGroup.map((row) => row.hoursPerUnit).sort((a, b) => a - b);
+    const q1 = getQuantile(rates, 0.25);
+    const q3 = getQuantile(rates, 0.75);
+    const iqr = q3 - q1;
+
+    if (!Number.isFinite(iqr) || iqr <= 0) {
+      continue;
+    }
+
+    const lowerBound = q1 - OUTLIER_IQR_MULTIPLIER * iqr;
+    const upperBound = q3 + OUTLIER_IQR_MULTIPLIER * iqr;
+
+    for (const row of rowsInGroup) {
+      row.isOutlier = row.hoursPerUnit < lowerBound || row.hoursPerUnit > upperBound;
+    }
+  }
+
+  return rowsWithFlags;
+}
+
+function calculateHoursPerUnit(rows: RateSample[], metric: ReportMetric) {
+  if (metric === "median") {
+    const rates = rows
+      .filter(isUsableRateSample)
+      .map((row) => row.hoursPerUnit)
+      .sort((a, b) => a - b);
+
+    return getMedian(rates);
+  }
+
+  const totalHours = rows.reduce((total, row) => total + row.hours, 0);
+  const totalQuantity = rows.reduce((total, row) => total + row.quantityCompleted, 0);
+
+  return totalQuantity > 0 ? totalHours / totalQuantity : 0;
+}
+
+function isUsableRateSample(row: RateSample) {
+  return row.hours > 0 && row.quantityCompleted > 0 && Number.isFinite(row.hoursPerUnit) && row.hoursPerUnit > 0;
+}
+
+function getMedian(values: number[]) {
+  if (values.length === 0) {
+    return 0;
+  }
+
+  const midpoint = Math.floor(values.length / 2);
+
+  return values.length % 2 === 0 ? (values[midpoint - 1] + values[midpoint]) / 2 : values[midpoint];
+}
+
+function getQuantile(sortedValues: number[], percentile: number) {
+  if (sortedValues.length === 0) {
+    return 0;
+  }
+
+  if (sortedValues.length === 1) {
+    return sortedValues[0];
+  }
+
+  const index = (sortedValues.length - 1) * percentile;
+  const lowerIndex = Math.floor(index);
+  const upperIndex = Math.ceil(index);
+
+  if (lowerIndex === upperIndex) {
+    return sortedValues[lowerIndex];
+  }
+
+  const weight = index - lowerIndex;
+
+  return sortedValues[lowerIndex] * (1 - weight) + sortedValues[upperIndex] * weight;
 }
 
 function getWeightedVariance(payItems: CrewPerformancePayItemRow[]) {
@@ -6460,6 +6771,10 @@ function sortDetailAnalysisRows(rows: PayItemDetailAnalysisRow[], sort: DetailSo
   });
 }
 
+function formatReportEntryCount(row: { entryCount: number; excludedEntryCount?: number }) {
+  return row.excludedEntryCount ? `${row.entryCount} (${row.excludedEntryCount} excluded)` : String(row.entryCount);
+}
+
 function payItemMatchesQuery(entry: AllocationEntry, normalizedQuery: string) {
   return `${entry.payItemCode} ${entry.payItemName}`.toLowerCase().includes(normalizedQuery);
 }
@@ -6511,7 +6826,7 @@ function formatCrewPerformanceStatus(status: CrewPerformanceRow["status"]) {
 }
 
 function getPayItemReportKey(entry: AllocationEntry) {
-  return `${entry.payItemCode}-${entry.payItemName}`;
+  return `${entry.payItemCode}-${entry.payItemName}-${entry.payItemUnitOfMeasure ?? ""}`;
 }
 
 function getEntryProjectName(entry: AllocationEntry, projects: Project[]) {
@@ -6541,7 +6856,7 @@ function buildReportPayItemOptions(entries: AllocationEntry[]) {
     if (!payItemOptions.has(key)) {
       payItemOptions.set(key, {
         key,
-        label: `${entry.payItemCode} - ${entry.payItemName}`,
+        label: `${entry.payItemCode} - ${entry.payItemName}${entry.payItemUnitOfMeasure ? ` (${entry.payItemUnitOfMeasure})` : ""}`,
         query: entry.payItemCode
       });
     }
@@ -8404,14 +8719,25 @@ function sanitizeDailyReportFileName(value: string) {
 }
 
 function exportPayItemSummaryToCsv(payItemRows: PayItemReportRow[]) {
-  const headers = ["pay_item_code", "pay_item_name", "entries", "hours", "quantity", "avg_hours_per_unit"];
+  const headers = [
+    "pay_item_code",
+    "pay_item_name",
+    "entries",
+    "hours",
+    "quantity",
+    "hours_per_unit",
+    "excluded_outliers",
+    "sample_size"
+  ];
   const rows = payItemRows.map((row) => [
     row.code,
     row.name,
     row.entryCount,
     row.totalHours.toFixed(2),
     row.totalQuantity.toFixed(2),
-    row.hoursPerUnit.toFixed(3)
+    row.hoursPerUnit.toFixed(3),
+    row.excludedEntryCount,
+    row.sampleSize
   ]);
   const csv = [headers, ...rows].map((row) => row.map((cell) => escapeCsvCell(String(cell))).join(",")).join("\r\n");
   const blob = new Blob([csv], {

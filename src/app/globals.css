@@ -2189,7 +2189,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   align-items: end;
   display: grid;
   gap: 12px;
-  grid-template-columns: minmax(220px, 1.3fr) repeat(2, minmax(150px, 0.8fr)) auto;
+  grid-template-columns: minmax(220px, 1.3fr) repeat(3, minmax(150px, 0.8fr)) minmax(150px, 0.7fr) auto;
   margin-bottom: 14px;
 }
 
@@ -2199,6 +2199,25 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
 .report-clear-button {
   min-width: 120px;
+}
+
+.report-toggle-row {
+  align-items: center;
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--foreground);
+  display: flex;
+  gap: 8px;
+  min-height: 42px;
+  padding: 8px 10px;
+}
+
+.report-methodology-note {
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.4;
+  margin: -4px 0 14px;
 }
 
 .report-detail-controls {

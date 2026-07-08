@@ -7,6 +7,7 @@ import {
   buildPayItemReport,
   type DetailGrouping,
   type DetailSort,
+  type ReportMetric,
   type ReportMode
 } from "@/lib/report-builders";
 import { todayInputValue } from "@/lib/date";
@@ -28,6 +29,10 @@ export async function POST(request: NextRequest) {
 
   const body = (await request.json()) as ReportExportRequestBody;
   const mode = parseReportMode(body.mode);
+  const reportOptions = {
+    excludeOutliers: body.excludeOutliers === true,
+    metric: parseReportMetric(body.reportMetric)
+  };
   const projects = await getProjects();
   const projectIds = resolveProjectIds(body, projects.map((project) => project.id));
   const baseFilters = {
@@ -41,7 +46,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Database storage is not configured for report exports." }, { status: 503 });
   }
 
-  const csv = await buildReportCsv(mode, body, entries, projects, baseFilters);
+  const csv = await buildReportCsv(mode, body, entries, projects, baseFilters, reportOptions);
   const fileName = `time-allocation-${mode}-report-${todayInputValue()}.csv`;
 
   return new NextResponse(csv, {
@@ -57,7 +62,8 @@ async function buildReportCsv(
   body: ReportExportRequestBody,
   entries: AllocationEntry[],
   projects: Project[],
-  baseFilters: { endDate?: string; projectIds: string[]; startDate?: string }
+  baseFilters: { endDate?: string; projectIds: string[]; startDate?: string },
+  reportOptions: { excludeOutliers: boolean; metric: ReportMetric }
 ) {
   if (mode === "crew") {
     const headers = [
@@ -68,9 +74,11 @@ async function buildReportCsv(
       "pay_items",
       "jobs",
       "avg_vs_company",
+      "excluded_outliers",
+      "sample_size",
       "status"
     ];
-    const rows = buildCrewPerformanceRows(entries, projects).map((row) => [
+    const rows = buildCrewPerformanceRows(entries, projects, reportOptions).map((row) => [
       row.crewMemberName,
       row.jobTitle,
       row.totalHours.toFixed(2),
@@ -78,6 +86,8 @@ async function buildReportCsv(
       row.payItemCount,
       row.jobCount,
       formatPercent(row.weightedVariance),
+      row.excludedEntryCount,
+      row.sampleSize,
       row.status
     ]);
 
@@ -103,10 +113,12 @@ async function buildReportCsv(
       "entries",
       "hours",
       "quantity",
-      "avg_hours_per_unit"
+      "hours_per_unit",
+      "excluded_outliers",
+      "sample_size"
     ];
     const rows = detailPayItemQuery && detailEntries
-      ? buildPayItemDetailAnalysisRows(detailEntries, projects, detailGrouping, detailSort).map((row) => [
+      ? buildPayItemDetailAnalysisRows(detailEntries, projects, detailGrouping, detailSort, reportOptions).map((row) => [
           row.payItemLabel,
           row.date ?? "All dates",
           row.projectName,
@@ -115,21 +127,34 @@ async function buildReportCsv(
           row.entryCount,
           row.hours.toFixed(2),
           row.quantityCompleted.toFixed(2),
-          row.hoursPerUnit.toFixed(3)
+          row.hoursPerUnit.toFixed(3),
+          row.excludedEntryCount,
+          row.sampleSize
         ])
       : [];
 
     return buildCsv(headers, rows);
   }
 
-  const headers = ["pay_item_code", "pay_item_name", "entries", "hours", "quantity", "avg_hours_per_unit"];
-  const rows = buildPayItemReport(entries, projects).map((row) => [
+  const headers = [
+    "pay_item_code",
+    "pay_item_name",
+    "entries",
+    "hours",
+    "quantity",
+    "hours_per_unit",
+    "excluded_outliers",
+    "sample_size"
+  ];
+  const rows = buildPayItemReport(entries, projects, reportOptions).map((row) => [
     row.code,
     row.name,
     row.entryCount,
     row.totalHours.toFixed(2),
     row.totalQuantity.toFixed(2),
-    row.hoursPerUnit.toFixed(3)
+    row.hoursPerUnit.toFixed(3),
+    row.excludedEntryCount,
+    row.sampleSize
   ]);
 
   return buildCsv(headers, rows);
@@ -187,6 +212,10 @@ function parseDetailSort(value: unknown): DetailSort {
   return "worst_average";
 }
 
+function parseReportMetric(value: unknown): ReportMetric {
+  return value === "mean" ? "mean" : "median";
+}
+
 function parseIsoDate(value: unknown) {
   return typeof value === "string" && ISO_DATE_PATTERN.test(value) ? value : undefined;
 }
@@ -209,8 +238,10 @@ type ReportExportRequestBody = {
   detailPayItemQuery?: unknown;
   detailSort?: unknown;
   endDate?: unknown;
+  excludeOutliers?: unknown;
   mode?: unknown;
   myJobIds?: unknown;
   projectId?: unknown;
+  reportMetric?: unknown;
   startDate?: unknown;
 };
