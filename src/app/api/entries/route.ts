@@ -7,6 +7,7 @@ import {
   replaceAllocationEntries,
   upsertAllocationEntries
 } from "@/lib/allocation-entries-store";
+import { readDayRecords } from "@/lib/day-record-store";
 import type { AllocationEntry } from "@/lib/procore/types";
 
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -38,6 +39,10 @@ export async function PUT(request: NextRequest) {
 
   if (!user) {
     return NextResponse.json({ error: "Sign in before saving entries." }, { status: 401 });
+  }
+
+  if (user.role !== "admin") {
+    return NextResponse.json({ error: "Admin access is required to replace all entries." }, { status: 403 });
   }
 
   const body = (await request.json()) as { entries?: AllocationEntry[] };
@@ -75,6 +80,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Missing entries." }, { status: 400 });
   }
 
+  if (user.role !== "admin" && (await entriesTouchSubmittedDay(body.entries))) {
+    return NextResponse.json({ error: "Submitted days must be reopened before entries can be changed." }, { status: 403 });
+  }
+
   const result = await upsertAllocationEntries(body.entries);
 
   if (!result) {
@@ -103,6 +112,10 @@ export async function DELETE(request: NextRequest) {
   const date = request.nextUrl.searchParams.get("date")?.trim();
 
   if (entryId) {
+    if (user.role !== "admin" && (await entryIsSubmitted(entryId))) {
+      return NextResponse.json({ error: "Submitted days must be reopened before entries can be deleted." }, { status: 403 });
+    }
+
     const result = await deleteAllocationEntry(entryId);
 
     return NextResponse.json({
@@ -115,10 +128,39 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: "Provide entryId or projectId and date." }, { status: 400 });
   }
 
+  if (user.role !== "admin") {
+    return NextResponse.json({ error: "Only admins can delete all entries for a day." }, { status: 403 });
+  }
+
   const result = await deleteAllocationEntriesForDay(projectId, date);
 
   return NextResponse.json({
     databaseConfigured: Boolean(result),
     ok: true
   });
+}
+
+async function entriesTouchSubmittedDay(entries: AllocationEntry[]) {
+  const dayRecords = await readDayRecords();
+
+  if (!dayRecords) {
+    return false;
+  }
+
+  return entries.some((entry) => dayRecords.daySubmissions[getDayKey(entry.projectId, entry.date)]?.status === "submitted");
+}
+
+async function entryIsSubmitted(entryId: string) {
+  const entries = await readAllocationEntries();
+  const entry = entries?.find((candidate) => candidate.id === entryId);
+
+  if (!entry) {
+    return false;
+  }
+
+  return entriesTouchSubmittedDay([entry]);
+}
+
+function getDayKey(projectId: string, date: string) {
+  return `${projectId}|${date}`;
 }

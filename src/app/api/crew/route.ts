@@ -42,6 +42,10 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: "Sign in before saving crew data." }, { status: 401 });
   }
 
+  if (user.role !== "admin") {
+    return NextResponse.json({ error: "Admin access is required to replace all crew data." }, { status: 403 });
+  }
+
   const body = (await request.json()) as {
     crewDirectory?: StoredCrewMember[];
     crewMembersByProject?: StoredCrewMembersByProject;
@@ -119,6 +123,10 @@ export async function PATCH(request: NextRequest) {
     sourceCrewMemberId?: string;
     targetCrewMember?: StoredCrewMember;
   };
+
+  if (body.action === "merge" && user.role !== "admin") {
+    return NextResponse.json({ error: "Only admins can merge crew members." }, { status: 403 });
+  }
 
   const result =
     body.action === "merge"

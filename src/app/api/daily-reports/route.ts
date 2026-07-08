@@ -44,6 +44,10 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: "Sign in before saving daily reports." }, { status: 401 });
   }
 
+  if (user.role !== "admin") {
+    return NextResponse.json({ error: "Admin access is required to replace all daily report data." }, { status: 403 });
+  }
+
   const body = (await request.json()) as {
     dailyReportUploadsByKey?: StoredDailyReportUploadsByKey;
     dailyReportsByKey?: StoredDailyReportsByKey;

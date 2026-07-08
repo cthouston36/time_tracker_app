@@ -42,6 +42,10 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: "Sign in before saving project controls." }, { status: 401 });
   }
 
+  if (user.role !== "admin") {
+    return NextResponse.json({ error: "Admin access is required to replace all project controls." }, { status: 403 });
+  }
+
   const body = (await request.json()) as {
     myJobsByUser?: StoredMyJobsByUser;
     projectBlacklistById?: StoredProjectBlacklistById;

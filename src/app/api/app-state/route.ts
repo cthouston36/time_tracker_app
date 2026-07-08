@@ -18,6 +18,10 @@ export async function GET() {
     return NextResponse.json({ error: "Sign in before loading app state." }, { status: 401 });
   }
 
+  if (user.role !== "admin") {
+    return NextResponse.json({ error: "Admin access is required to load legacy app state." }, { status: 403 });
+  }
+
   const storedState = await readAppSetting<StoredAppState>(APP_STATE_KEY);
 
   return NextResponse.json({
@@ -32,6 +36,10 @@ export async function PUT(request: NextRequest) {
 
   if (!user) {
     return NextResponse.json({ error: "Sign in before saving app state." }, { status: 401 });
+  }
+
+  if (user.role !== "admin") {
+    return NextResponse.json({ error: "Admin access is required to save legacy app state." }, { status: 403 });
   }
 
   const body = (await request.json()) as { state?: unknown };

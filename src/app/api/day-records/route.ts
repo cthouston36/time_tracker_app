@@ -44,6 +44,10 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: "Sign in before saving day records." }, { status: 401 });
   }
 
+  if (user.role !== "admin") {
+    return NextResponse.json({ error: "Admin access is required to replace all day records." }, { status: 403 });
+  }
+
   const body = (await request.json()) as {
     dayEntryNotesByKey?: StoredDayEntryNotesByKey;
     daySubmissions?: StoredDaySubmissionsByKey;
@@ -101,7 +105,19 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "Only admins can reopen submitted days." }, { status: 403 });
     }
 
-    result = await upsertDaySubmission(projectId, date, body.daySubmission as StoredDaySubmission);
+    const daySubmission =
+      body.daySubmission.status === "submitted"
+        ? {
+            status: "submitted" as const,
+            submittedAt: new Date().toISOString(),
+            submittedByName: formatUserName(user),
+            submittedByUserId: user.id
+          }
+        : {
+            status: "draft" as const
+          };
+
+    result = await upsertDaySubmission(projectId, date, daySubmission);
   } else if (body.action === "save_notes") {
     if (!isRecord(body.dayEntryNotes)) {
       return NextResponse.json({ error: "Missing day notes." }, { status: 400 });
@@ -168,4 +184,8 @@ export async function DELETE(request: NextRequest) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function formatUserName(user: { firstName: string; lastName: string }) {
+  return `${user.firstName} ${user.lastName}`.trim();
 }
