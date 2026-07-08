@@ -585,6 +585,18 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   margin: 0;
 }
 
+.daily-section-heading {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.compact-button {
+  min-height: 34px;
+  padding: 6px 10px;
+}
+
 .daily-report-grid {
   display: grid;
   gap: 12px;
@@ -2457,6 +2469,15 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   .daily-report-grid.four,
   .daily-report-summary {
     grid-template-columns: 1fr;
+  }
+
+  .daily-section-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .daily-section-heading .secondary-button {
+    width: 100%;
   }
 
   .report-mode-tabs {
