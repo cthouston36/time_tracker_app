@@ -370,6 +370,7 @@ export function TimeAllocationWorkspace() {
   const [projectBlacklistById, setProjectBlacklistById] = useState<ProjectBlacklistById>({});
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [showOnlyMyProjects, setShowOnlyMyProjects] = useState(false);
+  const [showWorkedPayItemsOnly, setShowWorkedPayItemsOnly] = useState(false);
   const [myProjectsEditorOpen, setMyProjectsEditorOpen] = useState(false);
   const [crewSetupExpanded, setCrewSetupExpanded] = useState(false);
   const [mobileSelectedPayItemId, setMobileSelectedPayItemId] = useState("");
@@ -427,16 +428,30 @@ export function TimeAllocationWorkspace() {
     () => projects.find((project) => project.id === selectedProjectId) ?? projects[0],
     [projects, selectedProjectId]
   );
+  const visibleEntries = useMemo(
+    () => entries.filter((entry) => entry.projectId === selectedProject?.id && entry.date === workDate),
+    [entries, selectedProject?.id, workDate]
+  );
+  const workedPayItemCount = selectedProject
+    ? selectedProject.payItems.filter((payItem) => payItemHasWork(payItem.id, draftsByPayItem, visibleEntries)).length
+    : 0;
+  const displayedPayItems = useMemo(() => {
+    if (!selectedProject) {
+      return [];
+    }
+
+    if (!showWorkedPayItemsOnly) {
+      return selectedProject.payItems;
+    }
+
+    return selectedProject.payItems.filter((payItem) => payItemHasWork(payItem.id, draftsByPayItem, visibleEntries));
+  }, [draftsByPayItem, selectedProject, showWorkedPayItemsOnly, visibleEntries]);
   const mobileSelectedPayItem = useMemo(
     () =>
-      selectedProject?.payItems.find((payItem) => payItem.id === mobileSelectedPayItemId) ??
-      selectedProject?.payItems[0] ??
+      displayedPayItems.find((payItem) => payItem.id === mobileSelectedPayItemId) ??
+      displayedPayItems[0] ??
       null,
-    [mobileSelectedPayItemId, selectedProject]
-  );
-
-  const visibleEntries = entries.filter(
-    (entry) => entry.projectId === selectedProject?.id && entry.date === workDate
+    [displayedPayItems, mobileSelectedPayItemId]
   );
   const selectedProjectCrewMembers = selectedProject
     ? sortCrewMembersByName(crewMembersByProject[selectedProject.id] ?? [])
@@ -633,17 +648,17 @@ export function TimeAllocationWorkspace() {
   }, [currentUser, selectedProjectId]);
 
   useEffect(() => {
-    if (!selectedProject?.payItems.length) {
+    if (!displayedPayItems.length) {
       if (mobileSelectedPayItemId) {
         setMobileSelectedPayItemId("");
       }
       return;
     }
 
-    if (!selectedProject.payItems.some((payItem) => payItem.id === mobileSelectedPayItemId)) {
-      setMobileSelectedPayItemId(selectedProject.payItems[0].id);
+    if (!displayedPayItems.some((payItem) => payItem.id === mobileSelectedPayItemId)) {
+      setMobileSelectedPayItemId(displayedPayItems[0].id);
     }
-  }, [mobileSelectedPayItemId, selectedProject]);
+  }, [displayedPayItems, mobileSelectedPayItemId]);
 
   useEffect(() => {
     if (!currentUser) {
@@ -1219,6 +1234,7 @@ export function TimeAllocationWorkspace() {
     }
 
     const autosavedDraft = readDailyReportAutosaveDraft(currentUser.id, selectedProject.id, workDate);
+    const defaultDailyReportAnswers = createEmptyDailyReportAnswers();
 
     setDailyReportDraft(
       autosavedDraft
@@ -1226,7 +1242,8 @@ export function TimeAllocationWorkspace() {
         : currentDailyReport
         ? getDailyReportAnswers(currentDailyReport)
         : {
-            ...createEmptyDailyReportAnswers(),
+            ...defaultDailyReportAnswers,
+            employeeRows: buildDailyReportEmployeeRowsFromEntries(visibleEntries, selectedProjectCrewMembers),
             workDetails: currentDayEntryNotes.notes,
             itsfmCabinetEquipment: currentDayEntryNotes.inventory
           }
@@ -2818,7 +2835,7 @@ export function TimeAllocationWorkspace() {
         </aside>
 
         {viewMode === "entry" ? (
-          <section className="allocation-grid">
+          <section className="allocation-grid entry-allocation-grid">
             <div className="summary-strip">
               <div className="metric">
                 <span>Selected Job</span>
@@ -2833,9 +2850,26 @@ export function TimeAllocationWorkspace() {
             <div className="panel">
               <div className="panel-heading">
                 <h2>Pay Item Entry</h2>
+                <div className="panel-heading-actions">
+                  <label className="entry-filter-toggle">
+                    <input
+                      checked={showWorkedPayItemsOnly}
+                      disabled={!selectedProject?.payItems.length}
+                      onChange={(event) => setShowWorkedPayItemsOnly(event.target.checked)}
+                      type="checkbox"
+                    />
+                    <span>Worked items only</span>
+                    <small>
+                      {workedPayItemCount}/{selectedProject?.payItems.length ?? 0}
+                    </small>
+                  </label>
+                </div>
               </div>
               {!selectedProject?.payItems.length ? <div className="empty-state">No pay items returned for this job.</div> : null}
-              {selectedProject?.payItems.length ? (
+              {selectedProject?.payItems.length && displayedPayItems.length === 0 ? (
+                <div className="empty-state">No worked pay items for this job and date yet.</div>
+              ) : null}
+              {selectedProject?.payItems.length && displayedPayItems.length > 0 ? (
                 <div className="pay-item-matrix" role="table" aria-label="Pay item entry matrix">
                   <div className="matrix-header" role="row">
                     <span>Code</span>
@@ -2847,7 +2881,7 @@ export function TimeAllocationWorkspace() {
                     <span>Hours</span>
                     <span>Quantity</span>
                   </div>
-                  {selectedProject.payItems.map((item) => {
+                  {displayedPayItems.map((item) => {
                     const draft = draftsByPayItem[item.id];
                     const savedEntry = visibleEntries.find((entry) => entry.payItemId === item.id);
                     const rowHasWork = Boolean(savedEntry) || draftHasAnyInput(draft);
@@ -2904,11 +2938,11 @@ export function TimeAllocationWorkspace() {
                   })}
                 </div>
               ) : null}
-              {selectedProject?.payItems.length && mobileSelectedPayItem ? (
+              {displayedPayItems.length && mobileSelectedPayItem ? (
                 <MobilePayItemEntry
                   dayIsSubmitted={dayIsSubmitted}
                   draftsByPayItem={draftsByPayItem}
-                  payItems={selectedProject.payItems}
+                  payItems={displayedPayItems}
                   savedEntries={visibleEntries}
                   selectedPayItem={mobileSelectedPayItem}
                   crewMembers={selectedProjectCrewMembers}
@@ -3183,6 +3217,31 @@ export function TimeAllocationWorkspace() {
                   )}
                 </div>
               ) : null}
+            </div>
+
+            <div className="mobile-sticky-action-bar" aria-label="Entry actions">
+              <button
+                className="primary-button"
+                disabled={draftEntryCount === 0 || dayIsSubmitted}
+                onClick={saveAllocationEntries}
+                type="button"
+              >
+                <Save aria-hidden="true" size={17} />
+                Save
+              </button>
+              <button
+                className="secondary-button"
+                disabled={dayIsSubmitted || visibleEntries.length === 0}
+                onClick={submitDay}
+                type="button"
+              >
+                <Send aria-hidden="true" size={17} />
+                Submit
+              </button>
+              <button className="secondary-button" disabled={!selectedProject} onClick={openDailyReportModal} type="button">
+                <Edit3 aria-hidden="true" size={17} />
+                Daily
+              </button>
             </div>
           </section>
         ) : viewMode === "calendar" ? (
@@ -6926,6 +6985,10 @@ function draftHasAnyInput(draft: PayItemDraft | undefined) {
   );
 }
 
+function payItemHasWork(payItemId: string, draftsByPayItem: DraftsByPayItem, visibleEntries: AllocationEntry[]) {
+  return visibleEntries.some((entry) => entry.payItemId === payItemId) || draftHasAnyInput(draftsByPayItem[payItemId]);
+}
+
 function entryNoticeIsError(message: string) {
   return [
     "Add at least",
@@ -7214,6 +7277,42 @@ function normalizeDailyReportEmployeeRows(rows: DailyReportEmployeeRow[] | undef
     ...emptyRow,
     ...(rows?.[index] ?? {})
   }));
+}
+
+function buildDailyReportEmployeeRowsFromEntries(entries: AllocationEntry[], crewMembers: CrewMember[]) {
+  const rowsByCrewMemberId = new Map<string, DailyReportEmployeeRow>();
+
+  for (const entry of entries) {
+    for (const allocation of entry.crewAllocations ?? []) {
+      const crewMember = crewMembers.find((member) => member.id === allocation.crewMemberId);
+      const row = rowsByCrewMemberId.get(allocation.crewMemberId) ?? {
+        employeeClassification: `${crewMember?.name ?? allocation.crewMemberName} - ${
+          crewMember?.jobTitle ?? allocation.jobTitle
+        }`,
+        truckNumber: "",
+        timeIn: "",
+        lunchOut: "",
+        lunchIn: "",
+        timeOut: "",
+        totalHours: "0.00",
+        driver: false,
+        passenger: false
+      };
+
+      row.totalHours = (Number(row.totalHours || 0) + allocation.hours).toFixed(2);
+      rowsByCrewMemberId.set(allocation.crewMemberId, row);
+    }
+  }
+
+  const populatedRows = Array.from(rowsByCrewMemberId.values()).sort((a, b) =>
+    a.employeeClassification.localeCompare(b.employeeClassification, undefined, {
+      numeric: true,
+      sensitivity: "base"
+    })
+  );
+  const emptyRows = createEmptyDailyReportEmployeeRows();
+
+  return emptyRows.map((emptyRow, index) => populatedRows[index] ?? emptyRow);
 }
 
 function findPreviousDailyReportWithCrewTime(dailyReportsByKey: DailyReportsByKey, projectId: string, date: string) {

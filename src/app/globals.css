@@ -1601,6 +1601,32 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   font-size: 0.82rem;
 }
 
+.entry-filter-toggle {
+  align-items: center;
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--foreground);
+  display: flex;
+  gap: 8px;
+  min-height: 38px;
+  padding: 7px 10px;
+}
+
+.entry-filter-toggle input {
+  accent-color: var(--accent);
+}
+
+.entry-filter-toggle span {
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.entry-filter-toggle small {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
 .crew-summary-list {
   display: grid;
   gap: 8px;
@@ -1667,6 +1693,10 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
 .save-button {
   min-width: 160px;
+}
+
+.mobile-sticky-action-bar {
+  display: none;
 }
 
 .summary-strip {
@@ -2269,6 +2299,10 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     padding: 12px;
   }
 
+  .entry-allocation-grid {
+    padding-bottom: 96px;
+  }
+
   .panel {
     padding: 12px;
     width: 100%;
@@ -2335,6 +2369,29 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   .matrix-footer .secondary-button,
   .matrix-footer .primary-button {
     width: 100%;
+  }
+
+  .mobile-sticky-action-bar {
+    align-items: stretch;
+    background: rgba(13, 21, 29, 0.96);
+    border-top: 1px solid var(--line);
+    box-shadow: 0 -12px 28px rgba(0, 0, 0, 0.35);
+    display: grid;
+    gap: 8px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    left: 0;
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    z-index: 30;
+  }
+
+  .mobile-sticky-action-bar .primary-button,
+  .mobile-sticky-action-bar .secondary-button {
+    min-height: 44px;
+    min-width: 0;
+    padding: 8px 10px;
   }
 
   .save-button {
