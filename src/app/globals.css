@@ -819,6 +819,23 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   overflow-wrap: anywhere;
 }
 
+.daily-report-procore-status {
+  align-items: center;
+  display: inline-flex;
+  gap: 4px;
+  font-weight: 700;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+a.daily-report-procore-status {
+  text-decoration: none;
+}
+
+a.daily-report-procore-status:hover {
+  text-decoration: underline;
+}
+
 .daily-report-procore-status.uploaded {
   color: #7ee2a3;
 }

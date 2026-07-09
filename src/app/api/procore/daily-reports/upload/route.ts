@@ -21,7 +21,9 @@ export async function POST(request: NextRequest) {
       actor: user,
       metadata: {
         fileName: result.fileName,
+        folderId: result.folderId,
         folderPath: result.folderPath,
+        folderUrl: result.folderUrl,
         procoreFileId: result.procoreFileId,
         projectId: readProjectId(payload)
       },

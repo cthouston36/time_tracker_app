@@ -50,7 +50,9 @@ type ProjectsResponse = {
 
 type DailyReportUploadResponse = {
   fileName?: string;
+  folderId?: string;
   folderPath?: string;
+  folderUrl?: string;
   procoreFileId?: string;
   procoreUpload?: {
     createUploadPath?: string;
@@ -282,7 +284,9 @@ type DailyReportUpload = {
   attemptedAt?: string;
   error?: string;
   fileName: string;
+  folderId?: string;
   folderPath: string;
+  folderUrl?: string;
   procoreFileId?: string;
   status?: DailyReportUploadStatus;
   uploadedAt?: string;
@@ -485,7 +489,11 @@ export function TimeAllocationWorkspace() {
   const currentDayKey = selectedProject ? getDayKey(selectedProject.id, workDate) : "";
   const currentDailyReport = selectedProject ? dailyReportsByKey[currentDayKey] : undefined;
   const currentDailyReportUpload = selectedProject ? dailyReportUploadsByKey[currentDayKey] : undefined;
-  const currentDailyReportProcoreStatus = getDailyReportProcoreStatus(currentDailyReport, currentDailyReportUpload);
+  const currentDailyReportProcoreStatus = getDailyReportProcoreStatus(
+    currentDailyReport,
+    currentDailyReportUpload,
+    selectedProject?.id
+  );
   const previousDailyReportCrewTime = useMemo(
     () => (selectedProject ? findPreviousDailyReportWithCrewTime(dailyReportsByKey, selectedProject.id, workDate) : null),
     [dailyReportsByKey, selectedProject, workDate]
@@ -1876,7 +1884,9 @@ export function TimeAllocationWorkspace() {
 
       const dailyReportUpload: DailyReportUpload = {
         fileName: data.fileName ?? "daily report",
+        folderId: data.folderId,
         folderPath: data.folderPath ?? "Daily Reports",
+        folderUrl: data.folderUrl ?? buildProcoreDocumentsFolderUrl(project.id, data.folderId),
         procoreFileId: data.procoreFileId,
         status: "uploaded",
         uploadedAt: new Date().toISOString()
@@ -3564,9 +3574,7 @@ export function TimeAllocationWorkspace() {
                   </div>
                   <div>
                     <span>Procore Upload</span>
-                    <strong className={`daily-report-procore-status ${currentDailyReportProcoreStatus.className}`}>
-                      {currentDailyReportProcoreStatus.label}
-                    </strong>
+                    <DailyReportProcoreStatusValue status={currentDailyReportProcoreStatus} />
                   </div>
                 </div>
               ) : null}
@@ -3739,9 +3747,7 @@ export function TimeAllocationWorkspace() {
                   </div>
                   <div>
                     <span>Procore Upload</span>
-                    <strong className={`daily-report-procore-status ${currentDailyReportProcoreStatus.className}`}>
-                      {currentDailyReportProcoreStatus.label}
-                    </strong>
+                    <DailyReportProcoreStatusValue status={currentDailyReportProcoreStatus} />
                   </div>
                   <div>
                     <span>Updated</span>
@@ -3934,6 +3940,29 @@ function SubmittedDayEntryTable({ entries }: { entries: AllocationEntry[] }) {
       ))}
     </div>
   );
+}
+
+function DailyReportProcoreStatusValue({
+  status
+}: {
+  status: {
+    className: string;
+    href?: string;
+    label: string;
+  };
+}) {
+  const className = `daily-report-procore-status ${status.className}`;
+
+  if (status.href && status.className === "uploaded") {
+    return (
+      <a className={className} href={status.href} rel="noreferrer" target="_blank">
+        {status.label}
+        <ExternalLink aria-hidden="true" size={13} />
+      </a>
+    );
+  }
+
+  return <strong className={className}>{status.label}</strong>;
 }
 
 type MobileOption = {
@@ -5646,7 +5675,11 @@ function getDailyReportCalendarStatus(dailyReport: DailyReport | undefined, uplo
   };
 }
 
-function getDailyReportProcoreStatus(dailyReport: DailyReport | undefined, upload: DailyReportUpload | undefined) {
+function getDailyReportProcoreStatus(
+  dailyReport: DailyReport | undefined,
+  upload: DailyReportUpload | undefined,
+  projectId: string | undefined
+) {
   if (!dailyReport) {
     return {
       className: "missing",
@@ -5659,9 +5692,11 @@ function getDailyReportProcoreStatus(dailyReport: DailyReport | undefined, uploa
     const uploadedAt = upload?.uploadedAt ? ` on ${new Date(upload.uploadedAt).toLocaleString()}` : "";
     const fileName = upload?.fileName ? ` File: ${upload.fileName}.` : "";
     const folderPath = upload?.folderPath ? ` Folder: ${upload.folderPath}.` : "";
+    const folderUrl = upload?.folderUrl || buildProcoreDocumentsFolderUrl(projectId, upload?.folderId);
 
     return {
       className: "uploaded",
+      href: folderUrl,
       label: "Uploaded",
       message: `Uploaded to Procore${uploadedAt}.${fileName}${folderPath}`
     };
@@ -5686,6 +5721,20 @@ function getDailyReportProcoreStatus(dailyReport: DailyReport | undefined, uploa
 
 function isUploadedDailyReportUpload(upload: DailyReportUpload | undefined) {
   return Boolean(upload && (upload.status === "uploaded" || (!upload.status && upload.uploadedAt)));
+}
+
+function buildProcoreDocumentsFolderUrl(projectId: string | undefined, folderId: string | undefined) {
+  if (!projectId) {
+    return undefined;
+  }
+
+  const url = new URL(`/${encodeURIComponent(projectId)}/project/documents`, "https://app.procore.com");
+
+  if (folderId) {
+    url.searchParams.set("folder_id", folderId);
+  }
+
+  return url.toString();
 }
 
 function PayItemReportTable({ rows }: { rows: PayItemReportRow[] }) {
