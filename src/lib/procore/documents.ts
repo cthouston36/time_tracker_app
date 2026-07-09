@@ -4,7 +4,7 @@ import { buildDailyReportPdf, buildDailyReportPdfFileName } from "@/lib/daily-re
 import type { Project } from "@/lib/procore/types";
 
 const DEFAULT_FOLDERS_PATH = "/rest/v1.0/folders";
-const DEFAULT_PROCORE_WEB_BASE_URL = "https://app.procore.com";
+const DEFAULT_PROCORE_WEB_BASE_URL = "https://us02.procore.com";
 
 type DailyReportUploadPayload = {
   project: Project;
@@ -79,6 +79,7 @@ type ProcoreDirectUpload = {
 };
 
 type UploadDailyReportResult = {
+  companyId: string;
   fileName: string;
   folderId: string;
   folderPath: string;
@@ -128,18 +129,22 @@ export async function uploadDailyReportToProcore(payload: DailyReportUploadPaylo
   });
 
   return {
+    companyId: config.companyId,
     fileName: uploadResult.fileName,
     folderId: folder.id,
     folderPath,
-    folderUrl: buildProjectDocumentsFolderUrl(payload.project.id, folder.id),
+    folderUrl: buildProjectDocumentsFolderUrl(config.companyId, payload.project.id, folder.id),
     procoreFileId: extractId(uploadResult.response),
     procoreUpload: uploadResult.procoreUpload
   };
 }
 
-function buildProjectDocumentsFolderUrl(projectId: string, folderId: string) {
+function buildProjectDocumentsFolderUrl(companyId: string, projectId: string, folderId: string) {
   const webBaseUrl = process.env.PROCORE_WEB_BASE_URL ?? DEFAULT_PROCORE_WEB_BASE_URL;
-  const url = new URL(`/${encodeURIComponent(projectId)}/project/documents`, webBaseUrl);
+  const url = new URL(
+    `/webclients/host/companies/${encodeURIComponent(companyId)}/projects/${encodeURIComponent(projectId)}/tools/documents`,
+    webBaseUrl
+  );
   url.searchParams.set("folder_id", folderId);
 
   return url.toString();

@@ -20,6 +20,7 @@ export async function POST(request: NextRequest) {
       action: "procore.daily_report_uploaded",
       actor: user,
       metadata: {
+        companyId: result.companyId,
         fileName: result.fileName,
         folderId: result.folderId,
         folderPath: result.folderPath,

@@ -33,6 +33,8 @@ import type { AuthUser } from "@/lib/auth/types";
 import type { AllocationEntry, CrewLaborType, Project } from "@/lib/procore/types";
 
 const PROCORE_SYNC_REQUEST_TIMEOUT_MS = 55_000;
+const PROCORE_WEB_BASE_URL = process.env.NEXT_PUBLIC_PROCORE_WEB_BASE_URL ?? "https://us02.procore.com";
+const PROCORE_COMPANY_ID = process.env.NEXT_PUBLIC_PROCORE_COMPANY_ID ?? "598134325538800";
 const CREW_LABOR_TYPE_OPTIONS: Array<{ value: CrewLaborType; label: string }> = [
   { value: "chinchor_employee", label: "Chinchor Employee" },
   { value: "temp_employee", label: "Temp Employee" },
@@ -49,6 +51,7 @@ type ProjectsResponse = {
 };
 
 type DailyReportUploadResponse = {
+  companyId?: string;
   fileName?: string;
   folderId?: string;
   folderPath?: string;
@@ -282,6 +285,7 @@ type DailyReportUploadStatus = "failed" | "uploaded";
 
 type DailyReportUpload = {
   attemptedAt?: string;
+  companyId?: string;
   error?: string;
   fileName: string;
   folderId?: string;
@@ -1883,10 +1887,11 @@ export function TimeAllocationWorkspace() {
       }
 
       const dailyReportUpload: DailyReportUpload = {
+        companyId: data.companyId,
         fileName: data.fileName ?? "daily report",
         folderId: data.folderId,
         folderPath: data.folderPath ?? "Daily Reports",
-        folderUrl: data.folderUrl ?? buildProcoreDocumentsFolderUrl(project.id, data.folderId),
+        folderUrl: data.folderUrl ?? buildProcoreDocumentsFolderUrl(data.companyId, project.id, data.folderId),
         procoreFileId: data.procoreFileId,
         status: "uploaded",
         uploadedAt: new Date().toISOString()
@@ -5692,7 +5697,7 @@ function getDailyReportProcoreStatus(
     const uploadedAt = upload?.uploadedAt ? ` on ${new Date(upload.uploadedAt).toLocaleString()}` : "";
     const fileName = upload?.fileName ? ` File: ${upload.fileName}.` : "";
     const folderPath = upload?.folderPath ? ` Folder: ${upload.folderPath}.` : "";
-    const folderUrl = upload?.folderUrl || buildProcoreDocumentsFolderUrl(projectId, upload?.folderId);
+    const folderUrl = normalizeProcoreDocumentsFolderUrl(upload?.folderUrl, upload?.companyId, projectId, upload?.folderId);
 
     return {
       className: "uploaded",
@@ -5723,12 +5728,34 @@ function isUploadedDailyReportUpload(upload: DailyReportUpload | undefined) {
   return Boolean(upload && (upload.status === "uploaded" || (!upload.status && upload.uploadedAt)));
 }
 
-function buildProcoreDocumentsFolderUrl(projectId: string | undefined, folderId: string | undefined) {
+function normalizeProcoreDocumentsFolderUrl(
+  folderUrl: string | undefined,
+  companyId: string | undefined,
+  projectId: string | undefined,
+  folderId: string | undefined
+) {
+  if (folderUrl && !folderUrl.includes("app.procore.com")) {
+    return folderUrl;
+  }
+
+  return buildProcoreDocumentsFolderUrl(companyId, projectId, folderId);
+}
+
+function buildProcoreDocumentsFolderUrl(
+  companyId: string | undefined,
+  projectId: string | undefined,
+  folderId: string | undefined
+) {
   if (!projectId) {
     return undefined;
   }
 
-  const url = new URL(`/${encodeURIComponent(projectId)}/project/documents`, "https://app.procore.com");
+  const url = new URL(
+    `/webclients/host/companies/${encodeURIComponent(companyId || PROCORE_COMPANY_ID)}/projects/${encodeURIComponent(
+      projectId
+    )}/tools/documents`,
+    PROCORE_WEB_BASE_URL
+  );
 
   if (folderId) {
     url.searchParams.set("folder_id", folderId);
