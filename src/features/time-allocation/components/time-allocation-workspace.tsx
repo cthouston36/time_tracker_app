@@ -143,6 +143,13 @@ type AdminUsersResponse = {
   users?: ManagedAppUser[];
 };
 
+type AdminClearStagingDataResponse = {
+  cleared?: Record<string, unknown>;
+  databaseConfigured?: boolean;
+  error?: string;
+  ok?: boolean;
+};
+
 type AdminUserFormState = {
   active: boolean;
   firstName: string;
@@ -430,6 +437,8 @@ export function TimeAllocationWorkspace() {
   const [editingAdminUserId, setEditingAdminUserId] = useState("");
   const [loadingAdminUsers, setLoadingAdminUsers] = useState(false);
   const [savingAdminUser, setSavingAdminUser] = useState(false);
+  const [clearingStagingData, setClearingStagingData] = useState(false);
+  const [adminMaintenanceNotice, setAdminMaintenanceNotice] = useState<{ message: string; status: "success" | "error" } | null>(null);
   const [syncSummary, setSyncSummary] = useState<ProcoreSyncSummary | null>(null);
   const [syncLog, setSyncLog] = useState<SyncLogEntry[]>([]);
   const [syncedAt, setSyncedAt] = useState<string | null>(null);
@@ -804,6 +813,8 @@ export function TimeAllocationWorkspace() {
     setAdminUsersNotice("");
     setAdminUserForm(createEmptyAdminUserForm());
     setEditingAdminUserId("");
+    setClearingStagingData(false);
+    setAdminMaintenanceNotice(null);
   }, [currentUser]);
 
   useEffect(() => {
@@ -1311,6 +1322,77 @@ export function TimeAllocationWorkspace() {
       setAdminUsersNotice(error instanceof Error ? error.message : "Unable to update user.");
     } finally {
       setSavingAdminUser(false);
+    }
+  }
+
+  async function clearStagingOperationalData() {
+    if (currentUser?.role !== "admin") {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      [
+        "Clear staging daily data?",
+        "",
+        "This will permanently remove daily pay item entries, submitted/draft day statuses, daily notes, daily reports, daily report upload status, and all crew members/crew project assignments.",
+        "",
+        "It will keep user profiles/passwords, Procore projects, Procore pay items, Procore sync state/log, project blacklist, and My Projects."
+      ].join("\n")
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setClearingStagingData(true);
+    setAdminMaintenanceNotice(null);
+
+    try {
+      const data = await clearDatabaseStagingOperationalData();
+
+      for (const timeoutId of Object.values(dayNotesSaveTimeoutsRef.current)) {
+        window.clearTimeout(timeoutId);
+      }
+      dayNotesSaveTimeoutsRef.current = {};
+      clearPendingDailyReportAutosaveTimeout(dailyReportDraftAutosaveTimeoutRef);
+      clearAllDailyReportAutosaveDrafts();
+
+      setEntries([]);
+      setDaySubmissions({});
+      setDayEntryNotesByKey({});
+      setDailyReportsByKey({});
+      setDailyReportUploadsByKey({});
+      setDailyReportDraft(createEmptyDailyReportAnswers());
+      setDailyReportModalOpen(false);
+      setDailyReportDraftNotice("");
+      setDailyReportUploadNotice(null);
+      setRetryingDailyReportUploadKey("");
+      setCrewDirectory([]);
+      setCrewMembersByProject({});
+      setCrewMemberName("");
+      setCrewMemberJobTitle("");
+      setCrewMemberLaborType(DEFAULT_CREW_LABOR_TYPE);
+      setCrewMemberSubcontractorCompany("");
+      setSelectedExistingCrewMemberId("");
+      setMergeSourceCrewMemberId("");
+      setMergeTargetCrewMemberId("");
+      setEditingCrewMember(null);
+      setEditingEntry(null);
+      setDraftsByPayItem({});
+      setEntryNotice("Staging daily entry, daily report, and crew data cleared.");
+      setAdminMaintenanceNotice({
+        message: data.databaseConfigured
+          ? "Staging data cleared. Users, Procore projects/pay items, sync state, blacklist, and My Projects were preserved."
+          : "Local staging data cleared.",
+        status: "success"
+      });
+    } catch (error) {
+      setAdminMaintenanceNotice({
+        message: error instanceof Error ? error.message : "Unable to clear staging data.",
+        status: "error"
+      });
+    } finally {
+      setClearingStagingData(false);
     }
   }
 
@@ -3065,6 +3147,13 @@ export function TimeAllocationWorkspace() {
               onUpdateForm={updateAdminUserForm}
               saving={savingAdminUser}
               users={adminUsers}
+            />
+          ) : null}
+          {currentUser.role === "admin" ? (
+            <AdminMaintenancePanel
+              clearing={clearingStagingData}
+              notice={adminMaintenanceNotice}
+              onClearStagingData={clearStagingOperationalData}
             />
           ) : null}
 
@@ -6457,6 +6546,36 @@ function AdminUsersPanel({
   );
 }
 
+function AdminMaintenancePanel({
+  clearing,
+  notice,
+  onClearStagingData
+}: {
+  clearing: boolean;
+  notice: { message: string; status: "success" | "error" } | null;
+  onClearStagingData: () => void;
+}) {
+  return (
+    <details className="admin-maintenance">
+      <summary>
+        <Trash2 aria-hidden="true" size={16} />
+        Staging Cleanup
+      </summary>
+      <div className="admin-maintenance-body">
+        {notice ? <div className={notice.status === "error" ? "inline-alert" : "success-alert"}>{notice.message}</div> : null}
+        <p className="field-note">
+          Clears daily entries, day statuses, notes, daily reports, upload statuses, and crew records. Preserves users,
+          Procore jobs/pay items, sync log, project blacklist, and My Projects.
+        </p>
+        <button className="secondary-button admin-clear-button" disabled={clearing} onClick={onClearStagingData} type="button">
+          <Trash2 aria-hidden="true" size={16} />
+          {clearing ? "Clearing..." : "Clear staging daily data"}
+        </button>
+      </div>
+    </details>
+  );
+}
+
 function buildPayItemReport(entries: AllocationEntry[], projects: Project[] = [], options?: ReportOptions): PayItemReportRow[] {
   const resolvedOptions = resolveReportOptions(options);
   const samples = applyOutlierFlags(
@@ -7544,6 +7663,25 @@ async function saveDatabaseSyncLogEntry(syncLogEntry: SyncLogEntry) {
   }
 }
 
+async function clearDatabaseStagingOperationalData() {
+  const response = await fetch("/api/admin/clear-staging-data", {
+    body: JSON.stringify({
+      confirmation: "CLEAR_STAGING_DATA"
+    }),
+    headers: {
+      "Content-Type": "application/json"
+    },
+    method: "POST"
+  });
+  const data = (await response.json()) as AdminClearStagingDataResponse;
+
+  if (!response.ok || data.ok === false) {
+    throw new Error(data.error ?? "Unable to clear staging data.");
+  }
+
+  return data;
+}
+
 function normalizeSharedAppState(state: Partial<SharedAppState> | null | undefined): SharedAppState {
   const crewMembersByProject = state?.crewMembersByProject ?? {};
   const crewDirectory = mergeCrewDirectories(
@@ -8621,6 +8759,22 @@ function writeDailyReportAutosaveDraft(draft: DailyReportAutosaveDraft) {
 
 function clearDailyReportAutosaveDraft(userId: string, projectId: string, date: string) {
   window.localStorage.removeItem(getDailyReportDraftStorageKey(userId, projectId, date));
+}
+
+function clearAllDailyReportAutosaveDrafts() {
+  const keysToClear: string[] = [];
+
+  for (let index = 0; index < window.localStorage.length; index += 1) {
+    const key = window.localStorage.key(index);
+
+    if (key?.startsWith(`${DAILY_REPORT_DRAFT_STORAGE_PREFIX}:`)) {
+      keysToClear.push(key);
+    }
+  }
+
+  for (const key of keysToClear) {
+    window.localStorage.removeItem(key);
+  }
 }
 
 function getDailyReportDraftStorageKey(userId: string, projectId: string, date: string) {
