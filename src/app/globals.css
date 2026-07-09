@@ -1984,7 +1984,6 @@ a.daily-report-procore-status:hover {
   font-size: 0.84rem;
 }
 
-.my-jobs-actions,
 .job-multi-actions {
   display: flex;
   gap: 8px;
@@ -2808,12 +2807,10 @@ a.daily-report-procore-status:hover {
   }
 
   .report-admin-toolbar .secondary-button,
-  .my-jobs-actions .secondary-button,
   .job-multi-actions .secondary-button {
     width: 100%;
   }
 
-  .my-jobs-actions,
   .job-multi-actions,
   .week-nav {
     width: 100%;

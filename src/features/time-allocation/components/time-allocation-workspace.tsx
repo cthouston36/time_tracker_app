@@ -5514,11 +5514,6 @@ function MyJobsManager({
           <strong>{title}</strong>
           <span>{description}</span>
         </div>
-        <div className="my-jobs-actions">
-          <button className="secondary-button" disabled={myJobIds.length === 0} onClick={() => setMyJobIds([])} type="button">
-            Clear
-          </button>
-        </div>
       </div>
       {sortedProjects.length === 0 ? (
         <div className="empty-state">No jobs are available to tag yet.</div>
