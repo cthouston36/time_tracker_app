@@ -490,10 +490,6 @@ export function TimeAllocationWorkspace() {
     () => (selectedProject ? findPreviousDailyReportWithCrewTime(dailyReportsByKey, selectedProject.id, workDate) : null),
     [dailyReportsByKey, selectedProject, workDate]
   );
-  const previousDailyReportWorkRows = useMemo(
-    () => (selectedProject ? findPreviousDailyReportWithWorkRows(dailyReportsByKey, selectedProject.id, workDate) : null),
-    [dailyReportsByKey, selectedProject, workDate]
-  );
   const dailyReportUploadRetryQueue = useMemo(
     () =>
       Object.entries(dailyReportUploadsByKey)
@@ -1479,7 +1475,6 @@ export function TimeAllocationWorkspace() {
         ? getDailyReportAnswers(currentDailyReport)
         : {
             ...defaultDailyReportAnswers,
-            employeeRows: buildDailyReportEmployeeRowsFromEntries(visibleEntries, selectedProjectCrewMembers),
             workDetails: currentDayEntryNotes.notes,
             itsfmCabinetEquipment: currentDayEntryNotes.inventory
           }
@@ -1662,28 +1657,6 @@ export function TimeAllocationWorkspace() {
         ? "Copied the first 8 saved pay item entries. Add remaining items manually if needed."
         : "Copied saved pay item entries into Work Performed rows."
     );
-  }
-
-  function copyPreviousDailyReportWorkRows() {
-    if (!previousDailyReportWorkRows) {
-      setDailyReportDraftNotice("No previous Work Performed rows found for this job.");
-      return;
-    }
-
-    const currentHasWorkRows = dailyReportDraft.payItemRows.some(dailyReportPayItemRowHasContent);
-
-    if (
-      currentHasWorkRows &&
-      !window.confirm(`Replace current Work Performed rows with rows from ${formatDate(previousDailyReportWorkRows.date)}?`)
-    ) {
-      return;
-    }
-
-    setDailyReportDraft((current) => ({
-      ...current,
-      payItemRows: normalizeDailyReportPayItemRows(previousDailyReportWorkRows.report.payItemRows)
-    }));
-    setDailyReportDraftNotice(`Copied Work Performed rows from ${formatDate(previousDailyReportWorkRows.date)}.`);
   }
 
   async function saveDailyReport() {
@@ -3914,7 +3887,6 @@ export function TimeAllocationWorkspace() {
       {dailyReportModalOpen && selectedProject ? (
         <DailyReportModal
           canCopyPreviousCrewTime={Boolean(previousDailyReportCrewTime)}
-          canCopyPreviousWorkRows={Boolean(previousDailyReportWorkRows)}
           canUseSavedEntries={visibleEntries.length > 0}
           date={workDate}
           draft={dailyReportDraft}
@@ -3923,13 +3895,9 @@ export function TimeAllocationWorkspace() {
           previousCrewTimeLabel={
             previousDailyReportCrewTime ? `Copy Crew/Time from ${formatDate(previousDailyReportCrewTime.date)}` : "No Previous Crew/Time"
           }
-          previousWorkRowsLabel={
-            previousDailyReportWorkRows ? `Copy Rows from ${formatDate(previousDailyReportWorkRows.date)}` : "No Previous Rows"
-          }
           projectName={selectedProject.name}
           onChange={updateDailyReportDraft}
           onCopyPreviousCrewTime={copyPreviousDailyReportCrewTime}
-          onCopyPreviousWorkRows={copyPreviousDailyReportWorkRows}
           onCopySavedEntriesToWorkRows={copySavedEntriesToDailyReportWorkRows}
           onEmployeeChange={updateDailyReportEmployeeDraft}
           onEmployeeTimeBlur={normalizeDailyReportEmployeeTimeDraft}
@@ -3975,18 +3943,15 @@ type MobileOption = {
 
 function DailyReportModal({
   canCopyPreviousCrewTime,
-  canCopyPreviousWorkRows,
   canUseSavedEntries,
   date,
   draft,
   draftNotice,
   payItems,
   previousCrewTimeLabel,
-  previousWorkRowsLabel,
   projectName,
   onChange,
   onCopyPreviousCrewTime,
-  onCopyPreviousWorkRows,
   onCopySavedEntriesToWorkRows,
   onEmployeeChange,
   onEmployeeTimeBlur,
@@ -3996,18 +3961,15 @@ function DailyReportModal({
   onSave
 }: {
   canCopyPreviousCrewTime: boolean;
-  canCopyPreviousWorkRows: boolean;
   canUseSavedEntries: boolean;
   date: string;
   draft: DailyReportAnswers;
   draftNotice: string;
   payItems: Project["payItems"];
   previousCrewTimeLabel: string;
-  previousWorkRowsLabel: string;
   projectName: string;
   onChange: (field: keyof DailyReportAnswers, value: string) => void;
   onCopyPreviousCrewTime: () => void;
-  onCopyPreviousWorkRows: () => void;
   onCopySavedEntriesToWorkRows: () => void;
   onEmployeeChange: (rowIndex: number, field: keyof DailyReportEmployeeRow, value: string | boolean) => void;
   onEmployeeTimeBlur: (rowIndex: number, field: DailyReportTimeField) => void;
@@ -4188,15 +4150,6 @@ function DailyReportModal({
                 >
                   <Copy aria-hidden="true" size={16} />
                   Use Saved Entries
-                </button>
-                <button
-                  className="secondary-button compact-button"
-                  disabled={!canCopyPreviousWorkRows}
-                  onClick={onCopyPreviousWorkRows}
-                  type="button"
-                >
-                  <Copy aria-hidden="true" size={16} />
-                  {previousWorkRowsLabel}
                 </button>
               </div>
             </div>
@@ -8513,43 +8466,6 @@ function normalizeDailyReportEmployeeRows(rows: DailyReportEmployeeRow[] | undef
   }));
 }
 
-function buildDailyReportEmployeeRowsFromEntries(entries: AllocationEntry[], crewMembers: CrewMember[]) {
-  const rowsByCrewMemberId = new Map<string, DailyReportEmployeeRow>();
-
-  for (const entry of entries) {
-    for (const allocation of entry.crewAllocations ?? []) {
-      const crewMember = crewMembers.find((member) => member.id === allocation.crewMemberId);
-      const crewLaborMeta = formatCrewLaborTypeWithCompany(crewMember ?? allocation);
-      const row = rowsByCrewMemberId.get(allocation.crewMemberId) ?? {
-        employeeClassification: `${crewMember ? getCrewDisplayName(crewMember) : getCrewDisplayName(allocation)} - ${
-          crewMember ? getCrewJobTitle(crewMember) : getCrewJobTitle(allocation)
-        } (${crewLaborMeta})`,
-        truckNumber: "",
-        timeIn: "",
-        lunchOut: "",
-        lunchIn: "",
-        timeOut: "",
-        totalHours: "0.00",
-        driver: false,
-        passenger: false
-      };
-
-      row.totalHours = (Number(row.totalHours || 0) + allocation.hours).toFixed(2);
-      rowsByCrewMemberId.set(allocation.crewMemberId, row);
-    }
-  }
-
-  const populatedRows = Array.from(rowsByCrewMemberId.values()).sort((a, b) =>
-    a.employeeClassification.localeCompare(b.employeeClassification, undefined, {
-      numeric: true,
-      sensitivity: "base"
-    })
-  );
-  const emptyRows = createEmptyDailyReportEmployeeRows();
-
-  return emptyRows.map((emptyRow, index) => populatedRows[index] ?? emptyRow);
-}
-
 function findPreviousDailyReportWithCrewTime(dailyReportsByKey: DailyReportsByKey, projectId: string, date: string) {
   const previousReports = Object.values(dailyReportsByKey)
     .filter(
@@ -8557,26 +8473,6 @@ function findPreviousDailyReportWithCrewTime(dailyReportsByKey: DailyReportsByKe
         report.projectId === projectId &&
         report.date < date &&
         normalizeDailyReportEmployeeRows(report.employeeRows).some(dailyReportEmployeeRowHasContent)
-    )
-    .sort((a, b) => b.date.localeCompare(a.date));
-
-  const previousReport = previousReports[0];
-
-  return previousReport
-    ? {
-        date: previousReport.date,
-        report: previousReport
-      }
-    : null;
-}
-
-function findPreviousDailyReportWithWorkRows(dailyReportsByKey: DailyReportsByKey, projectId: string, date: string) {
-  const previousReports = Object.values(dailyReportsByKey)
-    .filter(
-      (report) =>
-        report.projectId === projectId &&
-        report.date < date &&
-        normalizeDailyReportPayItemRows(report.payItemRows).some(dailyReportPayItemRowHasContent)
     )
     .sort((a, b) => b.date.localeCompare(a.date));
 
