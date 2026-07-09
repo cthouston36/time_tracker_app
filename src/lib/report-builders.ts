@@ -293,6 +293,11 @@ export function buildPayItemReportDetailRows(entries: AllocationEntry[], project
     return entry.crewAllocations.map((allocation) => {
       const hourShare = entry.hours > 0 ? allocation.hours / entry.hours : 0;
       const allocatedQuantity = entry.quantityCompleted * hourShare;
+      const laborType = normalizeCrewLaborType(allocation.laborType);
+      const crewMemberName =
+        laborType === "subcontractor"
+          ? allocation.subcontractorCompany || allocation.crewMemberName
+          : allocation.crewMemberName;
 
       return {
         id: `${entry.id}-${allocation.crewMemberId}`,
@@ -301,9 +306,9 @@ export function buildPayItemReportDetailRows(entries: AllocationEntry[], project
         payItemLabel,
         projectName,
         crewMemberId: allocation.crewMemberId,
-        crewMemberName: allocation.crewMemberName,
-        jobTitle: allocation.jobTitle,
-        laborType: normalizeCrewLaborType(allocation.laborType),
+        crewMemberName,
+        jobTitle: laborType === "subcontractor" ? "Subcontractor" : allocation.jobTitle,
+        laborType,
         subcontractorCompany: allocation.subcontractorCompany,
         hours: allocation.hours,
         quantityCompleted: allocatedQuantity,

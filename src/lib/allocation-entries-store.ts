@@ -515,13 +515,16 @@ function normalizeCrewAllocation(allocation: CrewAllocation) {
     return null;
   }
 
+  const laborType = normalizeCrewLaborType(allocation.laborType);
+  const subcontractorCompany = allocation.subcontractorCompany?.trim() || (laborType === "subcontractor" ? allocation.crewMemberName : "");
+
   return {
     crewMemberId: allocation.crewMemberId,
-    crewMemberName: allocation.crewMemberName,
+    crewMemberName: laborType === "subcontractor" ? subcontractorCompany : allocation.crewMemberName,
     hours: toNumber(allocation.hours),
-    jobTitle: allocation.jobTitle ?? "",
-    laborType: normalizeCrewLaborType(allocation.laborType),
-    subcontractorCompany: allocation.subcontractorCompany?.trim() || undefined,
+    jobTitle: laborType === "subcontractor" ? "Subcontractor" : allocation.jobTitle ?? "",
+    laborType,
+    subcontractorCompany: subcontractorCompany || undefined,
     rawAllocation: allocation
   };
 }

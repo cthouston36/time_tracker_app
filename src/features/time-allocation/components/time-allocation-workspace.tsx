@@ -2028,16 +2028,10 @@ export function TimeAllocationWorkspace() {
 
     const name = crewMemberName.trim();
     const jobTitle = crewMemberJobTitle.trim();
-    const subcontractorCompany =
-      crewMemberLaborType === "subcontractor" ? crewMemberSubcontractorCompany.trim() : "";
+    const laborType = crewMemberLaborType === "temp_employee" ? "temp_employee" : DEFAULT_CREW_LABOR_TYPE;
 
     if (!name || !jobTitle) {
       setEntryNotice("Enter both crew member name and job title.");
-      return;
-    }
-
-    if (crewMemberLaborType === "subcontractor" && !subcontractorCompany) {
-      setEntryNotice("Enter the subcontractor company name.");
       return;
     }
 
@@ -2050,10 +2044,9 @@ export function TimeAllocationWorkspace() {
 
     const crewMember = {
       id: crypto.randomUUID(),
-      laborType: crewMemberLaborType,
+      laborType,
       name,
-      jobTitle,
-      subcontractorCompany: subcontractorCompany || undefined
+      jobTitle
     };
 
     setCrewDirectory((current) => sortCrewMembersByName([...current, crewMember]));
@@ -2076,6 +2069,54 @@ export function TimeAllocationWorkspace() {
     setEntryNotice(`${name} added to ${selectedProject.name}.`);
   }
 
+  function addSubcontractorCompany() {
+    if (!selectedProject) {
+      return;
+    }
+
+    const companyName = crewMemberSubcontractorCompany.trim();
+
+    if (!companyName) {
+      setEntryNotice("Enter the subcontractor company name.");
+      return;
+    }
+
+    const matchingSubcontractor = crewDirectory.find(
+      (member) =>
+        getCrewLaborType(member) === "subcontractor" &&
+        normalizeCrewName(getCrewDisplayName(member)) === normalizeCrewName(companyName)
+    );
+
+    if (matchingSubcontractor) {
+      setEntryNotice(`A subcontractor named ${getCrewDisplayName(matchingSubcontractor)} already exists. Select them from existing crew instead.`);
+      return;
+    }
+
+    const crewMember = {
+      id: crypto.randomUUID(),
+      laborType: "subcontractor" as CrewLaborType,
+      name: companyName,
+      jobTitle: "Subcontractor",
+      subcontractorCompany: companyName
+    };
+
+    setCrewDirectory((current) => sortCrewMembersByName([...current, crewMember]));
+    setCrewMembersByProject((current) => ({
+      ...current,
+      [selectedProject.id]: [
+        ...(current[selectedProject.id] ?? []),
+        crewMember
+      ]
+    }));
+    void addDatabaseCrewMemberToProject(selectedProject.id, crewMember).catch((error) => {
+      setEntryNotice(error instanceof Error ? error.message : "Subcontractor added locally, but did not sync.");
+    });
+    setCrewMemberSubcontractorCompany("");
+    setSelectedExistingCrewMemberId("");
+    setEditingCrewMember(null);
+    setEntryNotice(`${companyName} added to ${selectedProject.name}.`);
+  }
+
   function addExistingCrewMemberToProject() {
     if (!selectedProject || !selectedExistingCrewMemberId) {
       return;
@@ -2089,7 +2130,7 @@ export function TimeAllocationWorkspace() {
     }
 
     if (projectHasCrewMember(selectedProjectCrewMembers, crewMember.id)) {
-      setEntryNotice(`${crewMember.name} is already saved to this job.`);
+      setEntryNotice(`${getCrewDisplayName(crewMember)} is already saved to this job.`);
       return;
     }
 
@@ -2101,17 +2142,20 @@ export function TimeAllocationWorkspace() {
       setEntryNotice(error instanceof Error ? error.message : "Crew member added locally, but did not sync.");
     });
     setSelectedExistingCrewMemberId("");
-    setEntryNotice(`${crewMember.name} added to ${selectedProject.name}.`);
+    setEntryNotice(`${getCrewDisplayName(crewMember)} added to ${selectedProject.name}.`);
   }
 
   function startEditingCrewMember(member: CrewMember) {
     setEntryNotice("");
+    const laborType = getCrewLaborType(member);
+    const displayName = getCrewDisplayName(member);
+
     setEditingCrewMember({
       crewMemberId: member.id,
-      laborType: getCrewLaborType(member),
-      name: member.name,
-      jobTitle: member.jobTitle,
-      subcontractorCompany: member.subcontractorCompany ?? ""
+      laborType,
+      name: displayName,
+      jobTitle: laborType === "subcontractor" ? "Subcontractor" : member.jobTitle,
+      subcontractorCompany: laborType === "subcontractor" ? displayName : ""
     });
   }
 
@@ -2120,29 +2164,24 @@ export function TimeAllocationWorkspace() {
       return;
     }
 
-    const name = editingCrewMember.name.trim();
-    const jobTitle = editingCrewMember.jobTitle.trim();
     const laborType = editingCrewMember.laborType;
-    const subcontractorCompany =
-      laborType === "subcontractor" ? editingCrewMember.subcontractorCompany.trim() : "";
+    const subcontractorCompany = laborType === "subcontractor" ? editingCrewMember.subcontractorCompany.trim() : "";
+    const name = laborType === "subcontractor" ? subcontractorCompany : editingCrewMember.name.trim();
+    const jobTitle = laborType === "subcontractor" ? "Subcontractor" : editingCrewMember.jobTitle.trim();
 
     if (!name || !jobTitle) {
-      setEntryNotice("Enter both crew member name and job title.");
-      return;
-    }
-
-    if (laborType === "subcontractor" && !subcontractorCompany) {
-      setEntryNotice("Enter the subcontractor company name.");
+      setEntryNotice(laborType === "subcontractor" ? "Enter the subcontractor company name." : "Enter both crew member name and job title.");
       return;
     }
 
     const matchingCrewMember = crewDirectory.find(
       (member) =>
-        member.id !== editingCrewMember.crewMemberId && normalizeCrewName(member.name) === normalizeCrewName(name)
+        member.id !== editingCrewMember.crewMemberId &&
+        normalizeCrewName(getCrewDisplayName(member)) === normalizeCrewName(name)
     );
 
     if (matchingCrewMember) {
-      setEntryNotice(`A crew member named ${matchingCrewMember.name} already exists. Use that existing crew member instead.`);
+      setEntryNotice(`A crew member or subcontractor named ${getCrewDisplayName(matchingCrewMember)} already exists. Use that existing record instead.`);
       return;
     }
 
@@ -2286,7 +2325,7 @@ export function TimeAllocationWorkspace() {
     }
 
     const confirmed = window.confirm(
-      `Merge ${sourceCrewMember.name} into ${targetCrewMember.name}? This updates saved entries, reports, project crew lists, and draft allocations.`
+      `Merge ${getCrewDisplayName(sourceCrewMember)} into ${getCrewDisplayName(targetCrewMember)}? This updates saved entries, reports, project crew lists, and draft allocations.`
     );
 
     if (!confirmed) {
@@ -2312,7 +2351,7 @@ export function TimeAllocationWorkspace() {
     setEditingCrewMember((current) => (current?.crewMemberId === sourceCrewMember.id ? null : current));
     setMergeSourceCrewMemberId("");
     setMergeTargetCrewMemberId(targetCrewMember.id);
-    setEntryNotice(`${sourceCrewMember.name} merged into ${targetCrewMember.name}.`);
+    setEntryNotice(`${getCrewDisplayName(sourceCrewMember)} merged into ${getCrewDisplayName(targetCrewMember)}.`);
   }
 
   function toggleDraftCrewMember(payItemId: string, crewMemberId: string, checked: boolean) {
@@ -3119,39 +3158,12 @@ export function TimeAllocationWorkspace() {
                     Add to job
                   </button>
                 </div>
-                <div className="field-note">Create a new crew member only if they are not already in the existing crew list.</div>
+                <div className="field-note">Add people as crew members. Add subcontractors as company names only.</div>
                 {entryNotice && entryNoticeIsCrewRelated(entryNotice) ? (
                   <div className={entryNoticeIsError(entryNotice) ? "inline-alert" : "success-alert"}>{entryNotice}</div>
                 ) : null}
-                <div className="field-group">
-                  <label htmlFor="crew-member-subcontractor">Subcontractor?</label>
-                  <select
-                    id="crew-member-subcontractor"
-                    disabled={!selectedProject}
-                    value={crewMemberLaborType === "subcontractor" ? "yes" : "no"}
-                    onChange={(event) => {
-                      const isSubcontractor = event.target.value === "yes";
-                      setCrewMemberLaborType(isSubcontractor ? "subcontractor" : DEFAULT_CREW_LABOR_TYPE);
-                      if (!isSubcontractor) {
-                        setCrewMemberSubcontractorCompany("");
-                      }
-                    }}
-                  >
-                    <option value="no">No</option>
-                    <option value="yes">Yes</option>
-                  </select>
-                </div>
-                {crewMemberLaborType === "subcontractor" ? (
-                  <div className="field-group">
-                    <label htmlFor="crew-member-subcontractor-company">Subcontractor Company</label>
-                    <input
-                      id="crew-member-subcontractor-company"
-                      disabled={!selectedProject}
-                      value={crewMemberSubcontractorCompany}
-                      onChange={(event) => setCrewMemberSubcontractorCompany(event.target.value)}
-                    />
-                  </div>
-                ) : (
+                <div className="crew-form-section">
+                  <h3>Crew Member</h3>
                   <div className="field-group">
                     <label htmlFor="crew-member-temp">Temp Employee?</label>
                     <select
@@ -3166,34 +3178,56 @@ export function TimeAllocationWorkspace() {
                       <option value="yes">Yes</option>
                     </select>
                   </div>
-                )}
-                <div className="field-group">
-                  <label htmlFor="crew-member-name">Name</label>
-                  <input
-                    id="crew-member-name"
+                  <div className="field-group">
+                    <label htmlFor="crew-member-name">Name</label>
+                    <input
+                      id="crew-member-name"
+                      disabled={!selectedProject}
+                      value={crewMemberName}
+                      onChange={(event) => setCrewMemberName(event.target.value)}
+                    />
+                  </div>
+                  <div className="field-group">
+                    <label htmlFor="crew-member-job-title">Job Title</label>
+                    <input
+                      id="crew-member-job-title"
+                      disabled={!selectedProject}
+                      value={crewMemberJobTitle}
+                      onChange={(event) => setCrewMemberJobTitle(event.target.value)}
+                    />
+                  </div>
+                  <button
+                    className="secondary-button crew-add-button"
                     disabled={!selectedProject}
-                    value={crewMemberName}
-                    onChange={(event) => setCrewMemberName(event.target.value)}
-                  />
+                    onClick={addCrewMember}
+                    type="button"
+                  >
+                    <UserPlus aria-hidden="true" size={18} />
+                    Add crew member
+                  </button>
                 </div>
-                <div className="field-group">
-                  <label htmlFor="crew-member-job-title">Job Title</label>
-                  <input
-                    id="crew-member-job-title"
+
+                <div className="crew-form-section">
+                  <h3>Subcontractor</h3>
+                  <div className="field-group">
+                    <label htmlFor="crew-member-subcontractor-company">Company Name</label>
+                    <input
+                      id="crew-member-subcontractor-company"
+                      disabled={!selectedProject}
+                      value={crewMemberSubcontractorCompany}
+                      onChange={(event) => setCrewMemberSubcontractorCompany(event.target.value)}
+                    />
+                  </div>
+                  <button
+                    className="secondary-button crew-add-button"
                     disabled={!selectedProject}
-                    value={crewMemberJobTitle}
-                    onChange={(event) => setCrewMemberJobTitle(event.target.value)}
-                  />
+                    onClick={addSubcontractorCompany}
+                    type="button"
+                  >
+                    <UserPlus aria-hidden="true" size={18} />
+                    Add subcontractor
+                  </button>
                 </div>
-                <button
-                  className="secondary-button crew-add-button"
-                  disabled={!selectedProject}
-                  onClick={addCrewMember}
-                  type="button"
-                >
-                  <UserPlus aria-hidden="true" size={18} />
-                  Add crew member
-                </button>
                 <div className="crew-list">
                   {selectedProjectCrewMembers.length === 0 ? (
                     <div className="empty-state">No crew members saved to this job.</div>
@@ -3207,47 +3241,10 @@ export function TimeAllocationWorkspace() {
                         <div className="crew-list-row" key={member.id}>
                           {editingCrewMember?.crewMemberId === member.id ? (
                             <div className="crew-edit-form">
-                              <input
-                                aria-label={`Edit name for ${member.name}`}
-                                value={editingCrewMember.name}
-                                onChange={(event) =>
-                                  setEditingCrewMember((current) =>
-                                    current ? { ...current, name: event.target.value } : current
-                                  )
-                                }
-                              />
-                              <input
-                                aria-label={`Edit job title for ${member.name}`}
-                                value={editingCrewMember.jobTitle}
-                                onChange={(event) =>
-                                  setEditingCrewMember((current) =>
-                                    current ? { ...current, jobTitle: event.target.value } : current
-                                  )
-                                }
-                              />
-                              <select
-                                aria-label={`Edit subcontractor status for ${member.name}`}
-                                value={editingCrewMember.laborType === "subcontractor" ? "yes" : "no"}
-                                onChange={(event) =>
-                                  setEditingCrewMember((current) =>
-                                    current
-                                      ? {
-                                          ...current,
-                                          laborType: event.target.value === "yes" ? "subcontractor" : DEFAULT_CREW_LABOR_TYPE,
-                                          subcontractorCompany:
-                                            event.target.value === "yes" ? current.subcontractorCompany : ""
-                                        }
-                                      : current
-                                  )
-                                }
-                              >
-                                <option value="no">Subcontractor? No</option>
-                                <option value="yes">Subcontractor? Yes</option>
-                              </select>
                               {editingCrewMember.laborType === "subcontractor" ? (
                                 <input
-                                  aria-label={`Edit subcontractor company for ${member.name}`}
-                                  placeholder="Subcontractor company"
+                                  aria-label={`Edit company name for ${getCrewDisplayName(member)}`}
+                                  placeholder="Company name"
                                   value={editingCrewMember.subcontractorCompany}
                                   onChange={(event) =>
                                     setEditingCrewMember((current) =>
@@ -3256,24 +3253,44 @@ export function TimeAllocationWorkspace() {
                                   }
                                 />
                               ) : (
-                                <select
-                                  aria-label={`Edit temp employee status for ${member.name}`}
-                                  value={editingCrewMember.laborType === "temp_employee" ? "yes" : "no"}
-                                  onChange={(event) =>
-                                    setEditingCrewMember((current) =>
-                                      current
-                                        ? {
-                                            ...current,
-                                            laborType:
-                                              event.target.value === "yes" ? "temp_employee" : DEFAULT_CREW_LABOR_TYPE
-                                          }
-                                        : current
-                                    )
-                                  }
-                                >
-                                  <option value="no">Temp Employee? No</option>
-                                  <option value="yes">Temp Employee? Yes</option>
-                                </select>
+                                <>
+                                  <input
+                                    aria-label={`Edit name for ${getCrewDisplayName(member)}`}
+                                    value={editingCrewMember.name}
+                                    onChange={(event) =>
+                                      setEditingCrewMember((current) =>
+                                        current ? { ...current, name: event.target.value } : current
+                                      )
+                                    }
+                                  />
+                                  <input
+                                    aria-label={`Edit job title for ${getCrewDisplayName(member)}`}
+                                    value={editingCrewMember.jobTitle}
+                                    onChange={(event) =>
+                                      setEditingCrewMember((current) =>
+                                        current ? { ...current, jobTitle: event.target.value } : current
+                                      )
+                                    }
+                                  />
+                                  <select
+                                    aria-label={`Edit temp employee status for ${getCrewDisplayName(member)}`}
+                                    value={editingCrewMember.laborType === "temp_employee" ? "yes" : "no"}
+                                    onChange={(event) =>
+                                      setEditingCrewMember((current) =>
+                                        current
+                                          ? {
+                                              ...current,
+                                              laborType:
+                                                event.target.value === "yes" ? "temp_employee" : DEFAULT_CREW_LABOR_TYPE
+                                            }
+                                          : current
+                                      )
+                                    }
+                                  >
+                                    <option value="no">Temp Employee? No</option>
+                                    <option value="yes">Temp Employee? Yes</option>
+                                  </select>
+                                </>
                               )}
                               <div className="crew-edit-actions">
                                 <button className="secondary-button" onClick={saveEditedCrewMember} type="button">
@@ -3287,12 +3304,12 @@ export function TimeAllocationWorkspace() {
                           ) : (
                             <>
                               <span>
-                                <strong>{member.name}</strong>
+                                <strong>{getCrewDisplayName(member)}</strong>
                                 {formatCrewMemberMeta(member)}
                               </span>
                               <div className="crew-row-actions">
                                 <button
-                                  aria-label={`Edit ${member.name}`}
+                                  aria-label={`Edit ${getCrewDisplayName(member)}`}
                                   className="icon-button"
                                   onClick={() => startEditingCrewMember(member)}
                                   type="button"
@@ -3300,7 +3317,7 @@ export function TimeAllocationWorkspace() {
                                   <Edit3 aria-hidden="true" size={16} />
                                 </button>
                                 <button
-                                  aria-label={`Remove ${member.name}`}
+                                  aria-label={`Remove ${getCrewDisplayName(member)}`}
                                   className="icon-button"
                                   disabled={memberIsUsed}
                                   onClick={() => removeCrewMember(member.id)}
@@ -3668,7 +3685,7 @@ export function TimeAllocationWorkspace() {
                   {crewSummaryRows.map((row) => (
                     <div className="crew-summary-row" key={row.crewMemberId}>
                       <span>
-                        <strong>{row.name}</strong>
+                        <strong>{getCrewDisplayName(row)}</strong>
                         {formatCrewMemberMeta(row)}
                       </span>
                       <strong>{row.hours.toFixed(2)} hrs</strong>
@@ -4593,7 +4610,7 @@ function CrewAllocationEditor({
                   onChange={(event) => onCrewToggle(payItemId, member.id, event.target.checked)}
                 />
                 <span>
-                  <strong>{member.name}</strong>
+                  <strong>{getCrewDisplayName(member)}</strong>
                   {formatCrewMemberMeta(member)}
                 </span>
               </label>
@@ -4616,9 +4633,9 @@ function CrewAllocationEditor({
             </div>
             {selectedCrewMembers.map((member) => (
               <label className="crew-hour-row" key={member.id}>
-                <span>{member.name}</span>
+                <span>{getCrewDisplayName(member)}</span>
                 <input
-                  aria-label={`Allocated hours for ${member.name}`}
+                  aria-label={`Allocated hours for ${getCrewDisplayName(member)}`}
                   className="number-entry"
                   disabled={dayIsSubmitted}
                   inputMode="decimal"
@@ -6550,8 +6567,10 @@ function buildPayItemReportDetailRows(entries: AllocationEntry[], projects: Proj
         payItemLabel,
         projectName,
         crewMemberId: allocation.crewMemberId,
-        crewMemberName: allocation.crewMemberName,
-        jobTitle: allocation.jobTitle,
+        crewMemberName: getCrewDisplayName(allocation),
+        jobTitle: getCrewJobTitle(allocation),
+        laborType: getCrewLaborType(allocation),
+        subcontractorCompany: allocation.subcontractorCompany,
         hours: allocation.hours,
         quantityCompleted: entry.quantityCompleted * hourShare,
         hoursPerUnit: entry.quantityCompleted * hourShare > 0
@@ -6583,6 +6602,9 @@ function buildPayItemDetailAnalysisRows(
       projectName: detailRow.projectName,
       crewMemberName: grouping === "crew_day" || grouping === "crew_project" ? detailRow.crewMemberName : undefined,
       jobTitle: grouping === "crew_day" || grouping === "crew_project" ? detailRow.jobTitle : undefined,
+      laborType: grouping === "crew_day" || grouping === "crew_project" ? detailRow.laborType : undefined,
+      subcontractorCompany:
+        grouping === "crew_day" || grouping === "crew_project" ? detailRow.subcontractorCompany : undefined,
       entryCount: 0,
       excludedEntryCount: 0,
       sampleSize: 0,
@@ -6644,6 +6666,8 @@ function buildCrewPerformanceRows(entries: AllocationEntry[], projects: Project[
       crewMemberName: string;
       crewMemberId: string;
       jobTitle: string;
+      laborType?: CrewLaborType;
+      subcontractorCompany?: string;
       jobIds: Set<string>;
       rateSamples: RateSample[];
     }
@@ -6662,6 +6686,8 @@ function buildCrewPerformanceRows(entries: AllocationEntry[], projects: Project[
       crewMemberId: row.crewMemberId,
       crewMemberName: row.crewMemberName,
       jobTitle: row.jobTitle,
+      laborType: row.laborType,
+      subcontractorCompany: row.subcontractorCompany,
       payItemLabel: row.payItemLabel,
       hours: 0,
       quantityCompleted: 0,
@@ -6707,6 +6733,8 @@ function buildCrewPerformanceRows(entries: AllocationEntry[], projects: Project[
       id: payItemRow.crewMemberId,
       crewMemberName: payItemRow.crewMemberName,
       jobTitle: payItemRow.jobTitle,
+      laborType: payItemRow.laborType,
+      subcontractorCompany: payItemRow.subcontractorCompany,
       totalHours: 0,
       totalQuantity: 0,
       entryCount: 0,
@@ -6753,6 +6781,8 @@ function buildCrewPerformanceRows(entries: AllocationEntry[], projects: Project[
       id: row.id,
       crewMemberName: row.crewMemberName,
       jobTitle: row.jobTitle,
+      laborType: row.laborType,
+      subcontractorCompany: row.subcontractorCompany,
       totalHours: row.totalHours,
       totalQuantity: row.totalQuantity,
       entryCount: row.entryCount,
@@ -6931,15 +6961,17 @@ function getCrewPerformanceStatus(row: Pick<CrewPerformanceRow, "entryCount" | "
 }
 
 function getDetailAnalysisKey(row: PayItemReportDetailRow, grouping: DetailGrouping) {
+  const crewKey = `${row.crewMemberName}|${row.jobTitle}|${row.laborType ?? ""}|${row.subcontractorCompany ?? ""}`;
+
   if (grouping === "crew_project") {
-    return `${row.payItemKey}|${row.projectName}|${row.crewMemberName}|${row.jobTitle}`;
+    return `${row.payItemKey}|${row.projectName}|${crewKey}`;
   }
 
   if (grouping === "job_day") {
     return `${row.payItemKey}|${row.date}|${row.projectName}`;
   }
 
-  return `${row.payItemKey}|${row.date}|${row.projectName}|${row.crewMemberName}|${row.jobTitle}`;
+  return `${row.payItemKey}|${row.date}|${row.projectName}|${crewKey}`;
 }
 
 function sortDetailAnalysisRows(rows: PayItemDetailAnalysisRow[], sort: DetailSort) {
@@ -7639,12 +7671,30 @@ function formatCrewLaborTypeWithCompany(source: { laborType?: CrewLaborType; sub
   return label;
 }
 
+function getCrewDisplayName(
+  member: { name?: string; crewMemberName?: string; laborType?: CrewLaborType; subcontractorCompany?: string } | undefined | null
+) {
+  if (getCrewLaborType(member) === "subcontractor") {
+    return member?.subcontractorCompany || member?.name || member?.crewMemberName || "Unknown subcontractor";
+  }
+
+  return member?.name || member?.crewMemberName || "Unknown crew member";
+}
+
+function getCrewJobTitle(member: { jobTitle?: string; laborType?: CrewLaborType } | undefined | null) {
+  return getCrewLaborType(member) === "subcontractor" ? "Subcontractor" : member?.jobTitle || "-";
+}
+
 function formatCrewMemberMeta(member: { jobTitle: string; laborType?: CrewLaborType; subcontractorCompany?: string }) {
+  if (getCrewLaborType(member) === "subcontractor") {
+    return "Subcontractor";
+  }
+
   return `${member.jobTitle} - ${formatCrewLaborTypeWithCompany(member)}`;
 }
 
 function formatCrewMemberOption(member: CrewMember) {
-  return `${member.name} - ${formatCrewMemberMeta(member)}`;
+  return `${getCrewDisplayName(member)} - ${formatCrewMemberMeta(member)}`;
 }
 
 function normalizeCrewName(name: string) {
@@ -7695,8 +7745,8 @@ function mergeEntryCrewAllocations(
         ? {
             ...allocation,
             crewMemberId: targetCrewMember.id,
-            crewMemberName: targetCrewMember.name,
-            jobTitle: targetCrewMember.jobTitle,
+            crewMemberName: getCrewDisplayName(targetCrewMember),
+            jobTitle: getCrewJobTitle(targetCrewMember),
             laborType: getCrewLaborType(targetCrewMember),
             subcontractorCompany: targetCrewMember.subcontractorCompany
           }
@@ -7912,8 +7962,8 @@ function getSelectedCrewMembers(
 
     return {
       id: crewMemberId,
-      name: currentCrewMember?.name ?? savedCrewMember?.crewMemberName ?? "Unknown crew member",
-      jobTitle: currentCrewMember?.jobTitle ?? savedCrewMember?.jobTitle ?? "-",
+      name: currentCrewMember ? getCrewDisplayName(currentCrewMember) : getCrewDisplayName(savedCrewMember),
+      jobTitle: currentCrewMember ? getCrewJobTitle(currentCrewMember) : getCrewJobTitle(savedCrewMember),
       laborType: currentCrewMember ? getCrewLaborType(currentCrewMember) : getCrewLaborType(savedCrewMember),
       subcontractorCompany: currentCrewMember?.subcontractorCompany ?? savedCrewMember?.subcontractorCompany
     };
@@ -7980,8 +8030,8 @@ function buildCrewAllocations(draft: PayItemDraft | undefined, crewMembers: Crew
 
     return {
       crewMemberId,
-      crewMemberName: crewMember?.name ?? "Unknown crew member",
-      jobTitle: crewMember?.jobTitle ?? "-",
+      crewMemberName: getCrewDisplayName(crewMember),
+      jobTitle: getCrewJobTitle(crewMember),
       laborType: getCrewLaborType(crewMember),
       subcontractorCompany: crewMember?.subcontractorCompany,
       hours
@@ -8055,8 +8105,8 @@ function buildCrewSummary(entries: AllocationEntry[], crewMembers: CrewMember[])
       const crewMember = crewMembers.find((member) => member.id === allocation.crewMemberId);
       const row = rows.get(allocation.crewMemberId) ?? {
         crewMemberId: allocation.crewMemberId,
-        name: crewMember?.name ?? allocation.crewMemberName,
-        jobTitle: crewMember?.jobTitle ?? allocation.jobTitle,
+        name: crewMember ? getCrewDisplayName(crewMember) : getCrewDisplayName(allocation),
+        jobTitle: crewMember ? getCrewJobTitle(crewMember) : getCrewJobTitle(allocation),
         laborType: crewMember ? getCrewLaborType(crewMember) : getCrewLaborType(allocation),
         subcontractorCompany: crewMember?.subcontractorCompany ?? allocation.subcontractorCompany,
         hours: 0
@@ -8076,7 +8126,7 @@ function formatEntryCrew(entry: AllocationEntry) {
   }
 
   return `Crew: ${entry.crewAllocations
-    .map((allocation) => `${allocation.crewMemberName} ${allocation.hours.toFixed(2)}h`)
+    .map((allocation) => `${getCrewDisplayName(allocation)} ${allocation.hours.toFixed(2)}h`)
     .join(", ")}`;
 }
 
@@ -8471,8 +8521,8 @@ function buildDailyReportEmployeeRowsFromEntries(entries: AllocationEntry[], cre
       const crewMember = crewMembers.find((member) => member.id === allocation.crewMemberId);
       const crewLaborMeta = formatCrewLaborTypeWithCompany(crewMember ?? allocation);
       const row = rowsByCrewMemberId.get(allocation.crewMemberId) ?? {
-        employeeClassification: `${crewMember?.name ?? allocation.crewMemberName} - ${
-          crewMember?.jobTitle ?? allocation.jobTitle
+        employeeClassification: `${crewMember ? getCrewDisplayName(crewMember) : getCrewDisplayName(allocation)} - ${
+          crewMember ? getCrewJobTitle(crewMember) : getCrewJobTitle(allocation)
         } (${crewLaborMeta})`,
         truckNumber: "",
         timeIn: "",

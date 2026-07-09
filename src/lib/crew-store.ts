@@ -52,24 +52,32 @@ export async function readCrewData() {
     order by project_id, lower(crew_member_name), lower(job_title), crew_member_id
   `) as ProjectCrewMemberRow[];
 
-  const crewDirectory = crewRows.map((row) => ({
-    id: row.id,
-    laborType: normalizeCrewLaborType(row.labor_type),
-    name: row.name,
-    jobTitle: row.job_title,
-    subcontractorCompany: row.subcontractor_company ?? undefined
-  }));
+  const crewDirectory = crewRows
+    .map((row) =>
+      normalizeCrewMember({
+        id: row.id,
+        laborType: normalizeCrewLaborType(row.labor_type),
+        name: row.name,
+        jobTitle: row.job_title,
+        subcontractorCompany: row.subcontractor_company ?? undefined
+      })
+    )
+    .filter((crewMember) => crewMember !== null);
   const crewMembersByProject: StoredCrewMembersByProject = {};
 
   for (const row of projectCrewRows) {
     crewMembersByProject[row.project_id] = crewMembersByProject[row.project_id] ?? [];
-    crewMembersByProject[row.project_id].push({
+    const crewMember = normalizeCrewMember({
       id: row.crew_member_id,
       laborType: normalizeCrewLaborType(row.labor_type),
       name: row.crew_member_name,
       jobTitle: row.job_title,
       subcontractorCompany: row.subcontractor_company ?? undefined
     });
+
+    if (crewMember) {
+      crewMembersByProject[row.project_id].push(crewMember);
+    }
   }
 
   return {
@@ -579,12 +587,15 @@ function normalizeCrewMember(crewMember: StoredCrewMember | unknown) {
     return null;
   }
 
+  const laborType = normalizeCrewLaborType(record.laborType);
+  const subcontractorCompany = readString(record.subcontractorCompany) || (laborType === "subcontractor" ? name : "");
+
   return {
     id,
-    laborType: normalizeCrewLaborType(record.laborType),
-    jobTitle: readString(record.jobTitle),
-    name,
-    subcontractorCompany: readString(record.subcontractorCompany) || undefined
+    laborType,
+    jobTitle: laborType === "subcontractor" ? "Subcontractor" : readString(record.jobTitle),
+    name: laborType === "subcontractor" ? subcontractorCompany : name,
+    subcontractorCompany: subcontractorCompany || undefined
   };
 }
 

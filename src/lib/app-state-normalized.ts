@@ -757,12 +757,16 @@ function normalizeCrewMember(value: unknown): CrewMember | null {
     return null;
   }
 
+  const laborType = normalizeCrewLaborType(crewMember.laborType);
+  const subcontractorCompany =
+    readNullableString(crewMember, "subcontractorCompany") ?? (laborType === "subcontractor" ? name : undefined);
+
   return {
     id,
-    name,
-    jobTitle: readString(crewMember, "jobTitle"),
-    laborType: normalizeCrewLaborType(crewMember.laborType),
-    subcontractorCompany: readNullableString(crewMember, "subcontractorCompany") ?? undefined
+    name: laborType === "subcontractor" ? subcontractorCompany ?? name : name,
+    jobTitle: laborType === "subcontractor" ? "Subcontractor" : readString(crewMember, "jobTitle"),
+    laborType,
+    subcontractorCompany
   };
 }
 
@@ -809,12 +813,16 @@ function normalizeCrewAllocation(value: CrewAllocation | unknown) {
     return null;
   }
 
+  const laborType = normalizeCrewLaborType(allocation.laborType);
+  const subcontractorCompany =
+    readNullableString(allocation, "subcontractorCompany") ?? (laborType === "subcontractor" ? crewMemberName : undefined);
+
   return {
     crewMemberId,
-    crewMemberName,
-    jobTitle: readString(allocation, "jobTitle"),
-    laborType: normalizeCrewLaborType(allocation.laborType),
-    subcontractorCompany: readNullableString(allocation, "subcontractorCompany") ?? undefined,
+    crewMemberName: laborType === "subcontractor" ? subcontractorCompany ?? crewMemberName : crewMemberName,
+    jobTitle: laborType === "subcontractor" ? "Subcontractor" : readString(allocation, "jobTitle"),
+    laborType,
+    subcontractorCompany,
     hours: readNumber(allocation, "hours"),
     rawAllocation: value
   };
