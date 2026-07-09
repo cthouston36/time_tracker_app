@@ -5515,9 +5515,6 @@ function MyJobsManager({
           <span>{description}</span>
         </div>
         <div className="my-jobs-actions">
-          <button className="secondary-button" onClick={() => setMyJobIds(sortedProjects.map((project) => project.id))} type="button">
-            Select all
-          </button>
           <button className="secondary-button" disabled={myJobIds.length === 0} onClick={() => setMyJobIds([])} type="button">
             Clear
           </button>
