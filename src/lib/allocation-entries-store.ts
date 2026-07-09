@@ -1,5 +1,5 @@
 import { getSql } from "@/lib/db";
-import type { AllocationEntry, CrewAllocation } from "@/lib/procore/types";
+import type { AllocationEntry, CrewAllocation, CrewLaborType } from "@/lib/procore/types";
 
 type EntryRow = {
   id: string;
@@ -23,6 +23,8 @@ type CrewAllocationRow = {
   crew_member_id: string;
   crew_member_name: string;
   job_title: string;
+  labor_type: string | null;
+  subcontractor_company: string | null;
   hours: number | string | null;
 };
 
@@ -36,6 +38,7 @@ export type AllocationEntryReportFilters = {
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 let dailyEntryTablesReady = false;
+const DEFAULT_CREW_LABOR_TYPE: CrewLaborType = "chinchor_employee";
 
 export async function readAllocationEntries() {
   const sql = getSql();
@@ -133,6 +136,8 @@ async function readEntriesWithAllocations(entryRows: EntryRow[]) {
       crew_member_id,
       crew_member_name,
       job_title,
+      labor_type,
+      subcontractor_company,
       hours
     from daily_entry_crew_allocations
     where entry_id in (
@@ -150,6 +155,8 @@ async function readEntriesWithAllocations(entryRows: EntryRow[]) {
       crewMemberId: allocationRow.crew_member_id,
       crewMemberName: allocationRow.crew_member_name,
       jobTitle: allocationRow.job_title,
+      laborType: normalizeCrewLaborType(allocationRow.labor_type),
+      subcontractorCompany: allocationRow.subcontractor_company ?? undefined,
       hours: toNumber(allocationRow.hours)
     });
     allocationsByEntryId.set(allocationRow.entry_id, allocations);
@@ -233,6 +240,8 @@ export async function replaceAllocationEntries(entries: AllocationEntry[]) {
           crew_member_id,
           crew_member_name,
           job_title,
+          labor_type,
+          subcontractor_company,
           hours,
           raw_allocation,
           updated_at
@@ -242,6 +251,8 @@ export async function replaceAllocationEntries(entries: AllocationEntry[]) {
           ${allocation.crewMemberId},
           ${allocation.crewMemberName},
           ${allocation.jobTitle},
+          ${allocation.laborType},
+          ${allocation.subcontractorCompany ?? null},
           ${allocation.hours},
           ${JSON.stringify(allocation.rawAllocation)}::jsonb,
           now()
@@ -342,6 +353,8 @@ export async function upsertAllocationEntries(entries: AllocationEntry[]) {
           crew_member_id,
           crew_member_name,
           job_title,
+          labor_type,
+          subcontractor_company,
           hours,
           raw_allocation,
           updated_at
@@ -351,6 +364,8 @@ export async function upsertAllocationEntries(entries: AllocationEntry[]) {
           ${allocation.crewMemberId},
           ${allocation.crewMemberName},
           ${allocation.jobTitle},
+          ${allocation.laborType},
+          ${allocation.subcontractorCompany ?? null},
           ${allocation.hours},
           ${JSON.stringify(allocation.rawAllocation)}::jsonb,
           now()
@@ -451,6 +466,8 @@ async function ensureDailyEntryTables() {
       crew_member_id text not null,
       crew_member_name text not null,
       job_title text not null,
+      labor_type text not null default 'chinchor_employee',
+      subcontractor_company text,
       hours numeric not null default 0,
       raw_allocation jsonb not null,
       updated_at timestamptz not null default now(),
@@ -458,9 +475,12 @@ async function ensureDailyEntryTables() {
     )
   `;
 
+  await sql`alter table daily_entry_crew_allocations add column if not exists labor_type text not null default 'chinchor_employee'`;
+  await sql`alter table daily_entry_crew_allocations add column if not exists subcontractor_company text`;
   await sql`create index if not exists daily_entries_project_date_idx on daily_entries (project_id, work_date)`;
   await sql`create index if not exists daily_entries_pay_item_idx on daily_entries (pay_item_code, pay_item_id)`;
   await sql`create index if not exists daily_entry_crew_allocations_crew_idx on daily_entry_crew_allocations (crew_member_id)`;
+  await sql`create index if not exists daily_entry_crew_allocations_labor_type_idx on daily_entry_crew_allocations (labor_type)`;
 
   dailyEntryTablesReady = true;
 }
@@ -500,6 +520,8 @@ function normalizeCrewAllocation(allocation: CrewAllocation) {
     crewMemberName: allocation.crewMemberName,
     hours: toNumber(allocation.hours),
     jobTitle: allocation.jobTitle ?? "",
+    laborType: normalizeCrewLaborType(allocation.laborType),
+    subcontractorCompany: allocation.subcontractorCompany?.trim() || undefined,
     rawAllocation: allocation
   };
 }
@@ -541,6 +563,14 @@ function isIsoDate(value: string) {
 
 function normalizeStringList(values: string[] | undefined) {
   return Array.from(new Set((values ?? []).map((value) => value.trim()).filter(Boolean)));
+}
+
+function normalizeCrewLaborType(value: unknown): CrewLaborType {
+  if (value === "subcontractor" || value === "temp_employee" || value === "chinchor_employee") {
+    return value;
+  }
+
+  return DEFAULT_CREW_LABOR_TYPE;
 }
 
 function isValidTimestamp(value: unknown): value is string {

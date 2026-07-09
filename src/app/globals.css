@@ -1550,7 +1550,8 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   width: 100%;
 }
 
-.crew-edit-form input {
+.crew-edit-form input,
+.crew-edit-form select {
   background: var(--field);
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -2189,7 +2190,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   align-items: end;
   display: grid;
   gap: 12px;
-  grid-template-columns: minmax(220px, 1.3fr) repeat(3, minmax(150px, 0.8fr)) minmax(150px, 0.7fr) auto;
+  grid-template-columns: minmax(220px, 1.2fr) repeat(3, minmax(140px, 0.7fr)) minmax(190px, 1fr) minmax(150px, 0.7fr) auto;
   margin-bottom: 14px;
 }
 
@@ -2211,6 +2212,33 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   gap: 8px;
   min-height: 42px;
   padding: 8px 10px;
+}
+
+.report-labor-filter {
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  min-height: 42px;
+  padding: 8px 10px;
+}
+
+.report-labor-filter legend {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0 4px;
+  text-transform: uppercase;
+}
+
+.report-labor-filter label {
+  align-items: center;
+  color: var(--foreground);
+  display: flex;
+  font-size: 0.84rem;
+  gap: 7px;
 }
 
 .report-methodology-note {
@@ -2645,6 +2673,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
   .date-input-wrap,
   .report-controls .field-group,
+  .report-labor-filter,
   .weekly-status-controls .field-group {
     min-width: 0;
     width: 100%;

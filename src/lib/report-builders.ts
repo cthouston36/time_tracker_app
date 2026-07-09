@@ -1,4 +1,4 @@
-import type { AllocationEntry, Project } from "@/lib/procore/types";
+import type { AllocationEntry, CrewLaborType, Project } from "@/lib/procore/types";
 
 export type ReportMode = "summary" | "detail" | "crew";
 export type DetailGrouping = "crew_day" | "crew_project" | "job_day";
@@ -49,6 +49,8 @@ export type PayItemReportDetailRow = {
   crewMemberId: string;
   crewMemberName: string;
   jobTitle: string;
+  laborType?: CrewLaborType;
+  subcontractorCompany?: string;
   hours: number;
   quantityCompleted: number;
   hoursPerUnit: number;
@@ -63,6 +65,8 @@ export type PayItemDetailAnalysisRow = {
   projectName: string;
   crewMemberName?: string;
   jobTitle?: string;
+  laborType?: CrewLaborType;
+  subcontractorCompany?: string;
   entryCount: number;
   excludedEntryCount: number;
   sampleSize: number;
@@ -89,6 +93,8 @@ export type CrewPerformanceRow = {
   id: string;
   crewMemberName: string;
   jobTitle: string;
+  laborType?: CrewLaborType;
+  subcontractorCompany?: string;
   totalHours: number;
   totalQuantity: number;
   entryCount: number;
@@ -106,6 +112,54 @@ export type ReportPayItemOption = {
   label: string;
   query: string;
 };
+
+const ALL_CREW_LABOR_TYPES: CrewLaborType[] = ["chinchor_employee", "temp_employee", "subcontractor"];
+const DEFAULT_CREW_LABOR_TYPE: CrewLaborType = "chinchor_employee";
+
+export function filterEntriesByCrewLaborTypes(entries: AllocationEntry[], laborTypes: CrewLaborType[]) {
+  const selectedLaborTypes = normalizeCrewLaborTypes(laborTypes);
+
+  if (selectedLaborTypes.length === ALL_CREW_LABOR_TYPES.length) {
+    return entries;
+  }
+
+  if (selectedLaborTypes.length === 0) {
+    return [];
+  }
+
+  const selectedLaborTypeSet = new Set(selectedLaborTypes);
+
+  return entries.flatMap((entry) => {
+    if (!entry.crewAllocations?.length || entry.hours <= 0) {
+      return [];
+    }
+
+    const includedAllocations = entry.crewAllocations.filter((allocation) =>
+      selectedLaborTypeSet.has(normalizeCrewLaborType(allocation.laborType))
+    );
+
+    if (includedAllocations.length === 0) {
+      return [];
+    }
+
+    const includedHours = includedAllocations.reduce((total, allocation) => total + allocation.hours, 0);
+
+    if (includedHours <= 0) {
+      return [];
+    }
+
+    const quantityCompleted = entry.quantityCompleted * (includedHours / entry.hours);
+
+    return [
+      {
+        ...entry,
+        crewAllocations: includedAllocations,
+        hours: includedHours,
+        quantityCompleted
+      }
+    ];
+  });
+}
 
 export function buildPayItemReport(entries: AllocationEntry[], projects: Project[], options?: ReportOptions): PayItemReportRow[] {
   const resolvedOptions = resolveReportOptions(options);
@@ -249,6 +303,8 @@ export function buildPayItemReportDetailRows(entries: AllocationEntry[], project
         crewMemberId: allocation.crewMemberId,
         crewMemberName: allocation.crewMemberName,
         jobTitle: allocation.jobTitle,
+        laborType: normalizeCrewLaborType(allocation.laborType),
+        subcontractorCompany: allocation.subcontractorCompany,
         hours: allocation.hours,
         quantityCompleted: allocatedQuantity,
         hoursPerUnit: allocatedQuantity > 0 ? allocation.hours / allocatedQuantity : 0,
@@ -278,6 +334,9 @@ export function buildPayItemDetailAnalysisRows(
       projectName: detailRow.projectName,
       crewMemberName: grouping === "crew_day" || grouping === "crew_project" ? detailRow.crewMemberName : undefined,
       jobTitle: grouping === "crew_day" || grouping === "crew_project" ? detailRow.jobTitle : undefined,
+      laborType: grouping === "crew_day" || grouping === "crew_project" ? detailRow.laborType : undefined,
+      subcontractorCompany:
+        grouping === "crew_day" || grouping === "crew_project" ? detailRow.subcontractorCompany : undefined,
       entryCount: 0,
       excludedEntryCount: 0,
       sampleSize: 0,
@@ -339,6 +398,8 @@ export function buildCrewPerformanceRows(entries: AllocationEntry[], projects: P
       crewMemberName: string;
       crewMemberId: string;
       jobTitle: string;
+      laborType?: CrewLaborType;
+      subcontractorCompany?: string;
       jobIds: Set<string>;
       rateSamples: RateSample[];
     }
@@ -357,6 +418,8 @@ export function buildCrewPerformanceRows(entries: AllocationEntry[], projects: P
       crewMemberId: row.crewMemberId,
       crewMemberName: row.crewMemberName,
       jobTitle: row.jobTitle,
+      laborType: row.laborType,
+      subcontractorCompany: row.subcontractorCompany,
       payItemLabel: row.payItemLabel,
       hours: 0,
       quantityCompleted: 0,
@@ -402,6 +465,8 @@ export function buildCrewPerformanceRows(entries: AllocationEntry[], projects: P
       id: payItemRow.crewMemberId,
       crewMemberName: payItemRow.crewMemberName,
       jobTitle: payItemRow.jobTitle,
+      laborType: payItemRow.laborType,
+      subcontractorCompany: payItemRow.subcontractorCompany,
       totalHours: 0,
       totalQuantity: 0,
       entryCount: 0,
@@ -448,6 +513,8 @@ export function buildCrewPerformanceRows(entries: AllocationEntry[], projects: P
       id: row.id,
       crewMemberName: row.crewMemberName,
       jobTitle: row.jobTitle,
+      laborType: row.laborType,
+      subcontractorCompany: row.subcontractorCompany,
       totalHours: row.totalHours,
       totalQuantity: row.totalQuantity,
       entryCount: row.entryCount,
@@ -664,15 +731,31 @@ function getCrewPerformanceStatus(row: Pick<CrewPerformanceRow, "entryCount" | "
 }
 
 function getDetailAnalysisKey(row: PayItemReportDetailRow, grouping: DetailGrouping) {
+  const crewKey = `${row.crewMemberName}|${row.jobTitle}|${row.laborType ?? ""}|${row.subcontractorCompany ?? ""}`;
+
   if (grouping === "crew_project") {
-    return `${row.payItemKey}|${row.projectName}|${row.crewMemberName}|${row.jobTitle}`;
+    return `${row.payItemKey}|${row.projectName}|${crewKey}`;
   }
 
   if (grouping === "job_day") {
     return `${row.payItemKey}|${row.date}|${row.projectName}`;
   }
 
-  return `${row.payItemKey}|${row.date}|${row.projectName}|${row.crewMemberName}|${row.jobTitle}`;
+  return `${row.payItemKey}|${row.date}|${row.projectName}|${crewKey}`;
+}
+
+function normalizeCrewLaborTypes(values: CrewLaborType[]) {
+  return Array.from(new Set(values.map(normalizeCrewLaborType))).filter((value) =>
+    ALL_CREW_LABOR_TYPES.includes(value)
+  );
+}
+
+function normalizeCrewLaborType(value: unknown): CrewLaborType {
+  if (value === "subcontractor" || value === "temp_employee" || value === "chinchor_employee") {
+    return value;
+  }
+
+  return DEFAULT_CREW_LABOR_TYPE;
 }
 
 function sortDetailAnalysisRows(rows: PayItemDetailAnalysisRow[], sort: DetailSort) {

@@ -12,10 +12,16 @@ export type Project = {
   payItems: PayItem[];
 };
 
+export const CREW_LABOR_TYPES = ["chinchor_employee", "temp_employee", "subcontractor"] as const;
+
+export type CrewLaborType = (typeof CREW_LABOR_TYPES)[number];
+
 export type CrewAllocation = {
   crewMemberId: string;
   crewMemberName: string;
   jobTitle: string;
+  laborType?: CrewLaborType;
+  subcontractorCompany?: string;
   hours: number;
 };
 

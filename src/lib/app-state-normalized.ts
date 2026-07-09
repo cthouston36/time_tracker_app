@@ -1,12 +1,14 @@
 import { getSql } from "@/lib/db";
-import type { AllocationEntry, CrewAllocation } from "@/lib/procore/types";
+import type { AllocationEntry, CrewAllocation, CrewLaborType } from "@/lib/procore/types";
 
 export type AppStateMirrorStatus = "not_configured" | "success";
 
 type CrewMember = {
   id: string;
+  laborType?: CrewLaborType;
   name: string;
   jobTitle: string;
+  subcontractorCompany?: string;
 };
 
 type SharedAppStateRecord = Record<string, unknown>;
@@ -14,6 +16,7 @@ type SharedAppStateRecord = Record<string, unknown>;
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 let normalizedTablesReady = false;
+const DEFAULT_CREW_LABOR_TYPE: CrewLaborType = "chinchor_employee";
 
 export async function mirrorSharedAppStateToTables(state: unknown): Promise<AppStateMirrorStatus> {
   const sql = getSql();
@@ -57,6 +60,8 @@ async function ensureNormalizedAppStateTables() {
       id text primary key,
       name text not null,
       job_title text not null,
+      labor_type text not null default 'chinchor_employee',
+      subcontractor_company text,
       raw_data jsonb not null default '{}'::jsonb,
       updated_at timestamptz not null default now()
     )
@@ -68,6 +73,8 @@ async function ensureNormalizedAppStateTables() {
       crew_member_id text not null,
       crew_member_name text not null,
       job_title text not null,
+      labor_type text not null default 'chinchor_employee',
+      subcontractor_company text,
       raw_data jsonb not null default '{}'::jsonb,
       updated_at timestamptz not null default now(),
       primary key (project_id, crew_member_id)
@@ -101,6 +108,8 @@ async function ensureNormalizedAppStateTables() {
       crew_member_id text not null,
       crew_member_name text not null,
       job_title text not null,
+      labor_type text not null default 'chinchor_employee',
+      subcontractor_company text,
       hours numeric not null default 0,
       raw_allocation jsonb not null,
       updated_at timestamptz not null default now(),
@@ -191,9 +200,16 @@ async function ensureNormalizedAppStateTables() {
     )
   `;
 
+  await sql`alter table crew_members add column if not exists labor_type text not null default 'chinchor_employee'`;
+  await sql`alter table crew_members add column if not exists subcontractor_company text`;
+  await sql`alter table project_crew_members add column if not exists labor_type text not null default 'chinchor_employee'`;
+  await sql`alter table project_crew_members add column if not exists subcontractor_company text`;
+  await sql`alter table daily_entry_crew_allocations add column if not exists labor_type text not null default 'chinchor_employee'`;
+  await sql`alter table daily_entry_crew_allocations add column if not exists subcontractor_company text`;
   await sql`create index if not exists daily_entries_project_date_idx on daily_entries (project_id, work_date)`;
   await sql`create index if not exists daily_entries_pay_item_idx on daily_entries (pay_item_code, pay_item_id)`;
   await sql`create index if not exists daily_entry_crew_allocations_crew_idx on daily_entry_crew_allocations (crew_member_id)`;
+  await sql`create index if not exists daily_entry_crew_allocations_labor_type_idx on daily_entry_crew_allocations (labor_type)`;
   await sql`create index if not exists daily_reports_date_idx on daily_reports (work_date)`;
   await sql`create index if not exists sync_log_entries_created_at_idx on sync_log_entries (created_at)`;
 
@@ -263,26 +279,32 @@ async function mirrorProjectCrewMembers(appState: SharedAppStateRecord) {
 
       await sql`
         insert into project_crew_members (
-          project_id,
-          crew_member_id,
-          crew_member_name,
-          job_title,
-          raw_data,
-          updated_at
-        )
+        project_id,
+        crew_member_id,
+        crew_member_name,
+        job_title,
+        labor_type,
+        subcontractor_company,
+        raw_data,
+        updated_at
+      )
         values (
           ${projectId},
-          ${normalizedCrewMember.id},
-          ${normalizedCrewMember.name},
-          ${normalizedCrewMember.jobTitle},
-          ${toJson(crewMember)}::jsonb,
-          now()
-        )
-        on conflict (project_id, crew_member_id) do update
-        set crew_member_name = excluded.crew_member_name,
-            job_title = excluded.job_title,
-            raw_data = excluded.raw_data,
-            updated_at = now()
+        ${normalizedCrewMember.id},
+        ${normalizedCrewMember.name},
+        ${normalizedCrewMember.jobTitle},
+        ${normalizedCrewMember.laborType},
+        ${normalizedCrewMember.subcontractorCompany ?? null},
+        ${toJson(crewMember)}::jsonb,
+        now()
+      )
+      on conflict (project_id, crew_member_id) do update
+      set crew_member_name = excluded.crew_member_name,
+          job_title = excluded.job_title,
+          labor_type = excluded.labor_type,
+          subcontractor_company = excluded.subcontractor_company,
+          raw_data = excluded.raw_data,
+          updated_at = now()
       `;
     }
   }
@@ -364,6 +386,8 @@ async function mirrorDailyEntries(appState: SharedAppStateRecord) {
           crew_member_id,
           crew_member_name,
           job_title,
+          labor_type,
+          subcontractor_company,
           hours,
           raw_allocation,
           updated_at
@@ -373,6 +397,8 @@ async function mirrorDailyEntries(appState: SharedAppStateRecord) {
           ${allocation.crewMemberId},
           ${allocation.crewMemberName},
           ${allocation.jobTitle},
+          ${allocation.laborType},
+          ${allocation.subcontractorCompany ?? null},
           ${allocation.hours},
           ${toJson(allocation.rawAllocation)}::jsonb,
           now()
@@ -380,6 +406,8 @@ async function mirrorDailyEntries(appState: SharedAppStateRecord) {
         on conflict (entry_id, crew_member_id) do update
         set crew_member_name = excluded.crew_member_name,
             job_title = excluded.job_title,
+            labor_type = excluded.labor_type,
+            subcontractor_company = excluded.subcontractor_company,
             hours = excluded.hours,
             raw_allocation = excluded.raw_allocation,
             updated_at = now()
@@ -696,6 +724,8 @@ async function upsertCrewMember(crewMember: CrewMember, rawData: unknown) {
       id,
       name,
       job_title,
+      labor_type,
+      subcontractor_company,
       raw_data,
       updated_at
     )
@@ -703,12 +733,16 @@ async function upsertCrewMember(crewMember: CrewMember, rawData: unknown) {
       ${crewMember.id},
       ${crewMember.name},
       ${crewMember.jobTitle},
+      ${crewMember.laborType},
+      ${crewMember.subcontractorCompany ?? null},
       ${toJson(rawData)}::jsonb,
       now()
     )
     on conflict (id) do update
     set name = excluded.name,
         job_title = excluded.job_title,
+        labor_type = excluded.labor_type,
+        subcontractor_company = excluded.subcontractor_company,
         raw_data = excluded.raw_data,
         updated_at = now()
   `;
@@ -726,7 +760,9 @@ function normalizeCrewMember(value: unknown): CrewMember | null {
   return {
     id,
     name,
-    jobTitle: readString(crewMember, "jobTitle")
+    jobTitle: readString(crewMember, "jobTitle"),
+    laborType: normalizeCrewLaborType(crewMember.laborType),
+    subcontractorCompany: readNullableString(crewMember, "subcontractorCompany") ?? undefined
   };
 }
 
@@ -777,6 +813,8 @@ function normalizeCrewAllocation(value: CrewAllocation | unknown) {
     crewMemberId,
     crewMemberName,
     jobTitle: readString(allocation, "jobTitle"),
+    laborType: normalizeCrewLaborType(allocation.laborType),
+    subcontractorCompany: readNullableString(allocation, "subcontractorCompany") ?? undefined,
     hours: readNumber(allocation, "hours"),
     rawAllocation: value
   };
@@ -827,6 +865,14 @@ function readNumber(record: Record<string, unknown>, key: string) {
   }
 
   return 0;
+}
+
+function normalizeCrewLaborType(value: unknown): CrewLaborType {
+  if (value === "subcontractor" || value === "temp_employee" || value === "chinchor_employee") {
+    return value;
+  }
+
+  return DEFAULT_CREW_LABOR_TYPE;
 }
 
 function readNullableNumber(record: Record<string, unknown>, key: string) {

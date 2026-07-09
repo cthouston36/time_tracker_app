@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { readAllocationEntriesForReport } from "@/lib/allocation-entries-store";
 import {
   buildCrewPerformanceRows,
+  filterEntriesByCrewLaborTypes,
   buildPayItemDetailAnalysisRows,
   buildPayItemReport,
   type DetailGrouping,
@@ -12,9 +13,10 @@ import {
 } from "@/lib/report-builders";
 import { todayInputValue } from "@/lib/date";
 import { getProjects } from "@/lib/procore/projects";
-import type { AllocationEntry, Project } from "@/lib/procore/types";
+import type { AllocationEntry, CrewLaborType, Project } from "@/lib/procore/types";
 
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const DEFAULT_CREW_LABOR_TYPES: CrewLaborType[] = ["chinchor_employee", "temp_employee", "subcontractor"];
 
 export async function POST(request: NextRequest) {
   const user = await getCurrentUser();
@@ -46,7 +48,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Database storage is not configured for report exports." }, { status: 503 });
   }
 
-  const csv = await buildReportCsv(mode, body, entries, projects, baseFilters, reportOptions);
+  const reportEntries = filterEntriesByCrewLaborTypes(entries, parseCrewLaborTypes(body.crewLaborTypes));
+  const csv = await buildReportCsv(mode, body, reportEntries, projects, baseFilters, reportOptions);
   const fileName = `time-allocation-${mode}-report-${todayInputValue()}.csv`;
 
   return new NextResponse(csv, {
@@ -69,6 +72,8 @@ async function buildReportCsv(
     const headers = [
       "crew_member_name",
       "job_title",
+      "labor_type",
+      "subcontractor_company",
       "hours",
       "entries",
       "pay_items",
@@ -81,6 +86,8 @@ async function buildReportCsv(
     const rows = buildCrewPerformanceRows(entries, projects, reportOptions).map((row) => [
       row.crewMemberName,
       row.jobTitle,
+      formatCrewLaborType(row.laborType),
+      row.subcontractorCompany ?? "",
       row.totalHours.toFixed(2),
       row.entryCount,
       row.payItemCount,
@@ -104,12 +111,15 @@ async function buildReportCsv(
           payItemQuery: detailPayItemQuery
         })
       : [];
+    const filteredDetailEntries = filterEntriesByCrewLaborTypes(detailEntries ?? [], parseCrewLaborTypes(body.crewLaborTypes));
     const headers = [
       "pay_item",
       "date",
       "job",
       "crew_member",
       "job_title",
+      "labor_type",
+      "subcontractor_company",
       "entries",
       "hours",
       "quantity",
@@ -118,12 +128,14 @@ async function buildReportCsv(
       "sample_size"
     ];
     const rows = detailPayItemQuery && detailEntries
-      ? buildPayItemDetailAnalysisRows(detailEntries, projects, detailGrouping, detailSort, reportOptions).map((row) => [
+      ? buildPayItemDetailAnalysisRows(filteredDetailEntries, projects, detailGrouping, detailSort, reportOptions).map((row) => [
           row.payItemLabel,
           row.date ?? "All dates",
           row.projectName,
           row.crewMemberName ?? "All crew",
           row.jobTitle ?? "",
+          row.laborType ? formatCrewLaborType(row.laborType) : "",
+          row.subcontractorCompany ?? "",
           row.entryCount,
           row.hours.toFixed(2),
           row.quantityCompleted.toFixed(2),
@@ -216,6 +228,15 @@ function parseReportMetric(value: unknown): ReportMetric {
   return value === "mean" ? "mean" : "median";
 }
 
+function parseCrewLaborTypes(value: unknown): CrewLaborType[] {
+  const selectedTypes = normalizeStringList(value).filter(isCrewLaborType);
+  return selectedTypes.length > 0 ? selectedTypes : DEFAULT_CREW_LABOR_TYPES;
+}
+
+function isCrewLaborType(value: string): value is CrewLaborType {
+  return value === "chinchor_employee" || value === "temp_employee" || value === "subcontractor";
+}
+
 function parseIsoDate(value: unknown) {
   return typeof value === "string" && ISO_DATE_PATTERN.test(value) ? value : undefined;
 }
@@ -232,8 +253,21 @@ function formatPercent(value: number) {
   return `${(value * 100).toFixed(1)}%`;
 }
 
+function formatCrewLaborType(value: CrewLaborType | undefined) {
+  if (value === "subcontractor") {
+    return "Subcontractor";
+  }
+
+  if (value === "temp_employee") {
+    return "Temp Employee";
+  }
+
+  return "Chinchor Employee";
+}
+
 type ReportExportRequestBody = {
   allowedProjectIds?: unknown;
+  crewLaborTypes?: unknown;
   detailGrouping?: unknown;
   detailPayItemQuery?: unknown;
   detailSort?: unknown;

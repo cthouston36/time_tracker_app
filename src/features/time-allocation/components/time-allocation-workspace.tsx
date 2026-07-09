@@ -30,9 +30,16 @@ import {
 import { IconLabel } from "@/components/icon-label";
 import { todayInputValue } from "@/lib/date";
 import type { AuthUser } from "@/lib/auth/types";
-import type { AllocationEntry, Project } from "@/lib/procore/types";
+import type { AllocationEntry, CrewLaborType, Project } from "@/lib/procore/types";
 
 const PROCORE_SYNC_REQUEST_TIMEOUT_MS = 55_000;
+const CREW_LABOR_TYPE_OPTIONS: Array<{ value: CrewLaborType; label: string }> = [
+  { value: "chinchor_employee", label: "Chinchor Employee" },
+  { value: "temp_employee", label: "Temp Employee" },
+  { value: "subcontractor", label: "Subcontractor" }
+];
+const DEFAULT_CREW_LABOR_TYPE: CrewLaborType = "chinchor_employee";
+const ALL_CREW_LABOR_TYPES = CREW_LABOR_TYPE_OPTIONS.map((option) => option.value);
 
 type ProjectsResponse = {
   projects: Project[];
@@ -159,6 +166,8 @@ type CrewMember = {
   id: string;
   name: string;
   jobTitle: string;
+  laborType?: CrewLaborType;
+  subcontractorCompany?: string;
 };
 
 type CrewMembersByProject = Record<string, CrewMember[]>;
@@ -167,6 +176,8 @@ type CrewSummaryRow = {
   crewMemberId: string;
   name: string;
   jobTitle: string;
+  laborType?: CrewLaborType;
+  subcontractorCompany?: string;
   hours: number;
 };
 
@@ -322,8 +333,10 @@ type EditingEntry = {
 
 type EditingCrewMember = {
   crewMemberId: string;
+  laborType: CrewLaborType;
   name: string;
   jobTitle: string;
+  subcontractorCompany: string;
 };
 
 type ViewMode = "entry" | "calendar" | "reports";
@@ -392,6 +405,8 @@ export function TimeAllocationWorkspace() {
   const [crewMembersByProject, setCrewMembersByProject] = useState<CrewMembersByProject>({});
   const [crewMemberName, setCrewMemberName] = useState("");
   const [crewMemberJobTitle, setCrewMemberJobTitle] = useState("");
+  const [crewMemberLaborType, setCrewMemberLaborType] = useState<CrewLaborType>(DEFAULT_CREW_LABOR_TYPE);
+  const [crewMemberSubcontractorCompany, setCrewMemberSubcontractorCompany] = useState("");
   const [selectedExistingCrewMemberId, setSelectedExistingCrewMemberId] = useState("");
   const [mergeSourceCrewMemberId, setMergeSourceCrewMemberId] = useState("");
   const [mergeTargetCrewMemberId, setMergeTargetCrewMemberId] = useState("");
@@ -553,6 +568,10 @@ export function TimeAllocationWorkspace() {
     setMobileSelectedPayItemId("");
     setEditingEntry(null);
     setEditingCrewMember(null);
+    setCrewMemberName("");
+    setCrewMemberJobTitle("");
+    setCrewMemberLaborType(DEFAULT_CREW_LABOR_TYPE);
+    setCrewMemberSubcontractorCompany("");
     setSelectedExistingCrewMemberId("");
     setDraftsByPayItem({});
     clearDailyReportDraftForCurrentContext();
@@ -1136,6 +1155,10 @@ export function TimeAllocationWorkspace() {
     setProjectBlacklistById({});
     setCrewDirectory([]);
     setCrewMembersByProject({});
+    setCrewMemberName("");
+    setCrewMemberJobTitle("");
+    setCrewMemberLaborType(DEFAULT_CREW_LABOR_TYPE);
+    setCrewMemberSubcontractorCompany("");
     setSelectedExistingCrewMemberId("");
     setMergeSourceCrewMemberId("");
     setMergeTargetCrewMemberId("");
@@ -2005,9 +2028,16 @@ export function TimeAllocationWorkspace() {
 
     const name = crewMemberName.trim();
     const jobTitle = crewMemberJobTitle.trim();
+    const subcontractorCompany =
+      crewMemberLaborType === "subcontractor" ? crewMemberSubcontractorCompany.trim() : "";
 
     if (!name || !jobTitle) {
       setEntryNotice("Enter both crew member name and job title.");
+      return;
+    }
+
+    if (crewMemberLaborType === "subcontractor" && !subcontractorCompany) {
+      setEntryNotice("Enter the subcontractor company name.");
       return;
     }
 
@@ -2020,8 +2050,10 @@ export function TimeAllocationWorkspace() {
 
     const crewMember = {
       id: crypto.randomUUID(),
+      laborType: crewMemberLaborType,
       name,
-      jobTitle
+      jobTitle,
+      subcontractorCompany: subcontractorCompany || undefined
     };
 
     setCrewDirectory((current) => sortCrewMembersByName([...current, crewMember]));
@@ -2037,6 +2069,8 @@ export function TimeAllocationWorkspace() {
     });
     setCrewMemberName("");
     setCrewMemberJobTitle("");
+    setCrewMemberLaborType(DEFAULT_CREW_LABOR_TYPE);
+    setCrewMemberSubcontractorCompany("");
     setSelectedExistingCrewMemberId("");
     setEditingCrewMember(null);
     setEntryNotice(`${name} added to ${selectedProject.name}.`);
@@ -2074,8 +2108,10 @@ export function TimeAllocationWorkspace() {
     setEntryNotice("");
     setEditingCrewMember({
       crewMemberId: member.id,
+      laborType: getCrewLaborType(member),
       name: member.name,
-      jobTitle: member.jobTitle
+      jobTitle: member.jobTitle,
+      subcontractorCompany: member.subcontractorCompany ?? ""
     });
   }
 
@@ -2086,9 +2122,17 @@ export function TimeAllocationWorkspace() {
 
     const name = editingCrewMember.name.trim();
     const jobTitle = editingCrewMember.jobTitle.trim();
+    const laborType = editingCrewMember.laborType;
+    const subcontractorCompany =
+      laborType === "subcontractor" ? editingCrewMember.subcontractorCompany.trim() : "";
 
     if (!name || !jobTitle) {
       setEntryNotice("Enter both crew member name and job title.");
+      return;
+    }
+
+    if (laborType === "subcontractor" && !subcontractorCompany) {
+      setEntryNotice("Enter the subcontractor company name.");
       return;
     }
 
@@ -2108,8 +2152,10 @@ export function TimeAllocationWorkspace() {
           member.id === editingCrewMember.crewMemberId
             ? {
                 ...member,
+                laborType,
                 name,
-                jobTitle
+                jobTitle,
+                subcontractorCompany: subcontractorCompany || undefined
               }
             : member
         )
@@ -2124,8 +2170,10 @@ export function TimeAllocationWorkspace() {
               member.id === editingCrewMember.crewMemberId
                 ? {
                     ...member,
+                    laborType,
                     name,
-                    jobTitle
+                    jobTitle,
+                    subcontractorCompany: subcontractorCompany || undefined
                   }
                 : member
             )
@@ -2135,8 +2183,10 @@ export function TimeAllocationWorkspace() {
     );
     const updatedCrewMember = {
       id: editingCrewMember.crewMemberId,
+      laborType,
       name,
-      jobTitle
+      jobTitle,
+      subcontractorCompany: subcontractorCompany || undefined
     };
     const nextEntries = entries.map((entry) => {
       if (!entry.crewAllocations?.length) {
@@ -2153,7 +2203,9 @@ export function TimeAllocationWorkspace() {
         return {
           ...allocation,
           crewMemberName: name,
-          jobTitle
+          jobTitle,
+          laborType,
+          subcontractorCompany: subcontractorCompany || undefined
         };
       });
 
@@ -3053,7 +3105,7 @@ export function TimeAllocationWorkspace() {
                       </option>
                       {existingCrewMemberOptions.map((member) => (
                         <option key={member.id} value={member.id}>
-                          {member.name} - {member.jobTitle}
+                          {formatCrewMemberOption(member)}
                         </option>
                       ))}
                     </select>
@@ -3071,6 +3123,50 @@ export function TimeAllocationWorkspace() {
                 {entryNotice && entryNoticeIsCrewRelated(entryNotice) ? (
                   <div className={entryNoticeIsError(entryNotice) ? "inline-alert" : "success-alert"}>{entryNotice}</div>
                 ) : null}
+                <div className="field-group">
+                  <label htmlFor="crew-member-subcontractor">Subcontractor?</label>
+                  <select
+                    id="crew-member-subcontractor"
+                    disabled={!selectedProject}
+                    value={crewMemberLaborType === "subcontractor" ? "yes" : "no"}
+                    onChange={(event) => {
+                      const isSubcontractor = event.target.value === "yes";
+                      setCrewMemberLaborType(isSubcontractor ? "subcontractor" : DEFAULT_CREW_LABOR_TYPE);
+                      if (!isSubcontractor) {
+                        setCrewMemberSubcontractorCompany("");
+                      }
+                    }}
+                  >
+                    <option value="no">No</option>
+                    <option value="yes">Yes</option>
+                  </select>
+                </div>
+                {crewMemberLaborType === "subcontractor" ? (
+                  <div className="field-group">
+                    <label htmlFor="crew-member-subcontractor-company">Subcontractor Company</label>
+                    <input
+                      id="crew-member-subcontractor-company"
+                      disabled={!selectedProject}
+                      value={crewMemberSubcontractorCompany}
+                      onChange={(event) => setCrewMemberSubcontractorCompany(event.target.value)}
+                    />
+                  </div>
+                ) : (
+                  <div className="field-group">
+                    <label htmlFor="crew-member-temp">Temp Employee?</label>
+                    <select
+                      id="crew-member-temp"
+                      disabled={!selectedProject}
+                      value={crewMemberLaborType === "temp_employee" ? "yes" : "no"}
+                      onChange={(event) =>
+                        setCrewMemberLaborType(event.target.value === "yes" ? "temp_employee" : DEFAULT_CREW_LABOR_TYPE)
+                      }
+                    >
+                      <option value="no">No</option>
+                      <option value="yes">Yes</option>
+                    </select>
+                  </div>
+                )}
                 <div className="field-group">
                   <label htmlFor="crew-member-name">Name</label>
                   <input
@@ -3129,6 +3225,56 @@ export function TimeAllocationWorkspace() {
                                   )
                                 }
                               />
+                              <select
+                                aria-label={`Edit subcontractor status for ${member.name}`}
+                                value={editingCrewMember.laborType === "subcontractor" ? "yes" : "no"}
+                                onChange={(event) =>
+                                  setEditingCrewMember((current) =>
+                                    current
+                                      ? {
+                                          ...current,
+                                          laborType: event.target.value === "yes" ? "subcontractor" : DEFAULT_CREW_LABOR_TYPE,
+                                          subcontractorCompany:
+                                            event.target.value === "yes" ? current.subcontractorCompany : ""
+                                        }
+                                      : current
+                                  )
+                                }
+                              >
+                                <option value="no">Subcontractor? No</option>
+                                <option value="yes">Subcontractor? Yes</option>
+                              </select>
+                              {editingCrewMember.laborType === "subcontractor" ? (
+                                <input
+                                  aria-label={`Edit subcontractor company for ${member.name}`}
+                                  placeholder="Subcontractor company"
+                                  value={editingCrewMember.subcontractorCompany}
+                                  onChange={(event) =>
+                                    setEditingCrewMember((current) =>
+                                      current ? { ...current, subcontractorCompany: event.target.value } : current
+                                    )
+                                  }
+                                />
+                              ) : (
+                                <select
+                                  aria-label={`Edit temp employee status for ${member.name}`}
+                                  value={editingCrewMember.laborType === "temp_employee" ? "yes" : "no"}
+                                  onChange={(event) =>
+                                    setEditingCrewMember((current) =>
+                                      current
+                                        ? {
+                                            ...current,
+                                            laborType:
+                                              event.target.value === "yes" ? "temp_employee" : DEFAULT_CREW_LABOR_TYPE
+                                          }
+                                        : current
+                                    )
+                                  }
+                                >
+                                  <option value="no">Temp Employee? No</option>
+                                  <option value="yes">Temp Employee? Yes</option>
+                                </select>
+                              )}
                               <div className="crew-edit-actions">
                                 <button className="secondary-button" onClick={saveEditedCrewMember} type="button">
                                   Save
@@ -3142,7 +3288,7 @@ export function TimeAllocationWorkspace() {
                             <>
                               <span>
                                 <strong>{member.name}</strong>
-                                {member.jobTitle}
+                                {formatCrewMemberMeta(member)}
                               </span>
                               <div className="crew-row-actions">
                                 <button
@@ -3192,7 +3338,7 @@ export function TimeAllocationWorkspace() {
                         <option value="">Select duplicate</option>
                         {sortCrewMembersByName(crewDirectory).map((member) => (
                           <option key={member.id} value={member.id}>
-                            {member.name} - {member.jobTitle}
+                            {formatCrewMemberOption(member)}
                           </option>
                         ))}
                       </select>
@@ -3208,7 +3354,7 @@ export function TimeAllocationWorkspace() {
                         <option value="">Select crew member to keep</option>
                         {sortCrewMembersByName(crewDirectory).map((member) => (
                           <option key={member.id} value={member.id}>
-                            {member.name} - {member.jobTitle}
+                            {formatCrewMemberOption(member)}
                           </option>
                         ))}
                       </select>
@@ -3523,7 +3669,7 @@ export function TimeAllocationWorkspace() {
                     <div className="crew-summary-row" key={row.crewMemberId}>
                       <span>
                         <strong>{row.name}</strong>
-                        {row.jobTitle}
+                        {formatCrewMemberMeta(row)}
                       </span>
                       <strong>{row.hours.toFixed(2)} hrs</strong>
                     </div>
@@ -4448,7 +4594,7 @@ function CrewAllocationEditor({
                 />
                 <span>
                   <strong>{member.name}</strong>
-                  {member.jobTitle}
+                  {formatCrewMemberMeta(member)}
                 </span>
               </label>
             ))}
@@ -4636,6 +4782,8 @@ type PayItemReportDetailRow = {
   crewMemberId: string;
   crewMemberName: string;
   jobTitle: string;
+  laborType?: CrewLaborType;
+  subcontractorCompany?: string;
   hours: number;
   quantityCompleted: number;
   hoursPerUnit: number;
@@ -4672,6 +4820,8 @@ type CrewPerformanceRow = {
   id: string;
   crewMemberName: string;
   jobTitle: string;
+  laborType?: CrewLaborType;
+  subcontractorCompany?: string;
   totalHours: number;
   totalQuantity: number;
   entryCount: number;
@@ -4701,6 +4851,8 @@ type PayItemDetailAnalysisRow = {
   projectName: string;
   crewMemberName?: string;
   jobTitle?: string;
+  laborType?: CrewLaborType;
+  subcontractorCompany?: string;
   entryCount: number;
   excludedEntryCount: number;
   sampleSize: number;
@@ -4758,6 +4910,7 @@ function ReportsView({
   const [detailSort, setDetailSort] = useState<DetailSort>("worst_average");
   const [reportMetric, setReportMetric] = useState<ReportMetric>("median");
   const [excludeReportOutliers, setExcludeReportOutliers] = useState(false);
+  const [reportCrewLaborTypes, setReportCrewLaborTypes] = useState<CrewLaborType[]>(ALL_CREW_LABOR_TYPES);
   const [crewPerformanceInfoOpen, setCrewPerformanceInfoOpen] = useState(false);
   const [myJobsEditorOpen, setMyJobsEditorOpen] = useState(false);
   const [reportPage, setReportPage] = useState(1);
@@ -4810,28 +4963,32 @@ function ReportsView({
       }),
     [entries, myJobIds, reportEndDate, reportProjectId, reportStartDate]
   );
+  const laborFilteredEntries = useMemo(
+    () => filterEntriesByCrewLaborTypes(filteredEntries, reportCrewLaborTypes),
+    [filteredEntries, reportCrewLaborTypes]
+  );
   const normalizedDetailQuery = detailPayItemQuery.trim().toLowerCase();
   const localPayItemRows = useMemo(
-    () => buildPayItemReport(filteredEntries, projects, reportOptions),
-    [filteredEntries, projects, reportOptions]
+    () => buildPayItemReport(laborFilteredEntries, projects, reportOptions),
+    [laborFilteredEntries, projects, reportOptions]
   );
-  const localDetailPayItemOptions = useMemo(() => buildReportPayItemOptions(filteredEntries), [filteredEntries]);
+  const localDetailPayItemOptions = useMemo(() => buildReportPayItemOptions(laborFilteredEntries), [laborFilteredEntries]);
   const localDetailRows = useMemo(
     () =>
       normalizedDetailQuery
         ? buildPayItemDetailAnalysisRows(
-            filteredEntries.filter((entry) => payItemMatchesQuery(entry, normalizedDetailQuery)),
+            laborFilteredEntries.filter((entry) => payItemMatchesQuery(entry, normalizedDetailQuery)),
             projects,
             detailGrouping,
             detailSort,
             reportOptions
           )
         : [],
-    [detailGrouping, detailSort, filteredEntries, normalizedDetailQuery, projects, reportOptions]
+    [detailGrouping, detailSort, laborFilteredEntries, normalizedDetailQuery, projects, reportOptions]
   );
   const localCrewRows = useMemo(
-    () => buildCrewPerformanceRows(filteredEntries, projects, reportOptions),
-    [filteredEntries, projects, reportOptions]
+    () => buildCrewPerformanceRows(laborFilteredEntries, projects, reportOptions),
+    [laborFilteredEntries, projects, reportOptions]
   );
   const serverReportAvailable = Boolean(reportsUseServerData && reportData?.databaseConfigured && reportData.mode === reportMode);
   const payItemRows =
@@ -4856,6 +5013,7 @@ function ReportsView({
     detailPayItemQuery,
     detailSort,
     excludeReportOutliers,
+    reportCrewLaborTypes,
     reportEndDate,
     reportMetric,
     reportMode,
@@ -4877,6 +5035,7 @@ function ReportsView({
         detailSort,
         endDate: reportEndDate,
         excludeOutliers: excludeReportOutliers,
+        crewLaborTypes: reportCrewLaborTypes,
         mode: reportMode,
         myJobIds,
         page: reportPage,
@@ -4922,6 +5081,7 @@ function ReportsView({
     detailPayItemQuery,
     detailSort,
     excludeReportOutliers,
+    reportCrewLaborTypes,
     myJobIds,
     reportEndDate,
     reportMetric,
@@ -4945,6 +5105,7 @@ function ReportsView({
       const response = await fetch("/api/reports/export", {
         body: JSON.stringify({
           allowedProjectIds: allowedReportProjectIds,
+          crewLaborTypes: reportCrewLaborTypes,
           endDate: reportEndDate,
           excludeOutliers: excludeReportOutliers,
           mode: "summary",
@@ -4970,6 +5131,20 @@ function ReportsView({
     } finally {
       setReportExporting(false);
     }
+  }
+
+  function toggleReportCrewLaborType(laborType: CrewLaborType, checked: boolean) {
+    setReportCrewLaborTypes((current) => {
+      const currentSet = new Set(current);
+
+      if (checked) {
+        currentSet.add(laborType);
+      } else {
+        currentSet.delete(laborType);
+      }
+
+      return currentSet.size === 0 ? current : ALL_CREW_LABOR_TYPES.filter((value) => currentSet.has(value));
+    });
   }
 
   return (
@@ -5107,6 +5282,19 @@ function ReportsView({
               <option value="mean">Mean</option>
             </select>
           </div>
+          <fieldset className="report-labor-filter">
+            <legend>Crew Type</legend>
+            {CREW_LABOR_TYPE_OPTIONS.map((option) => (
+              <label key={option.value}>
+                <input
+                  checked={reportCrewLaborTypes.includes(option.value)}
+                  type="checkbox"
+                  onChange={(event) => toggleReportCrewLaborType(option.value, event.target.checked)}
+                />
+                <span>{option.label}</span>
+              </label>
+            ))}
+          </fieldset>
           <label className="report-toggle-row">
             <input
               checked={excludeReportOutliers}
@@ -5117,11 +5305,17 @@ function ReportsView({
           </label>
           <button
             className="secondary-button report-clear-button"
-            disabled={reportProjectId === "all" && !reportStartDate && !reportEndDate}
+            disabled={
+              reportProjectId === "all" &&
+              !reportStartDate &&
+              !reportEndDate &&
+              reportCrewLaborTypes.length === ALL_CREW_LABOR_TYPES.length
+            }
             onClick={() => {
               setReportProjectId("all");
               setReportStartDate("");
               setReportEndDate("");
+              setReportCrewLaborTypes(ALL_CREW_LABOR_TYPES);
             }}
             type="button"
           >
@@ -5705,6 +5899,7 @@ function DetailedPayItemReport({
                   <>
                     <strong>{row.crewMemberName}</strong>
                     {row.jobTitle && row.jobTitle !== "-" ? ` - ${row.jobTitle}` : ""}
+                    {row.laborType ? ` (${formatCrewLaborTypeWithCompany(row)})` : ""}
                   </>
                 ) : (
                   "All crew"
@@ -5771,6 +5966,7 @@ function CrewPerformanceReport({ rows }: { rows: CrewPerformanceRow[] }) {
                 <span>
                   <strong>{row.crewMemberName}</strong>
                   {row.jobTitle !== "-" ? ` - ${row.jobTitle}` : ""}
+                  {row.laborType ? ` (${formatCrewLaborTypeWithCompany(row)})` : ""}
                 </span>
               </button>
               <span data-label="Hours">{row.totalHours.toFixed(2)}</span>
@@ -7365,6 +7561,92 @@ function sortCrewMembersByName(crewMembers: CrewMember[]) {
   );
 }
 
+function filterEntriesByCrewLaborTypes(entries: AllocationEntry[], laborTypes: CrewLaborType[]) {
+  const selectedLaborTypes = normalizeCrewLaborTypes(laborTypes);
+
+  if (selectedLaborTypes.length === ALL_CREW_LABOR_TYPES.length) {
+    return entries;
+  }
+
+  if (selectedLaborTypes.length === 0) {
+    return [];
+  }
+
+  const selectedLaborTypeSet = new Set(selectedLaborTypes);
+
+  return entries.flatMap((entry) => {
+    if (!entry.crewAllocations?.length || entry.hours <= 0) {
+      return [];
+    }
+
+    const includedAllocations = entry.crewAllocations.filter((allocation) =>
+      selectedLaborTypeSet.has(getCrewLaborType(allocation))
+    );
+
+    if (includedAllocations.length === 0) {
+      return [];
+    }
+
+    const includedHours = includedAllocations.reduce((total, allocation) => total + allocation.hours, 0);
+
+    if (includedHours <= 0) {
+      return [];
+    }
+
+    return [
+      {
+        ...entry,
+        crewAllocations: includedAllocations,
+        hours: includedHours,
+        quantityCompleted: entry.quantityCompleted * (includedHours / entry.hours)
+      }
+    ];
+  });
+}
+
+function normalizeCrewLaborTypes(laborTypes: CrewLaborType[]) {
+  return Array.from(new Set(laborTypes.map((laborType) => getCrewLaborType({ laborType }))));
+}
+
+function getCrewLaborType(source: { laborType?: CrewLaborType } | undefined | null): CrewLaborType {
+  if (source?.laborType === "subcontractor" || source?.laborType === "temp_employee") {
+    return source.laborType;
+  }
+
+  return DEFAULT_CREW_LABOR_TYPE;
+}
+
+function formatCrewLaborType(value: CrewLaborType | undefined) {
+  if (value === "subcontractor") {
+    return "Subcontractor";
+  }
+
+  if (value === "temp_employee") {
+    return "Temp Employee";
+  }
+
+  return "Chinchor Employee";
+}
+
+function formatCrewLaborTypeWithCompany(source: { laborType?: CrewLaborType; subcontractorCompany?: string } | undefined | null) {
+  const laborType = getCrewLaborType(source);
+  const label = formatCrewLaborType(laborType);
+
+  if (laborType === "subcontractor" && source?.subcontractorCompany) {
+    return `${label}: ${source.subcontractorCompany}`;
+  }
+
+  return label;
+}
+
+function formatCrewMemberMeta(member: { jobTitle: string; laborType?: CrewLaborType; subcontractorCompany?: string }) {
+  return `${member.jobTitle} - ${formatCrewLaborTypeWithCompany(member)}`;
+}
+
+function formatCrewMemberOption(member: CrewMember) {
+  return `${member.name} - ${formatCrewMemberMeta(member)}`;
+}
+
 function normalizeCrewName(name: string) {
   return name.trim().replace(/\s+/g, " ").toLowerCase();
 }
@@ -7414,7 +7696,9 @@ function mergeEntryCrewAllocations(
             ...allocation,
             crewMemberId: targetCrewMember.id,
             crewMemberName: targetCrewMember.name,
-            jobTitle: targetCrewMember.jobTitle
+            jobTitle: targetCrewMember.jobTitle,
+            laborType: getCrewLaborType(targetCrewMember),
+            subcontractorCompany: targetCrewMember.subcontractorCompany
           }
         : allocation;
     const existingAllocation = mergedAllocations.get(nextAllocation.crewMemberId);
@@ -7629,7 +7913,9 @@ function getSelectedCrewMembers(
     return {
       id: crewMemberId,
       name: currentCrewMember?.name ?? savedCrewMember?.crewMemberName ?? "Unknown crew member",
-      jobTitle: currentCrewMember?.jobTitle ?? savedCrewMember?.jobTitle ?? "-"
+      jobTitle: currentCrewMember?.jobTitle ?? savedCrewMember?.jobTitle ?? "-",
+      laborType: currentCrewMember ? getCrewLaborType(currentCrewMember) : getCrewLaborType(savedCrewMember),
+      subcontractorCompany: currentCrewMember?.subcontractorCompany ?? savedCrewMember?.subcontractorCompany
     };
   });
 }
@@ -7696,6 +7982,8 @@ function buildCrewAllocations(draft: PayItemDraft | undefined, crewMembers: Crew
       crewMemberId,
       crewMemberName: crewMember?.name ?? "Unknown crew member",
       jobTitle: crewMember?.jobTitle ?? "-",
+      laborType: getCrewLaborType(crewMember),
+      subcontractorCompany: crewMember?.subcontractorCompany,
       hours
     };
   });
@@ -7757,6 +8045,7 @@ function buildCrewSummary(entries: AllocationEntry[], crewMembers: CrewMember[])
         crewMemberId: "unassigned",
         name: "Unassigned",
         jobTitle: "No crew selected",
+        laborType: DEFAULT_CREW_LABOR_TYPE,
         hours: (rows.get("unassigned")?.hours ?? 0) + entry.hours
       });
       continue;
@@ -7768,6 +8057,8 @@ function buildCrewSummary(entries: AllocationEntry[], crewMembers: CrewMember[])
         crewMemberId: allocation.crewMemberId,
         name: crewMember?.name ?? allocation.crewMemberName,
         jobTitle: crewMember?.jobTitle ?? allocation.jobTitle,
+        laborType: crewMember ? getCrewLaborType(crewMember) : getCrewLaborType(allocation),
+        subcontractorCompany: crewMember?.subcontractorCompany ?? allocation.subcontractorCompany,
         hours: 0
       };
 
@@ -8178,10 +8469,11 @@ function buildDailyReportEmployeeRowsFromEntries(entries: AllocationEntry[], cre
   for (const entry of entries) {
     for (const allocation of entry.crewAllocations ?? []) {
       const crewMember = crewMembers.find((member) => member.id === allocation.crewMemberId);
+      const crewLaborMeta = formatCrewLaborTypeWithCompany(crewMember ?? allocation);
       const row = rowsByCrewMemberId.get(allocation.crewMemberId) ?? {
         employeeClassification: `${crewMember?.name ?? allocation.crewMemberName} - ${
           crewMember?.jobTitle ?? allocation.jobTitle
-        }`,
+        } (${crewLaborMeta})`,
         truckNumber: "",
         timeIn: "",
         lunchOut: "",
@@ -8536,6 +8828,8 @@ function exportEntriesToCsv({
     "crew_member_id",
     "crew_member_name",
     "crew_job_title",
+    "crew_labor_type",
+    "subcontractor_company",
     "crew_hours",
     "crew_hour_share_percent",
     "crew_quantity_completed_prorated",
@@ -8611,6 +8905,8 @@ function buildEntryCsvRows({
         "unassigned",
         "Unassigned",
         "",
+        "",
+        "",
         formatCsvNumber(entry.hours),
         "100.00",
         formatCsvNumber(entry.quantityCompleted),
@@ -8631,6 +8927,8 @@ function buildEntryCsvRows({
       allocation.crewMemberId,
       allocation.crewMemberName,
       allocation.jobTitle,
+      formatCrewLaborType(getCrewLaborType(allocation)),
+      allocation.subcontractorCompany ?? "",
       formatCsvNumber(allocation.hours),
       formatCsvNumber(hourShare * 100),
       formatCsvNumber(proratedQuantity),
