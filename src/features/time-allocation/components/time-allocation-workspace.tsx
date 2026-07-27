@@ -3609,9 +3609,9 @@ export function TimeAllocationWorkspace() {
                   <div className="matrix-header" role="row">
                     <span>Code</span>
                     <span>Pay Item</span>
-                    <span>Budget</span>
-                    <span>Saved Hrs</span>
-                    <span>Saved Qty</span>
+                    <span className="matrix-quantity-header">QTY</span>
+                    <span className="matrix-quantity-header">Saved Hrs</span>
+                    <span className="matrix-quantity-header">Saved Qty</span>
                     <span>Crew</span>
                     <span>Hours</span>
                     <span>Quantity</span>
@@ -3625,7 +3625,7 @@ export function TimeAllocationWorkspace() {
                       <div className={rowHasWork ? "matrix-row worked-row" : "matrix-row"} key={item.id} role="row">
                         <span className="matrix-code" data-label="Code">{item.code}</span>
                         <span className="matrix-name" data-label="Pay Item">{item.name}</span>
-                        <span className="matrix-budget" data-label="Budget">
+                        <span className="matrix-budget" data-label="QTY">
                           {item.budgetedQuantity.toLocaleString()} {item.unitOfMeasure.toUpperCase()}
                         </span>
                         <span className="matrix-saved" data-label="Saved Hrs">{savedEntry ? savedEntry.hours.toFixed(2) : "-"}</span>
@@ -4884,7 +4884,7 @@ function MobilePayItemEntry({
           <strong>{selectedPayItem.code}</strong>
         </div>
         <div>
-          <span>Budget</span>
+          <span>QTY</span>
           <strong>
             {selectedPayItem.budgetedQuantity.toLocaleString()} {selectedPayItem.unitOfMeasure.toUpperCase()}
           </strong>

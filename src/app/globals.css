@@ -1465,6 +1465,12 @@ a.daily-report-procore-status:hover {
   font-size: 0.9rem;
 }
 
+.matrix-quantity-header,
+.matrix-budget,
+.matrix-saved {
+  text-align: center;
+}
+
 .crew-setup {
   border-top: 1px solid var(--line);
   display: grid;
