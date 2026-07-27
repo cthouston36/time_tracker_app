@@ -9,6 +9,7 @@ export type NetSuiteConfig = {
 };
 
 const DEFAULT_NETSUITE_SCOPE = "rest_webservices";
+const NETSUITE_CONFIG_MARKER = "netsuite-config-v2";
 
 export function getNetSuiteConfig(): NetSuiteConfig {
   const accountId = getRequiredEnv("NETSUITE_ACCOUNT_ID");
@@ -26,6 +27,34 @@ export function getNetSuiteConfig(): NetSuiteConfig {
     tokenEndpoint:
       process.env.NETSUITE_TOKEN_ENDPOINT ??
       `https://${accountId}.suitetalk.api.netsuite.com/services/rest/auth/oauth2/v1/token`
+  };
+}
+
+export function getNetSuiteEnvironmentDiagnostics() {
+  const rawPrivateKey = process.env.NETSUITE_PRIVATE_KEY;
+  const rawPrivateKeyBase64 = process.env.NETSUITE_PRIVATE_KEY_B64 ?? process.env.NETSUITE_PRIVATE_KEY_BASE64;
+  const privateKeySource = rawPrivateKeyBase64
+    ? "NETSUITE_PRIVATE_KEY_B64"
+    : rawPrivateKey
+      ? "NETSUITE_PRIVATE_KEY"
+      : "missing";
+  const normalizedPrivateKey = rawPrivateKeyBase64
+    ? normalizePrivateKey(Buffer.from(rawPrivateKeyBase64.trim(), "base64").toString("utf8"))
+    : rawPrivateKey
+      ? normalizePrivateKey(rawPrivateKey)
+      : "";
+
+  return {
+    accountIdConfigured: Boolean(process.env.NETSUITE_ACCOUNT_ID),
+    certificateIdConfigured: Boolean(process.env.NETSUITE_CERTIFICATE_ID),
+    clientIdConfigured: Boolean(process.env.NETSUITE_CLIENT_ID),
+    hasPrivateKeyFooter: normalizedPrivateKey.includes("-----END"),
+    hasPrivateKeyHeader: normalizedPrivateKey.includes("-----BEGIN"),
+    marker: NETSUITE_CONFIG_MARKER,
+    privateKeyLength: normalizedPrivateKey.length,
+    privateKeySource,
+    restBaseUrlConfigured: Boolean(process.env.NETSUITE_REST_BASE_URL),
+    scope: process.env.NETSUITE_SCOPE ?? DEFAULT_NETSUITE_SCOPE
   };
 }
 
