@@ -10,6 +10,8 @@ type AuthUserRow = {
   user_id: string;
   first_name: string;
   last_name: string;
+  netsuite_project_manager_id: string | null;
+  netsuite_project_manager_name: string | null;
   role: string;
   password_hash: string;
   active: boolean;
@@ -29,6 +31,8 @@ export type SaveAppUserInput = {
   active: boolean;
   firstName: string;
   lastName: string;
+  netSuiteProjectManagerId?: string;
+  netSuiteProjectManagerName?: string;
   password?: string;
   role: UserRole;
   userId: string;
@@ -92,7 +96,15 @@ export async function validateUserCredentials(userId: string, password: string) 
   await seedBootstrapUsersIfEmpty();
 
   const rows = (await sql`
-    select user_id, first_name, last_name, role, password_hash, active
+    select
+      user_id,
+      first_name,
+      last_name,
+      netsuite_project_manager_id,
+      netsuite_project_manager_name,
+      role,
+      password_hash,
+      active
     from app_users
     where user_id = ${normalizedUserId}
     limit 1
@@ -111,6 +123,8 @@ export async function validateUserCredentials(userId: string, password: string) 
     firstName: user.first_name,
     id: user.user_id,
     lastName: user.last_name,
+    netSuiteProjectManagerId: user.netsuite_project_manager_id ?? undefined,
+    netSuiteProjectManagerName: user.netsuite_project_manager_name ?? undefined,
     role: user.role
   } satisfies AuthUser;
 }
@@ -143,7 +157,15 @@ export async function getActiveAppUser(userId: string) {
   await seedBootstrapUsersIfEmpty();
 
   const rows = (await sql`
-    select user_id, first_name, last_name, role, password_hash, active
+    select
+      user_id,
+      first_name,
+      last_name,
+      netsuite_project_manager_id,
+      netsuite_project_manager_name,
+      role,
+      password_hash,
+      active
     from app_users
     where user_id = ${normalizedUserId}
     limit 1
@@ -158,6 +180,8 @@ export async function getActiveAppUser(userId: string) {
     firstName: user.first_name,
     id: user.user_id,
     lastName: user.last_name,
+    netSuiteProjectManagerId: user.netsuite_project_manager_id ?? undefined,
+    netSuiteProjectManagerName: user.netsuite_project_manager_name ?? undefined,
     role: user.role
   } satisfies AuthUser;
 }
@@ -177,6 +201,8 @@ export async function listAppUsers() {
       user_id,
       first_name,
       last_name,
+      netsuite_project_manager_id,
+      netsuite_project_manager_name,
       role,
       active,
       created_at::text as created_at,
@@ -197,6 +223,8 @@ export async function listAppUsers() {
         firstName: row.first_name,
         id: row.user_id,
         lastName: row.last_name,
+        netSuiteProjectManagerId: row.netsuite_project_manager_id ?? undefined,
+        netSuiteProjectManagerName: row.netsuite_project_manager_name ?? undefined,
         role: row.role,
         updatedAt: row.updated_at ?? undefined
       } satisfies ManagedAppUser
@@ -217,6 +245,8 @@ export async function saveAppUser(input: SaveAppUserInput) {
   const userId = normalizeUserId(input.userId);
   const firstName = input.firstName.trim();
   const lastName = input.lastName.trim();
+  const netSuiteProjectManagerId = readOptionalText(input.netSuiteProjectManagerId);
+  const netSuiteProjectManagerName = readOptionalText(input.netSuiteProjectManagerName);
   const password = normalizePassword(input.password);
 
   if (!userId || !firstName || !lastName || !isUserRole(input.role)) {
@@ -243,6 +273,8 @@ export async function saveAppUser(input: SaveAppUserInput) {
         user_id,
         first_name,
         last_name,
+        netsuite_project_manager_id,
+        netsuite_project_manager_name,
         role,
         password_hash,
         active,
@@ -253,6 +285,8 @@ export async function saveAppUser(input: SaveAppUserInput) {
         ${userId},
         ${firstName},
         ${lastName},
+        ${netSuiteProjectManagerId},
+        ${netSuiteProjectManagerName},
         ${input.role},
         ${passwordHash},
         ${input.active},
@@ -262,6 +296,8 @@ export async function saveAppUser(input: SaveAppUserInput) {
       on conflict (user_id) do update
       set first_name = excluded.first_name,
           last_name = excluded.last_name,
+          netsuite_project_manager_id = excluded.netsuite_project_manager_id,
+          netsuite_project_manager_name = excluded.netsuite_project_manager_name,
           role = excluded.role,
           password_hash = excluded.password_hash,
           active = excluded.active,
@@ -272,6 +308,8 @@ export async function saveAppUser(input: SaveAppUserInput) {
       update app_users
       set first_name = ${firstName},
           last_name = ${lastName},
+          netsuite_project_manager_id = ${netSuiteProjectManagerId},
+          netsuite_project_manager_name = ${netSuiteProjectManagerName},
           role = ${input.role},
           active = ${input.active},
           updated_at = now()
@@ -303,7 +341,15 @@ export async function changeCurrentUserPassword(userId: string, currentPassword:
   await ensureAuthUsersTable();
 
   const rows = (await sql`
-    select user_id, first_name, last_name, role, password_hash, active
+    select
+      user_id,
+      first_name,
+      last_name,
+      netsuite_project_manager_id,
+      netsuite_project_manager_name,
+      role,
+      password_hash,
+      active
     from app_users
     where user_id = ${normalizedUserId}
     limit 1
@@ -342,6 +388,8 @@ async function ensureAuthUsersTable() {
       user_id text primary key,
       first_name text not null,
       last_name text not null,
+      netsuite_project_manager_id text,
+      netsuite_project_manager_name text,
       role text not null check (role in ('standard', 'project_manager', 'admin')),
       password_hash text not null,
       active boolean not null default true,
@@ -350,7 +398,10 @@ async function ensureAuthUsersTable() {
     )
   `;
 
+  await sql`alter table app_users add column if not exists netsuite_project_manager_id text`;
+  await sql`alter table app_users add column if not exists netsuite_project_manager_name text`;
   await sql`create index if not exists app_users_active_idx on app_users (active)`;
+  await sql`create index if not exists app_users_netsuite_project_manager_idx on app_users (netsuite_project_manager_id)`;
 
   authUsersTableReady = true;
 }
@@ -393,6 +444,8 @@ async function seedBootstrapUsersIfEmpty() {
         user_id,
         first_name,
         last_name,
+        netsuite_project_manager_id,
+        netsuite_project_manager_name,
         role,
         password_hash,
         active,
@@ -403,6 +456,8 @@ async function seedBootstrapUsersIfEmpty() {
         ${user.id},
         ${user.firstName},
         ${user.lastName},
+        ${null},
+        ${null},
         ${user.role},
         ${passwordHash},
         true,
@@ -439,6 +494,10 @@ function normalizeUserId(userId: string) {
 
 function normalizePassword(password: string | undefined) {
   return typeof password === "string" && password.length > 0 ? password : undefined;
+}
+
+function readOptionalText(value: string | undefined) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
 function isUserRole(role: string): role is UserRole {

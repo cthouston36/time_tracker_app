@@ -10,6 +10,8 @@ export type Project = {
   id: string;
   name: string;
   netSuiteProjectId?: string;
+  netSuiteProjectManagerId?: string;
+  netSuiteProjectManagerName?: string;
   payItems: PayItem[];
   procoreProjectId?: string;
   sourceSystem?: "procore" | "netsuite";

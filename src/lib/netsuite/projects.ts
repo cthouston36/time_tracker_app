@@ -6,6 +6,7 @@ const NETSUITE_PROJECT_TABLE = "job";
 const NETSUITE_BUDGET_LINE_TABLE = "customrecord_hrc_pci_budgetviewdetailrow";
 const PROJECT_TITLE_FIELD = "custentity_r_it_pc_project_number";
 const PROCORE_PROJECT_ID_FIELD = "custentity_hrc_pci_projectid";
+const PROJECT_MANAGER_FIELD = "projectmanager";
 const BUDGET_LINE_PROJECT_FIELD = "custrecord_hrc_pci_bvl_project";
 const BUDGET_LINE_COST_CODE_FIELD = "custrecord_hrc_pci_cost_code";
 const BUDGET_LINE_QUANTITY_FIELD = "custrecord_hrc_pci_bvdr_quantity";
@@ -27,6 +28,8 @@ export type NetSuiteSyncResult = {
 type NetSuiteProjectRow = Record<string, unknown> & {
   entity_id?: unknown;
   netsuite_project_id?: unknown;
+  project_manager_id?: unknown;
+  project_manager_name?: unknown;
   procore_project_id?: unknown;
   project_title?: unknown;
 };
@@ -133,6 +136,8 @@ export async function getNetSuiteConnectionTest() {
     projectSample: (projectResponse.items ?? []).map((row) => ({
       entityId: readString(rowValue(row, "entity_id")),
       netSuiteProjectId: readString(rowValue(row, "netsuite_project_id", "id")),
+      projectManagerId: readString(rowValue(row, "project_manager_id")),
+      projectManagerName: readString(rowValue(row, "project_manager_name")),
       procoreProjectId: readString(rowValue(row, "procore_project_id")),
       title: readString(rowValue(row, "project_title", "entity_id"))
     })),
@@ -196,6 +201,8 @@ function buildProjectQuery() {
       id as netsuite_project_id,
       entityid as entity_id,
       ${PROJECT_TITLE_FIELD} as project_title,
+      ${PROJECT_MANAGER_FIELD} as project_manager_id,
+      BUILTIN.DF(${PROJECT_MANAGER_FIELD}) as project_manager_name,
       ${PROCORE_PROJECT_ID_FIELD} as procore_project_id
     from ${NETSUITE_PROJECT_TABLE}
     where isinactive = 'F'
@@ -247,6 +254,8 @@ function mapNetSuiteProject(projectRow: NetSuiteProjectRow, budgetRows: NetSuite
     id: procoreProjectId,
     name,
     netSuiteProjectId,
+    netSuiteProjectManagerId: readString(rowValue(projectRow, "project_manager_id")) || undefined,
+    netSuiteProjectManagerName: readString(rowValue(projectRow, "project_manager_name")) || undefined,
     payItems: dedupeNetSuitePayItems(budgetRows),
     procoreProjectId,
     sourceSystem: "netsuite"

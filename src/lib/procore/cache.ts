@@ -76,6 +76,8 @@ async function readProcoreTablesCache() {
       id,
       name,
       netsuite_project_id,
+      netsuite_project_manager_id,
+      netsuite_project_manager_name,
       procore_project_id,
       source_system
     from procore_projects
@@ -124,6 +126,8 @@ async function readProcoreTablesCache() {
       id: project.id,
       name: project.name,
       netSuiteProjectId: project.netsuite_project_id || undefined,
+      netSuiteProjectManagerId: project.netsuite_project_manager_id || undefined,
+      netSuiteProjectManagerName: project.netsuite_project_manager_name || undefined,
       payItems: payItemsByProjectId.get(project.id) ?? [],
       procoreProjectId: project.procore_project_id || project.id,
       sourceSystem: readSourceSystem(project.source_system)
@@ -145,6 +149,8 @@ async function writeProcoreTablesCache(projects: Project[], syncedAt: string) {
     id: project.id,
     name: project.name,
     netsuite_project_id: project.netSuiteProjectId ?? null,
+    netsuite_project_manager_id: project.netSuiteProjectManagerId ?? null,
+    netsuite_project_manager_name: project.netSuiteProjectManagerName ?? null,
     procore_project_id: project.procoreProjectId ?? project.id,
     source_system: project.sourceSystem ?? "procore"
   }));
@@ -168,6 +174,8 @@ async function writeProcoreTablesCache(projects: Project[], syncedAt: string) {
         id,
         name,
         netsuite_project_id,
+        netsuite_project_manager_id,
+        netsuite_project_manager_name,
         procore_project_id,
         source_system,
         updated_at
@@ -183,12 +191,16 @@ async function writeProcoreTablesCache(projects: Project[], syncedAt: string) {
         id text,
         name text,
         netsuite_project_id text,
+        netsuite_project_manager_id text,
+        netsuite_project_manager_name text,
         procore_project_id text,
         source_system text
       )
       on conflict (id) do update
       set name = excluded.name,
           netsuite_project_id = excluded.netsuite_project_id,
+          netsuite_project_manager_id = excluded.netsuite_project_manager_id,
+          netsuite_project_manager_name = excluded.netsuite_project_manager_name,
           procore_project_id = excluded.procore_project_id,
           source_system = excluded.source_system,
           updated_at = now()
@@ -297,6 +309,8 @@ async function ensureProcoreCacheTables() {
       id text primary key,
       name text not null,
       netsuite_project_id text,
+      netsuite_project_manager_id text,
+      netsuite_project_manager_name text,
       procore_project_id text,
       source_system text not null default 'procore',
       updated_at timestamptz not null default now()
@@ -304,6 +318,8 @@ async function ensureProcoreCacheTables() {
   `;
 
   await sql`alter table procore_projects add column if not exists netsuite_project_id text`;
+  await sql`alter table procore_projects add column if not exists netsuite_project_manager_id text`;
+  await sql`alter table procore_projects add column if not exists netsuite_project_manager_name text`;
   await sql`alter table procore_projects add column if not exists procore_project_id text`;
   await sql`alter table procore_projects add column if not exists source_system text not null default 'procore'`;
 
@@ -352,6 +368,8 @@ function normalizeProjects(projects: Project[]): Project[] {
       id,
       name,
       netSuiteProjectId: readString(project.netSuiteProjectId) || undefined,
+      netSuiteProjectManagerId: readString(project.netSuiteProjectManagerId) || undefined,
+      netSuiteProjectManagerName: readString(project.netSuiteProjectManagerName) || undefined,
       payItems: normalizePayItems(project.payItems),
       procoreProjectId: readString(project.procoreProjectId) || id,
       sourceSystem: readSourceSystem(project.sourceSystem)
@@ -416,6 +434,8 @@ type ProcoreProjectRow = {
   id: string;
   name: string;
   netsuite_project_id: string | null;
+  netsuite_project_manager_id: string | null;
+  netsuite_project_manager_name: string | null;
   procore_project_id: string | null;
   source_system: string | null;
 };

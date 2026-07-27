@@ -52,6 +52,8 @@ export async function POST(request: NextRequest) {
     active,
     firstName: body.firstName,
     lastName: body.lastName,
+    netSuiteProjectManagerId: body.netSuiteProjectManagerId,
+    netSuiteProjectManagerName: body.netSuiteProjectManagerName,
     password: body.password,
     role,
     userId
@@ -71,6 +73,8 @@ export async function POST(request: NextRequest) {
     existingUser,
     firstName: body.firstName,
     lastName: body.lastName,
+    netSuiteProjectManagerId: body.netSuiteProjectManagerId,
+    netSuiteProjectManagerName: body.netSuiteProjectManagerName,
     passwordChanged: typeof body.password === "string" && body.password.length > 0,
     request,
     role,
@@ -96,6 +100,8 @@ async function recordUserAuditEvents({
   existingUser,
   firstName,
   lastName,
+  netSuiteProjectManagerId,
+  netSuiteProjectManagerName,
   passwordChanged,
   request,
   role,
@@ -106,6 +112,8 @@ async function recordUserAuditEvents({
   existingUser?: ManagedAppUser;
   firstName: string;
   lastName: string;
+  netSuiteProjectManagerId?: string;
+  netSuiteProjectManagerName?: string;
   passwordChanged: boolean;
   request: NextRequest;
   role: UserRole;
@@ -122,6 +130,8 @@ async function recordUserAuditEvents({
     active,
     firstName: firstName.trim(),
     lastName: lastName.trim(),
+    netSuiteProjectManagerId: normalizeOptionalText(netSuiteProjectManagerId),
+    netSuiteProjectManagerName: normalizeOptionalText(netSuiteProjectManagerName),
     role
   };
 
@@ -171,6 +181,8 @@ async function recordUserAuditEvents({
   if (
     existingUser.firstName !== firstName.trim() ||
     existingUser.lastName !== lastName.trim() ||
+    existingUser.netSuiteProjectManagerId !== nextUserMetadata.netSuiteProjectManagerId ||
+    existingUser.netSuiteProjectManagerName !== nextUserMetadata.netSuiteProjectManagerName ||
     auditEvents.length === 0
   ) {
     auditEvents.push({
@@ -180,6 +192,8 @@ async function recordUserAuditEvents({
           active: existingUser.active,
           firstName: existingUser.firstName,
           lastName: existingUser.lastName,
+          netSuiteProjectManagerId: existingUser.netSuiteProjectManagerId,
+          netSuiteProjectManagerName: existingUser.netSuiteProjectManagerName,
           role: existingUser.role
         },
         to: nextUserMetadata
@@ -194,4 +208,8 @@ async function recordUserAuditEvents({
       metadata: event.metadata
     });
   }
+}
+
+function normalizeOptionalText(value: string | undefined) {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }

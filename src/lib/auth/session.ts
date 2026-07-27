@@ -110,6 +110,14 @@ function normalizeSessionUser(value: unknown) {
     firstName: user.firstName,
     id: user.id,
     lastName: user.lastName,
+    netSuiteProjectManagerId:
+      typeof user.netSuiteProjectManagerId === "string" && user.netSuiteProjectManagerId.trim()
+        ? user.netSuiteProjectManagerId.trim()
+        : undefined,
+    netSuiteProjectManagerName:
+      typeof user.netSuiteProjectManagerName === "string" && user.netSuiteProjectManagerName.trim()
+        ? user.netSuiteProjectManagerName.trim()
+        : undefined,
     role: user.role
   } satisfies AuthUser;
 }

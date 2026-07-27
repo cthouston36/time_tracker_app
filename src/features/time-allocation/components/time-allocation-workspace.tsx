@@ -166,9 +166,16 @@ type AdminUserFormState = {
   active: boolean;
   firstName: string;
   lastName: string;
+  netSuiteProjectManagerId: string;
+  netSuiteProjectManagerName: string;
   password: string;
   role: AuthUser["role"];
   userId: string;
+};
+
+type NetSuiteProjectManagerOption = {
+  id: string;
+  name: string;
 };
 
 type ChangePasswordFormState = {
@@ -469,6 +476,7 @@ export function TimeAllocationWorkspace() {
   );
   const visibleProjectIds = useMemo(() => new Set(projects.map((project) => project.id)), [projects]);
   const reportEntries = entries.filter((entry) => visibleProjectIds.has(entry.projectId));
+  const netSuiteProjectManagerOptions = useMemo(() => buildNetSuiteProjectManagerOptions(allProjects), [allProjects]);
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === selectedProjectId) ?? projects[0],
@@ -554,10 +562,17 @@ export function TimeAllocationWorkspace() {
     [dailyReportUploadsByKey, dailyReportsByKey, projects]
   );
   const dayIsSubmitted = currentDaySubmission.status === "submitted";
-  const currentUserMyJobIds = useMemo(
-    () => (currentUser ? (myJobsByUser[currentUser.id] ?? []).filter((projectId) => visibleProjectIds.has(projectId)) : []),
-    [currentUser, myJobsByUser, visibleProjectIds]
-  );
+  const currentUserMyJobIds = useMemo(() => {
+    if (!currentUser) {
+      return [];
+    }
+
+    if (Object.prototype.hasOwnProperty.call(myJobsByUser, currentUser.id)) {
+      return (myJobsByUser[currentUser.id] ?? []).filter((projectId) => visibleProjectIds.has(projectId));
+    }
+
+    return getDefaultMyJobIdsForUser(currentUser, projects);
+  }, [currentUser, myJobsByUser, projects, visibleProjectIds]);
   const myProjectIdSet = useMemo(() => new Set(currentUserMyJobIds), [currentUserMyJobIds]);
   const jobPickerProjects = useMemo(
     () =>
@@ -1235,6 +1250,8 @@ export function TimeAllocationWorkspace() {
       active: user.active,
       firstName: user.firstName,
       lastName: user.lastName,
+      netSuiteProjectManagerId: user.netSuiteProjectManagerId ?? "",
+      netSuiteProjectManagerName: user.netSuiteProjectManagerName ?? "",
       password: "",
       role: user.role,
       userId: user.id
@@ -1255,6 +1272,10 @@ export function TimeAllocationWorkspace() {
     const userId = adminUserForm.userId.trim().toLowerCase();
     const firstName = adminUserForm.firstName.trim();
     const lastName = adminUserForm.lastName.trim();
+    const netSuiteProjectManager = resolveNetSuiteProjectManagerOption(
+      adminUserForm.netSuiteProjectManagerId,
+      netSuiteProjectManagerOptions
+    );
     const password = adminUserForm.password.trim();
 
     if (!userId || !firstName || !lastName) {
@@ -1276,6 +1297,8 @@ export function TimeAllocationWorkspace() {
           active: adminUserForm.active,
           firstName,
           lastName,
+          netSuiteProjectManagerId: adminUserForm.role === "project_manager" ? netSuiteProjectManager?.id : undefined,
+          netSuiteProjectManagerName: adminUserForm.role === "project_manager" ? netSuiteProjectManager?.name : undefined,
           password: password || undefined,
           role: adminUserForm.role,
           userId
@@ -1315,6 +1338,8 @@ export function TimeAllocationWorkspace() {
           active,
           firstName: user.firstName,
           lastName: user.lastName,
+          netSuiteProjectManagerId: user.netSuiteProjectManagerId,
+          netSuiteProjectManagerName: user.netSuiteProjectManagerName,
           role: user.role,
           userId: user.id
         }),
@@ -3199,6 +3224,7 @@ export function TimeAllocationWorkspace() {
               editingUserId={editingAdminUserId}
               form={adminUserForm}
               loading={loadingAdminUsers}
+              netSuiteProjectManagerOptions={netSuiteProjectManagerOptions}
               notice={adminUsersNotice}
               onCancelEdit={resetAdminUserForm}
               onEditUser={startEditingAdminUser}
@@ -6450,6 +6476,7 @@ function AdminUsersPanel({
   editingUserId,
   form,
   loading,
+  netSuiteProjectManagerOptions,
   notice,
   onCancelEdit,
   onEditUser,
@@ -6464,6 +6491,7 @@ function AdminUsersPanel({
   editingUserId: string;
   form: AdminUserFormState;
   loading: boolean;
+  netSuiteProjectManagerOptions: NetSuiteProjectManagerOption[];
   notice: string;
   onCancelEdit: () => void;
   onEditUser: (user: ManagedAppUser) => void;
@@ -6475,6 +6503,10 @@ function AdminUsersPanel({
   users: ManagedAppUser[];
 }) {
   const activeUserCount = users.filter((user) => user.active).length;
+  const projectManagerOptions = mergeNetSuiteProjectManagerOptions(netSuiteProjectManagerOptions, {
+    id: form.netSuiteProjectManagerId,
+    name: form.netSuiteProjectManagerName
+  });
 
   return (
     <details className="admin-users">
@@ -6520,7 +6552,15 @@ function AdminUsersPanel({
             <select
               disabled={saving || form.userId === currentUserId}
               id="admin-user-role"
-              onChange={(event) => onUpdateForm("role", event.target.value as AuthUser["role"])}
+              onChange={(event) => {
+                const role = event.target.value as AuthUser["role"];
+                onUpdateForm("role", role);
+
+                if (role !== "project_manager") {
+                  onUpdateForm("netSuiteProjectManagerId", "");
+                  onUpdateForm("netSuiteProjectManagerName", "");
+                }
+              }}
               value={form.role}
             >
               <option value="standard">Standard User</option>
@@ -6528,6 +6568,30 @@ function AdminUsersPanel({
               <option value="admin">Admin</option>
             </select>
           </div>
+          {form.role === "project_manager" ? (
+            <div className="field-group">
+              <label htmlFor="admin-user-netsuite-pm">NetSuite Project Manager</label>
+              <select
+                disabled={saving}
+                id="admin-user-netsuite-pm"
+                onChange={(event) => {
+                  const selectedOption = projectManagerOptions.find((option) => option.id === event.target.value);
+
+                  onUpdateForm("netSuiteProjectManagerId", selectedOption?.id ?? "");
+                  onUpdateForm("netSuiteProjectManagerName", selectedOption?.name ?? "");
+                }}
+                value={form.netSuiteProjectManagerId}
+              >
+                <option value="">No NetSuite PM mapping</option>
+                {projectManagerOptions.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.name}
+                  </option>
+                ))}
+              </select>
+              <div className="field-note">Used to default this PM&apos;s My Projects from NetSuite project records.</div>
+            </div>
+          ) : null}
           <div className="field-group">
             <label htmlFor="admin-user-password">{editingUserId ? "New Password" : "Temporary Password"}</label>
             <input
@@ -6576,6 +6640,9 @@ function AdminUsersPanel({
                   <strong>{formatUserName(user)}</strong>
                   <span>
                     {user.id} - {formatRole(user.role)}
+                    {user.role === "project_manager" && user.netSuiteProjectManagerName
+                      ? ` - NetSuite PM: ${user.netSuiteProjectManagerName}`
+                      : ""}
                   </span>
                 </div>
                 <div className="admin-user-row-actions">
@@ -7329,6 +7396,61 @@ function projectMatchesIdentifier(project: Project, identifier: string) {
   return [project.id, project.procoreProjectId, project.netSuiteProjectId, project.name]
     .filter((value): value is string => Boolean(value))
     .some((value) => value.trim().toLowerCase() === normalizedIdentifier);
+}
+
+function getDefaultMyJobIdsForUser(user: AuthUser, projects: Project[]) {
+  if (user.role !== "project_manager" || !user.netSuiteProjectManagerId) {
+    return [];
+  }
+
+  return projects
+    .filter((project) => project.netSuiteProjectManagerId === user.netSuiteProjectManagerId)
+    .map((project) => project.id);
+}
+
+function buildNetSuiteProjectManagerOptions(projects: Project[]): NetSuiteProjectManagerOption[] {
+  const optionsById = new Map<string, NetSuiteProjectManagerOption>();
+
+  for (const project of projects) {
+    const id = project.netSuiteProjectManagerId?.trim();
+
+    if (!id) {
+      continue;
+    }
+
+    const name = project.netSuiteProjectManagerName?.trim() || `NetSuite PM ${id}`;
+    const existingOption = optionsById.get(id);
+
+    if (!existingOption || existingOption.name.startsWith("NetSuite PM ")) {
+      optionsById.set(id, { id, name });
+    }
+  }
+
+  return Array.from(optionsById.values()).sort((left, right) => left.name.localeCompare(right.name));
+}
+
+function mergeNetSuiteProjectManagerOptions(
+  options: NetSuiteProjectManagerOption[],
+  selectedOption: NetSuiteProjectManagerOption
+) {
+  if (!selectedOption.id || options.some((option) => option.id === selectedOption.id)) {
+    return options;
+  }
+
+  return [...options, selectedOption].sort((left, right) => left.name.localeCompare(right.name));
+}
+
+function resolveNetSuiteProjectManagerOption(id: string, options: NetSuiteProjectManagerOption[]) {
+  const normalizedId = id.trim();
+
+  if (!normalizedId) {
+    return null;
+  }
+
+  return options.find((option) => option.id === normalizedId) ?? {
+    id: normalizedId,
+    name: `NetSuite PM ${normalizedId}`
+  };
 }
 
 function buildCrewDirectoryFromProjects(crewMembersByProject: CrewMembersByProject) {
@@ -8636,6 +8758,8 @@ function createEmptyAdminUserForm(): AdminUserFormState {
     active: true,
     firstName: "",
     lastName: "",
+    netSuiteProjectManagerId: "",
+    netSuiteProjectManagerName: "",
     password: "",
     role: "standard",
     userId: ""
