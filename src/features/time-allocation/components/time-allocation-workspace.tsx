@@ -30,7 +30,7 @@ import {
 import { IconLabel } from "@/components/icon-label";
 import { todayInputValue } from "@/lib/date";
 import type { AuthUser } from "@/lib/auth/types";
-import type { AllocationEntry, CrewLaborType, Project } from "@/lib/procore/types";
+import type { AllocationEntry, CrewLaborType, PayItem, Project } from "@/lib/procore/types";
 
 const PROCORE_SYNC_REQUEST_TIMEOUT_MS = 55_000;
 const PROCORE_WEB_BASE_URL = process.env.NEXT_PUBLIC_PROCORE_WEB_BASE_URL ?? "https://us02.procore.com";
@@ -42,6 +42,7 @@ const MAX_JOB_IMAGE_QUEUE_ITEMS = 20;
 const JOB_IMAGE_CLIENT_BATCH_DELAY_MS = 1_000;
 const JOB_IMAGE_MAX_DIMENSION = 1800;
 const JOB_IMAGE_JPEG_QUALITY = 0.82;
+const DAILY_REPORT_VALIDATION_NOTICE_PREFIX = "Daily report needs attention";
 const CREW_LABOR_TYPE_OPTIONS: Array<{ value: CrewLaborType; label: string }> = [
   { value: "chinchor_employee", label: "Chinchor Employee" },
   { value: "temp_employee", label: "Temp Employee" },
@@ -334,6 +335,11 @@ type DailyReportTimeField = "timeIn" | "lunchOut" | "lunchIn" | "timeOut";
 type DailyReportPayItemRow = {
   payItemId: string;
   quantity: string;
+};
+
+type DailyReportValidationResult = {
+  errors: string[];
+  warnings: string[];
 };
 
 type DailyReportItsfmRow = {
@@ -2199,6 +2205,13 @@ export function TimeAllocationWorkspace() {
     const dayKey = getDayKey(selectedProject.id, workDate);
     const existingReport = dailyReportsByKey[dayKey];
     const now = new Date().toISOString();
+    const validation = validateDailyReportAnswers(dailyReportDraft, selectedProject.payItems);
+
+    if (validation.errors.length > 0) {
+      setDailyReportDraftNotice(formatDailyReportValidationMessage(validation.errors));
+      setDailyReportUploadNotice(null);
+      return;
+    }
 
     const normalizedDraft = normalizeDailyReportAnswersForSave(dailyReportDraft);
     const dailyReport: DailyReport = {
@@ -2248,6 +2261,16 @@ export function TimeAllocationWorkspace() {
     if (!selectedProject || !currentDailyReport) {
       setDailyReportUploadNotice({
         message: "Create and save a daily report before downloading the PDF.",
+        status: "error"
+      });
+      return;
+    }
+
+    const validation = validateDailyReportAnswers(currentDailyReport, selectedProject.payItems);
+
+    if (validation.errors.length > 0) {
+      setDailyReportUploadNotice({
+        message: formatDailyReportValidationMessage(validation.errors),
         status: "error"
       });
       return;
@@ -2304,6 +2327,16 @@ export function TimeAllocationWorkspace() {
     if (!selectedProject || !currentDailyReport) {
       setDailyReportUploadNotice({
         message: "Create and save a daily report before uploading to Procore.",
+        status: "error"
+      });
+      return;
+    }
+
+    const validation = validateDailyReportAnswers(currentDailyReport, selectedProject.payItems);
+
+    if (validation.errors.length > 0) {
+      setDailyReportUploadNotice({
+        message: formatDailyReportValidationMessage(validation.errors),
         status: "error"
       });
       return;
@@ -2382,6 +2415,12 @@ export function TimeAllocationWorkspace() {
     showCurrentDayNotice: boolean;
   }) {
     const dayKey = getDayKey(project.id, date);
+    const validation = validateDailyReportAnswers(report, project.payItems);
+
+    if (validation.errors.length > 0) {
+      showDailyReportUploadMessage(formatDailyReportValidationMessage(validation.errors), "error", showCurrentDayNotice);
+      return;
+    }
 
     try {
       const response = await fetch("/api/procore/daily-reports/upload", {
@@ -5014,6 +5053,7 @@ function DailyReportModal({
 }) {
   const inspectorQuantitiesTurnedIn = draft.quantitiesTurnedIn === "yes";
   const incidentOccurred = draft.incidentOccurred === "yes";
+  const draftNoticeIsValidation = draftNotice.startsWith(DAILY_REPORT_VALIDATION_NOTICE_PREFIX);
 
   return (
     <div className="modal-backdrop" role="presentation">
@@ -5029,7 +5069,11 @@ function DailyReportModal({
             <X aria-hidden="true" size={18} />
           </button>
         </div>
-        {draftNotice ? <div className="field-note daily-draft-notice">{draftNotice}</div> : null}
+        {draftNotice ? (
+          <div className={draftNoticeIsValidation ? "inline-alert daily-draft-notice" : "field-note daily-draft-notice"}>
+            {draftNotice}
+          </div>
+        ) : null}
 
         <div className="daily-report-form">
           <section>
@@ -10036,6 +10080,144 @@ function normalizeDailyReportAnswersForSave(report: DailyReportAnswers): DailyRe
     inspectorQuantityDetails: report.quantitiesTurnedIn === "yes" ? report.inspectorQuantityDetails : "",
     itsfmRows: normalizeDailyReportItsfmRows(report.itsfmRows)
   };
+}
+
+function validateDailyReportAnswers(report: DailyReportAnswers, payItems: PayItem[]): DailyReportValidationResult {
+  const errors: string[] = [];
+  const payItemIds = new Set(payItems.map((payItem) => payItem.id));
+  const employeeRows = normalizeDailyReportEmployeeRows(report.employeeRows);
+  const activeEmployeeRows = employeeRows
+    .map((row, index) => ({ index, row }))
+    .filter(({ row }) => dailyReportEmployeeRowHasContent(row));
+
+  if (activeEmployeeRows.length === 0) {
+    errors.push("Add at least one employee time row.");
+  }
+
+  for (const { index, row } of activeEmployeeRows) {
+    const rowLabel = `Employee row ${index + 1}`;
+    const timeFields: Array<{ field: DailyReportTimeField; label: string }> = [
+      { field: "timeIn", label: "Time In" },
+      { field: "lunchOut", label: "Lunch Out" },
+      { field: "lunchIn", label: "Lunch In" },
+      { field: "timeOut", label: "Time Out" }
+    ];
+    const invalidTimeLabels = timeFields
+      .filter(({ field }) => row[field].trim() && !normalizeDailyReportTimeInput(row[field]))
+      .map(({ label }) => label);
+    const missingTimeLabels = timeFields
+      .filter(({ field }) => (field === "timeIn" || field === "timeOut") && !row[field].trim())
+      .map(({ label }) => label);
+    const hasPartialLunch = Boolean(row.lunchOut.trim()) !== Boolean(row.lunchIn.trim());
+    const calculatedTotalHours = Number(row.totalHours || calculateDailyReportTotalHours(row));
+
+    if (!row.employeeClassification.trim()) {
+      errors.push(`${rowLabel}: enter employee name/classification.`);
+    }
+
+    for (const label of missingTimeLabels) {
+      errors.push(`${rowLabel}: enter ${label}.`);
+    }
+
+    if (invalidTimeLabels.length > 0) {
+      errors.push(`${rowLabel}: fix ${invalidTimeLabels.join(", ")} to HH:MM format.`);
+    }
+
+    if (hasPartialLunch) {
+      errors.push(`${rowLabel}: enter both Lunch Out and Lunch In, or leave both blank.`);
+    }
+
+    if (
+      missingTimeLabels.length === 0 &&
+      invalidTimeLabels.length === 0 &&
+      !hasPartialLunch &&
+      (!Number.isFinite(calculatedTotalHours) || calculatedTotalHours <= 0)
+    ) {
+      errors.push(`${rowLabel}: enter valid time values so Total Hours calculates.`);
+    }
+
+    if (Number.isFinite(calculatedTotalHours) && calculatedTotalHours > 12) {
+      errors.push(`${rowLabel}: Total Hours cannot exceed 12.`);
+    }
+  }
+
+  const payItemRows = normalizeDailyReportPayItemRows(report.payItemRows);
+  const activePayItemRows = payItemRows
+    .map((row, index) => ({ index, row }))
+    .filter(({ row }) => dailyReportPayItemRowHasContent(row));
+
+  if (activePayItemRows.length === 0) {
+    errors.push("Add at least one Work Performed pay item row.");
+  }
+
+  for (const { index, row } of activePayItemRows) {
+    const rowLabel = `Work Performed row ${index + 1}`;
+    const quantity = parseDailyReportPositiveNumber(row.quantity);
+
+    if (!row.payItemId.trim()) {
+      errors.push(`${rowLabel}: select a pay item.`);
+    } else if (!payItemIds.has(row.payItemId)) {
+      errors.push(`${rowLabel}: select a valid pay item for this job.`);
+    }
+
+    if (!row.quantity.trim()) {
+      errors.push(`${rowLabel}: enter quantity.`);
+    } else if (quantity === null || quantity <= 0) {
+      errors.push(`${rowLabel}: quantity must be greater than 0.`);
+    }
+  }
+
+  if (!isAnsweredYesNo(report.quantitiesTurnedIn)) {
+    errors.push("Answer whether quantities were turned into the inspector.");
+  }
+
+  if (report.quantitiesTurnedIn === "yes") {
+    if (!report.inspectorName.trim()) {
+      errors.push("Enter the inspector name.");
+    }
+
+    if (!report.inspectorQuantityDetails.trim()) {
+      errors.push("Enter the quantities and items turned into the inspector.");
+    }
+  }
+
+  if (!isAnsweredYesNo(report.incidentOccurred)) {
+    errors.push("Answer whether there were incidents or accidents today.");
+  }
+
+  if (report.incidentOccurred === "yes") {
+    if (!isAnsweredYesNo(report.accidentReportFiled)) {
+      errors.push("Answer whether an accident report was filed.");
+    }
+
+    if (!report.incidentDetails.trim()) {
+      errors.push("Enter incident / accident details.");
+    }
+  }
+
+  return {
+    errors,
+    warnings: []
+  };
+}
+
+function parseDailyReportPositiveNumber(value: string) {
+  const number = Number(value.replaceAll(",", "").trim());
+
+  return Number.isFinite(number) ? number : null;
+}
+
+function isAnsweredYesNo(value: string) {
+  return value === "yes" || value === "no";
+}
+
+function formatDailyReportValidationMessage(errors: string[]) {
+  const visibleErrors = errors.slice(0, 6);
+  const remainingErrorCount = errors.length - visibleErrors.length;
+  const remainingText =
+    remainingErrorCount > 0 ? ` ${remainingErrorCount} more item${remainingErrorCount === 1 ? "" : "s"} need attention.` : "";
+
+  return `${DAILY_REPORT_VALIDATION_NOTICE_PREFIX}: ${visibleErrors.join(" ")}${remainingText}`;
 }
 
 function createEmptyDailyReportItsfmRows() {

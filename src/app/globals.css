@@ -26,6 +26,10 @@ body {
   width: 100%;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
   margin: 0;
   background: var(--background);
@@ -39,6 +43,13 @@ input,
 select,
 textarea {
   font: inherit;
+  max-width: 100%;
+}
+
+input,
+select,
+textarea {
+  min-width: 0;
 }
 
 button {
@@ -2765,7 +2776,8 @@ a.daily-report-procore-status:hover {
 
   .workspace {
     gap: 12px;
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+    overflow: hidden;
     min-width: 0;
     padding: 12px;
   }
@@ -2775,6 +2787,8 @@ a.daily-report-procore-status:hover {
   }
 
   .panel {
+    min-width: 0;
+    overflow: hidden;
     padding: 12px;
     width: 100%;
   }
@@ -2975,22 +2989,43 @@ a.daily-report-procore-status:hover {
     width: 100%;
   }
 
+  .field-group input,
+  .field-group select,
+  .field-group textarea,
+  .compact-input,
+  .mobile-picker-search {
+    font-size: 16px;
+  }
+
   .day-note-grid {
     grid-template-columns: 1fr;
   }
 
   .modal-backdrop {
     align-items: stretch;
-    padding: 10px;
+    justify-content: center;
+    padding: max(8px, env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom));
   }
 
   .modal-panel {
-    max-height: 100%;
+    max-height: calc(100dvh - 16px);
+    padding: 12px;
+    width: 100%;
+  }
+
+  .daily-report-modal {
+    align-self: stretch;
   }
 
   .modal-actions {
     align-items: stretch;
+    background: var(--panel);
+    bottom: 0;
     flex-direction: column;
+    margin: 0 -12px -12px;
+    padding: 12px;
+    position: sticky;
+    z-index: 2;
   }
 
   .modal-actions .primary-button,
@@ -3002,6 +3037,11 @@ a.daily-report-procore-status:hover {
   .daily-report-grid.four,
   .daily-report-summary {
     grid-template-columns: 1fr;
+  }
+
+  .daily-report-form section {
+    overflow: hidden;
+    padding: 10px;
   }
 
   .daily-section-heading {
@@ -3016,7 +3056,40 @@ a.daily-report-procore-status:hover {
 
   .daily-section-heading .secondary-button,
   .daily-section-actions .secondary-button {
+    justify-content: center;
     width: 100%;
+  }
+
+  .daily-labor-table,
+  .daily-pay-item-table,
+  .daily-itsfm-table {
+    max-width: 100%;
+  }
+
+  .daily-labor-row {
+    grid-template-columns: 30px minmax(190px, 1.4fr) minmax(78px, 0.55fr) repeat(4, minmax(78px, 0.55fr)) minmax(88px, 0.6fr) minmax(60px, 0.4fr) minmax(72px, 0.45fr);
+    min-width: 920px;
+  }
+
+  .daily-pay-item-row {
+    grid-template-columns: 30px minmax(220px, 1fr) minmax(118px, 0.5fr);
+    min-width: 560px;
+  }
+
+  .daily-itsfm-section-heading {
+    min-width: 620px;
+  }
+
+  .daily-itsfm-row {
+    grid-template-columns: minmax(170px, 1fr) repeat(3, minmax(120px, 1fr));
+    min-width: 620px;
+  }
+
+  .daily-labor-row input,
+  .daily-pay-item-row input,
+  .daily-pay-item-row select,
+  .daily-itsfm-row input {
+    font-size: 16px;
   }
 
   .retry-queue-heading,
@@ -3238,6 +3311,14 @@ a.daily-report-procore-status:hover {
   .crew-hour-row {
     grid-template-columns: minmax(0, 1fr) 92px;
   }
+
+  .mobile-picker-overlay {
+    padding: 10px 8px max(10px, env(safe-area-inset-bottom));
+  }
+
+  .mobile-picker-sheet {
+    max-height: calc(100dvh - 20px);
+  }
 }
 
 @media (max-width: 420px) {
@@ -3256,5 +3337,13 @@ a.daily-report-procore-status:hover {
   .report-row,
   .report-detail-row {
     grid-template-columns: 1fr;
+  }
+
+  .mobile-sticky-action-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .daily-pay-item-row {
+    min-width: 520px;
   }
 }
