@@ -1292,6 +1292,112 @@ a.daily-report-procore-status:hover {
   justify-content: flex-end;
 }
 
+.workflow-panel {
+  border-color: #304356;
+}
+
+.workflow-title {
+  align-items: center;
+  display: inline-flex;
+  gap: 9px;
+}
+
+.workflow-step {
+  align-items: center;
+  background: rgba(34, 166, 179, 0.16);
+  border: 1px solid rgba(34, 166, 179, 0.42);
+  border-radius: 999px;
+  color: #b8e7ec;
+  display: inline-flex;
+  font-size: 0.72rem;
+  font-weight: 800;
+  height: 24px;
+  justify-content: center;
+  line-height: 1;
+  width: 24px;
+}
+
+.workflow-section-heading {
+  align-items: center;
+  border-top: 1px solid var(--line);
+  color: var(--foreground);
+  display: flex;
+  gap: 10px;
+  margin-top: 2px;
+  padding-top: 4px;
+}
+
+.workflow-section-heading span {
+  color: #b8e7ec;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.workflow-section-heading strong {
+  font-size: 1rem;
+}
+
+.prominent-action:not(:disabled) {
+  box-shadow: 0 0 0 1px rgba(34, 166, 179, 0.18), 0 8px 18px rgba(34, 166, 179, 0.16);
+}
+
+.daily-status-strip {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.daily-status-item {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 12px;
+}
+
+.daily-status-item span {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.daily-status-item strong {
+  font-size: 0.92rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.daily-status-item.success {
+  background: #0f2c22;
+  border-color: #245f45;
+}
+
+.daily-status-item.success strong {
+  color: #c8f4da;
+}
+
+.daily-status-item.warning {
+  background: var(--warning-bg);
+  border-color: var(--warning-line);
+}
+
+.daily-status-item.warning strong {
+  color: var(--warning-text);
+}
+
+.daily-status-item.error {
+  background: #2b1218;
+  border-color: #6e2f38;
+}
+
+.daily-status-item.error strong {
+  color: #ffc7d1;
+}
+
 .status-card {
   background: var(--field);
   border: 1px solid var(--line);
@@ -1454,6 +1560,64 @@ a.daily-report-procore-status:hover {
 .project-blacklist-row span {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.admin-tools-drawer {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 16px;
+}
+
+.admin-tools-drawer > summary {
+  align-items: center;
+  color: var(--foreground);
+  cursor: pointer;
+  display: flex;
+  font-size: 0.94rem;
+  font-weight: 700;
+  gap: 10px;
+  justify-content: space-between;
+  list-style: none;
+}
+
+.admin-tools-drawer > summary::-webkit-details-marker {
+  display: none;
+}
+
+.admin-tools-meta {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.admin-tools-body {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.admin-tool-actions {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+}
+
+.admin-tool-actions .secondary-button {
+  justify-content: center;
+  width: 100%;
+}
+
+.admin-tools-body .sync-summary,
+.admin-tools-body .sync-log,
+.admin-tools-body .project-blacklist,
+.admin-tools-body .admin-users,
+.admin-tools-body .admin-maintenance {
+  margin-top: 0;
 }
 
 .compact-search-input {
@@ -2798,6 +2962,10 @@ a.daily-report-procore-status:hover {
     flex-direction: column;
   }
 
+  .workflow-title {
+    align-items: flex-start;
+  }
+
   .panel-heading-actions {
     align-items: stretch;
     flex-direction: column;
@@ -2819,6 +2987,16 @@ a.daily-report-procore-status:hover {
 
   .summary-strip {
     grid-template-columns: 1fr;
+  }
+
+  .daily-status-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .workflow-section-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
   }
 
   .desktop-select {
@@ -3335,7 +3513,8 @@ a.daily-report-procore-status:hover {
   .mobile-pay-item-card,
   .mobile-pay-item-inputs,
   .report-row,
-  .report-detail-row {
+  .report-detail-row,
+  .daily-status-strip {
     grid-template-columns: 1fr;
   }
 

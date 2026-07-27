@@ -377,6 +377,13 @@ type DailyReportUpload = {
 
 type DailyReportUploadsByKey = Record<string, DailyReportUpload>;
 
+type DailyReportProcoreStatus = {
+  className: string;
+  href?: string;
+  label: string;
+  message: string;
+};
+
 type JobImageUploadStatus = "failed" | "uploaded";
 
 type JobImageUpload = {
@@ -652,6 +659,7 @@ export function TimeAllocationWorkspace() {
     currentDailyReportUpload,
     selectedProject?.id
   );
+  const dailyReportNeedsUpload = Boolean(currentDailyReport && currentDailyReportProcoreStatus.className !== "uploaded");
   const currentJobImageUploads = selectedProject ? jobImageUploadsByDay[currentDayKey] ?? [] : [];
   const queuedJobImages = jobImageQueue.filter((image) => image.status !== "uploaded");
   const uploadedJobImageCount = currentJobImageUploads.filter((upload) => upload.status === "uploaded").length;
@@ -3745,38 +3753,16 @@ export function TimeAllocationWorkspace() {
             FDOT Pay Items
           </a>
           <IconLabel icon={CheckCircle2} text={connectionStatus} />
-          {currentUser.role === "project_manager" || currentUser.role === "admin" ? (
-            <>
-              {currentUser.role === "admin" ? (
-                <>
-                  <button className="secondary-button" disabled={syncing} onClick={syncProcoreData} type="button">
-                    <RefreshCw aria-hidden="true" size={18} />
-                    {syncing ? "Syncing..." : "Sync New Projects"}
-                  </button>
-                  <button className="secondary-button" disabled={syncingAll} onClick={syncAllProcoreData} type="button">
-                    <RefreshCw aria-hidden="true" size={18} />
-                    {syncingAll ? "Syncing All..." : "Sync All Projects"}
-                  </button>
-                  <button className="secondary-button" disabled={entries.length === 0} onClick={exportAllEntryDetails} type="button">
-                    <Download aria-hidden="true" size={18} />
-                    Export CSV
-                  </button>
-                  <button className="primary-button" onClick={() => connectProcore("connect")} type="button">
-                    <PlugZap aria-hidden="true" size={18} />
-                    Configure Procore Upload
-                  </button>
-                </>
-              ) : null}
-              <button
-                className="secondary-button"
-                disabled={updatingProject}
-                onClick={addOrUpdateProject}
-                type="button"
-              >
-                <RefreshCw aria-hidden="true" size={18} />
-                {updatingProject ? "Updating..." : "Add/Update Project"}
-              </button>
-            </>
+          {currentUser.role === "project_manager" ? (
+            <button
+              className="secondary-button"
+              disabled={updatingProject}
+              onClick={addOrUpdateProject}
+              type="button"
+            >
+              <RefreshCw aria-hidden="true" size={18} />
+              {updatingProject ? "Updating..." : "Add/Update Project"}
+            </button>
           ) : null}
           <button className="secondary-button" onClick={() => setChangePasswordOpen(true)} type="button">
             <KeyRound aria-hidden="true" size={18} />
@@ -3898,58 +3884,15 @@ export function TimeAllocationWorkspace() {
             </div>
           ) : null}
           {projectLoadError ? <div className="inline-alert">{projectLoadError}</div> : null}
-          {syncSummary ? <SyncSummaryCard summary={syncSummary} /> : null}
           {syncedAt ? (
             <div className="field-note">Last synced {new Date(syncedAt).toLocaleString()}</div>
           ) : (
-            <div className="field-note">Use Sync New Projects to load uncached NetSuite jobs and pay items.</div>
+            <div className="field-note">
+              {currentUser.role === "admin"
+                ? "Use Admin Tools to load uncached NetSuite jobs and pay items."
+                : "Projects load after an admin syncs NetSuite data."}
+            </div>
           )}
-          {currentUser.role === "admin" ? <SyncLogPanel entries={syncLog} /> : null}
-          {currentUser.role === "admin" ? (
-            <ProjectBlacklistPanel
-              onToggleProject={toggleProjectBlacklist}
-              projectBlacklistById={projectBlacklistById}
-              projects={allProjects}
-            />
-          ) : null}
-          {currentUser.role === "admin" ? (
-            <VendorBlacklistPanel
-              onToggleVendor={toggleVendorBlacklist}
-              vendorBlacklistById={netSuiteVendorBlacklistById}
-              vendors={allNetSuiteVendors}
-            />
-          ) : null}
-          {currentUser.role === "admin" ? (
-            <AdminUsersPanel
-              currentUserId={currentUser.id}
-              editingUserId={editingAdminUserId}
-              form={adminUserForm}
-              loading={loadingAdminUsers}
-              netSuiteProjectManagerOptions={netSuiteProjectManagerOptions}
-              notice={adminUsersNotice}
-              onCancelEdit={resetAdminUserForm}
-              onEditUser={startEditingAdminUser}
-              onRefresh={loadAdminUsers}
-              onSaveUser={saveAdminUser}
-              onSetUserActive={setAdminUserActive}
-              onUpdateForm={updateAdminUserForm}
-              saving={savingAdminUser}
-              users={adminUsers}
-            />
-          ) : null}
-          {currentUser.role === "admin" ? (
-            <AdminMaintenancePanel
-              clearing={clearingStagingData}
-              clearingProjectCache={clearingProjectCache}
-              netSuiteVendorCount={allNetSuiteVendors.length}
-              netSuiteVendorsSyncedAt={netSuiteVendorsSyncedAt}
-              notice={adminMaintenanceNotice}
-              onClearProjectCache={clearCachedProjectData}
-              onClearStagingData={clearStagingOperationalData}
-              onSyncNetSuiteVendors={syncNetSuiteVendorDirectory}
-              syncingNetSuiteVendors={syncingNetSuiteVendors}
-            />
-          ) : null}
 
           <div className="field-group">
             <label htmlFor="work-date">Date</label>
@@ -4301,6 +4244,77 @@ export function TimeAllocationWorkspace() {
               </div>
             ) : null}
           </div>
+          {currentUser.role === "admin" ? (
+            <details className="admin-tools-drawer">
+              <summary>
+                <span>Admin Tools</span>
+                <span className="admin-tools-meta">Sync, users, controls</span>
+              </summary>
+              <div className="admin-tools-body">
+                <div className="admin-tool-actions">
+                  <button className="secondary-button" disabled={syncing} onClick={syncProcoreData} type="button">
+                    <RefreshCw aria-hidden="true" size={18} />
+                    {syncing ? "Syncing..." : "Sync New Projects"}
+                  </button>
+                  <button className="secondary-button" disabled={syncingAll} onClick={syncAllProcoreData} type="button">
+                    <RefreshCw aria-hidden="true" size={18} />
+                    {syncingAll ? "Syncing All..." : "Sync All Projects"}
+                  </button>
+                  <button className="secondary-button" disabled={updatingProject} onClick={addOrUpdateProject} type="button">
+                    <RefreshCw aria-hidden="true" size={18} />
+                    {updatingProject ? "Updating..." : "Add/Update Project"}
+                  </button>
+                  <button className="secondary-button" disabled={entries.length === 0} onClick={exportAllEntryDetails} type="button">
+                    <Download aria-hidden="true" size={18} />
+                    Export CSV
+                  </button>
+                  <button className="secondary-button" onClick={() => connectProcore("connect")} type="button">
+                    <PlugZap aria-hidden="true" size={18} />
+                    Configure Procore Upload
+                  </button>
+                </div>
+                {syncSummary ? <SyncSummaryCard summary={syncSummary} /> : null}
+                <SyncLogPanel entries={syncLog} />
+                <ProjectBlacklistPanel
+                  onToggleProject={toggleProjectBlacklist}
+                  projectBlacklistById={projectBlacklistById}
+                  projects={allProjects}
+                />
+                <VendorBlacklistPanel
+                  onToggleVendor={toggleVendorBlacklist}
+                  vendorBlacklistById={netSuiteVendorBlacklistById}
+                  vendors={allNetSuiteVendors}
+                />
+                <AdminUsersPanel
+                  currentUserId={currentUser.id}
+                  editingUserId={editingAdminUserId}
+                  form={adminUserForm}
+                  loading={loadingAdminUsers}
+                  netSuiteProjectManagerOptions={netSuiteProjectManagerOptions}
+                  notice={adminUsersNotice}
+                  onCancelEdit={resetAdminUserForm}
+                  onEditUser={startEditingAdminUser}
+                  onRefresh={loadAdminUsers}
+                  onSaveUser={saveAdminUser}
+                  onSetUserActive={setAdminUserActive}
+                  onUpdateForm={updateAdminUserForm}
+                  saving={savingAdminUser}
+                  users={adminUsers}
+                />
+                <AdminMaintenancePanel
+                  clearing={clearingStagingData}
+                  clearingProjectCache={clearingProjectCache}
+                  netSuiteVendorCount={allNetSuiteVendors.length}
+                  netSuiteVendorsSyncedAt={netSuiteVendorsSyncedAt}
+                  notice={adminMaintenanceNotice}
+                  onClearProjectCache={clearCachedProjectData}
+                  onClearStagingData={clearStagingOperationalData}
+                  onSyncNetSuiteVendors={syncNetSuiteVendorDirectory}
+                  syncingNetSuiteVendors={syncingNetSuiteVendors}
+                />
+              </div>
+            </details>
+          ) : null}
         </aside>
 
         {viewMode === "entry" ? (
@@ -4315,10 +4329,21 @@ export function TimeAllocationWorkspace() {
                 <strong>{totalHours.toFixed(2)}</strong>
               </div>
             </div>
+            <DailyStatusStrip
+              dailyReport={currentDailyReport}
+              dayIsSubmitted={dayIsSubmitted}
+              draftEntryCount={draftEntryCount}
+              entryCount={visibleEntries.length}
+              procoreStatus={currentDailyReportProcoreStatus}
+              uploadedImageCount={uploadedJobImageCount}
+            />
 
-            <div className="panel">
+            <div className="panel workflow-panel">
               <div className="panel-heading">
-                <h2>Pay Item Entry</h2>
+                <h2 className="workflow-title">
+                  <span className="workflow-step">1</span>
+                  Pay Item Entry
+                </h2>
                 <div className="panel-heading-actions">
                   <label className="entry-filter-toggle">
                     <input
@@ -4343,7 +4368,7 @@ export function TimeAllocationWorkspace() {
                   <div className="matrix-header" role="row">
                     <span>Code</span>
                     <span>Pay Item</span>
-                    <span className="matrix-quantity-header">QTY</span>
+                    <span className="matrix-quantity-header">Remaining QTY</span>
                     <span className="matrix-quantity-header">Saved Hrs</span>
                     <span className="matrix-quantity-header">Saved Qty</span>
                     <span>Crew</span>
@@ -4360,7 +4385,7 @@ export function TimeAllocationWorkspace() {
                       <div className={rowHasWork ? "matrix-row worked-row" : "matrix-row"} key={item.id} role="row">
                         <span className="matrix-code" data-label="Code">{item.code}</span>
                         <span className="matrix-name" data-label="Pay Item">{item.name}</span>
-                        <span className="matrix-budget" data-label="QTY" title="Remaining quantity before this date">
+                        <span className="matrix-budget" data-label="Remaining QTY" title="Remaining quantity before this date">
                           {formatPayItemQuantity(remainingQuantity)} {item.unitOfMeasure.toUpperCase()}
                         </span>
                         <span className="matrix-saved" data-label="Saved Hrs">{savedEntry ? savedEntry.hours.toFixed(2) : "-"}</span>
@@ -4438,7 +4463,7 @@ export function TimeAllocationWorkspace() {
                     Clear draft inputs
                   </button>
                   <button
-                    className="primary-button save-button"
+                    className="primary-button save-button prominent-action"
                     disabled={draftEntryCount === 0 || dayIsSubmitted}
                     onClick={saveAllocationEntries}
                     type="button"
@@ -4451,12 +4476,15 @@ export function TimeAllocationWorkspace() {
               {entryNotice ? <div className={entryNoticeIsError(entryNotice) ? "inline-alert" : "success-alert"}>{entryNotice}</div> : null}
             </div>
 
-            <div className="panel">
+            <div className="panel workflow-panel">
               <div className="panel-heading">
-                <h2>{dayIsSubmitted ? "Submitted Day Summary" : "Daily Allocation"}</h2>
+                <h2 className="workflow-title">
+                  <span className="workflow-step">2</span>
+                  {dayIsSubmitted ? "Submitted Day Summary" : "Review & Submit"}
+                </h2>
                 {!dayIsSubmitted ? (
                   <button
-                    className="primary-button"
+                    className="primary-button prominent-action"
                     disabled={visibleEntries.length === 0}
                     onClick={submitDay}
                     type="button"
@@ -4580,6 +4608,11 @@ export function TimeAllocationWorkspace() {
               )}
             </div>
 
+            <div className="workflow-section-heading">
+              <span>Step 3</span>
+              <strong>Daily Wrap-Up</strong>
+            </div>
+
             <div className="panel">
               <div className="panel-heading">
                 <h2>Crew Hours Summary</h2>
@@ -4637,7 +4670,12 @@ export function TimeAllocationWorkspace() {
               <div className="panel-heading">
                 <h2>Daily Report</h2>
                 <div className="panel-heading-actions">
-                  <button className="primary-button" disabled={!selectedProject} onClick={openDailyReportModal} type="button">
+                  <button
+                    className={!currentDailyReport ? "primary-button prominent-action" : "secondary-button"}
+                    disabled={!selectedProject}
+                    onClick={openDailyReportModal}
+                    type="button"
+                  >
                     <Edit3 aria-hidden="true" size={18} />
                     {currentDailyReport ? "Edit Daily Report" : "Create Daily Report"}
                   </button>
@@ -4654,7 +4692,7 @@ export function TimeAllocationWorkspace() {
                   ) : null}
                   {currentDailyReport ? (
                     <button
-                      className="secondary-button"
+                      className={dailyReportNeedsUpload ? "primary-button prominent-action" : "secondary-button"}
                       disabled={!selectedProject || uploadingDailyReport}
                       onClick={uploadDailyReportToProcoreDocuments}
                       type="button"
@@ -4775,7 +4813,7 @@ export function TimeAllocationWorkspace() {
                     Add Images
                   </button>
                   <button
-                    className="primary-button"
+                    className={queuedJobImages.length > 0 ? "primary-button prominent-action" : "primary-button"}
                     disabled={!selectedProject || queuedJobImages.length === 0 || uploadingJobImages || jobImageDailyLimitReached}
                     onClick={uploadQueuedJobImages}
                     type="button"
@@ -4971,6 +5009,73 @@ export function TimeAllocationWorkspace() {
         />
       ) : null}
     </main>
+  );
+}
+
+function DailyStatusStrip({
+  dailyReport,
+  dayIsSubmitted,
+  draftEntryCount,
+  entryCount,
+  procoreStatus,
+  uploadedImageCount
+}: {
+  dailyReport: DailyReport | undefined;
+  dayIsSubmitted: boolean;
+  draftEntryCount: number;
+  entryCount: number;
+  procoreStatus: DailyReportProcoreStatus;
+  uploadedImageCount: number;
+}) {
+  return (
+    <div className="daily-status-strip" aria-label="Daily status">
+      <DailyStatusItem
+        label="Entries"
+        tone={draftEntryCount > 0 ? "warning" : entryCount > 0 ? "success" : "neutral"}
+        value={draftEntryCount > 0 ? `${draftEntryCount} unsaved` : entryCount > 0 ? `${entryCount} saved` : "Not started"}
+      />
+      <DailyStatusItem label="Day" tone={dayIsSubmitted ? "success" : "warning"} value={dayIsSubmitted ? "Submitted" : "Draft"} />
+      <DailyStatusItem
+        label="Daily Report"
+        tone={dailyReport ? "success" : "neutral"}
+        value={dailyReport ? "Saved" : "Not created"}
+      />
+      <DailyStatusItem
+        label="Procore"
+        tone={
+          procoreStatus.className === "uploaded"
+            ? "success"
+            : procoreStatus.className === "failed"
+              ? "error"
+              : procoreStatus.className === "pending"
+                ? "warning"
+                : "neutral"
+        }
+        value={procoreStatus.label}
+      />
+      <DailyStatusItem
+        label="Images"
+        tone={uploadedImageCount > 0 ? "success" : "neutral"}
+        value={uploadedImageCount > 0 ? `${uploadedImageCount} uploaded` : "None"}
+      />
+    </div>
+  );
+}
+
+function DailyStatusItem({
+  label,
+  tone,
+  value
+}: {
+  label: string;
+  tone: "error" | "neutral" | "success" | "warning";
+  value: string;
+}) {
+  return (
+    <div className={`daily-status-item ${tone}`}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
   );
 }
 
@@ -5758,7 +5863,7 @@ function MobilePayItemEntry({
           <strong>{selectedPayItem.code}</strong>
         </div>
         <div>
-          <span>QTY</span>
+          <span>Remaining QTY</span>
           <strong>
             {formatPayItemQuantity(remainingQuantity)} {selectedPayItem.unitOfMeasure.toUpperCase()}
           </strong>
