@@ -20,7 +20,7 @@ export function getNetSuiteConfig(): NetSuiteConfig {
     accountId,
     certificateId: getRequiredEnv("NETSUITE_CERTIFICATE_ID"),
     clientId: getRequiredEnv("NETSUITE_CLIENT_ID"),
-    privateKey: normalizePrivateKey(getRequiredEnv("NETSUITE_PRIVATE_KEY")),
+    privateKey: getPrivateKey(),
     restBaseUrl,
     scopes: readScopes(process.env.NETSUITE_SCOPE),
     tokenEndpoint:
@@ -38,8 +38,40 @@ function readScopes(value: string | undefined) {
   return scopes.length > 0 ? scopes : [DEFAULT_NETSUITE_SCOPE];
 }
 
+function getPrivateKey() {
+  const base64PrivateKey = process.env.NETSUITE_PRIVATE_KEY_B64 ?? process.env.NETSUITE_PRIVATE_KEY_BASE64;
+
+  if (base64PrivateKey) {
+    return normalizePrivateKey(Buffer.from(base64PrivateKey.trim(), "base64").toString("utf8"));
+  }
+
+  const privateKey = process.env.NETSUITE_PRIVATE_KEY;
+
+  if (!privateKey) {
+    throw new Error("Missing required environment variable: NETSUITE_PRIVATE_KEY_B64 or NETSUITE_PRIVATE_KEY");
+  }
+
+  return normalizePrivateKey(privateKey);
+}
+
 function normalizePrivateKey(value: string) {
-  return value.trim().replace(/\\n/g, "\n");
+  const trimmedValue = value.trim().replace(/^["']|["']$/g, "").replace(/\\n/g, "\n");
+
+  if (trimmedValue.includes("-----BEGIN") && trimmedValue.includes("-----END")) {
+    return trimmedValue;
+  }
+
+  try {
+    const decodedValue = Buffer.from(trimmedValue, "base64").toString("utf8").trim();
+
+    if (decodedValue.includes("-----BEGIN") && decodedValue.includes("-----END")) {
+      return decodedValue;
+    }
+  } catch {
+    // The signer will return a clearer configuration error if this is not usable PEM.
+  }
+
+  return trimmedValue;
 }
 
 function getRequiredEnv(name: string) {

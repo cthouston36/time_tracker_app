@@ -98,11 +98,26 @@ function createClientAssertion({
     scope: scopes
   };
   const signingInput = `${base64UrlEncode(JSON.stringify(header))}.${base64UrlEncode(JSON.stringify(payload))}`;
-  const signature = signJwt("sha256", Buffer.from(signingInput), {
-    key: privateKey,
-    padding: constants.RSA_PKCS1_PSS_PADDING,
-    saltLength: constants.RSA_PSS_SALTLEN_DIGEST
-  });
+
+  let signature: Buffer;
+
+  try {
+    signature = signJwt("sha256", Buffer.from(signingInput), {
+      key: privateKey,
+      padding: constants.RSA_PKCS1_PSS_PADDING,
+      saltLength: constants.RSA_PSS_SALTLEN_DIGEST
+    });
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "Unknown private key parse error.";
+
+    throw new Error(
+      [
+        "NetSuite private key could not be parsed.",
+        "Use the full unencrypted PEM private key, or set NETSUITE_PRIVATE_KEY_B64 to the base64-encoded PEM contents.",
+        detail
+      ].join(" ")
+    );
+  }
 
   return `${signingInput}.${base64UrlEncode(signature)}`;
 }
