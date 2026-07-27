@@ -1820,6 +1820,11 @@ a.daily-report-procore-status:hover {
   overflow-wrap: anywhere;
 }
 
+.matrix-name {
+  font-size: 0.88rem;
+  line-height: 1.28;
+}
+
 .matrix-budget,
 .matrix-saved {
   color: var(--muted);
