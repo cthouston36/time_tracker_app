@@ -36,6 +36,10 @@ type DailyReportUploadPayload = {
     itsfmRows?: DailyReportItsfmRow[];
     itsfmAbovegroundEquipment?: string;
     itsfmCabinetEquipment?: string;
+    twoSeriesEquipmentTools?: string;
+    twoSeriesSafetyIssues?: string;
+    twoSeriesDelayReasons?: string;
+    twoSeriesDeliveries?: string;
     createdByName?: string;
     updatedAt?: string;
   };
@@ -52,7 +56,12 @@ type DailyReportEmployeeRow = {
   lunchOut: string;
   lunchIn: string;
   timeOut: string;
+  productionCode1?: string;
+  productionHours1?: string;
+  productionCode2?: string;
+  productionHours2?: string;
   totalHours: string;
+  employeeInitial?: string;
   driver: boolean;
   passenger: boolean;
 };

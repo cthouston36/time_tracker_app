@@ -1,6 +1,10 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import PDFDocument from "pdfkit";
+import {
+  TWO_SERIES_PRODUCTION_CODES,
+  getDailyReportTemplateForProject
+} from "@/lib/daily-report-templates";
 import type { Project } from "@/lib/procore/types";
 
 export type DailyReportPdfPayload = {
@@ -30,6 +34,10 @@ export type DailyReportPdfPayload = {
     itsfmRows?: DailyReportItsfmRow[];
     itsfmAbovegroundEquipment?: string;
     itsfmCabinetEquipment?: string;
+    twoSeriesEquipmentTools?: string;
+    twoSeriesSafetyIssues?: string;
+    twoSeriesDelayReasons?: string;
+    twoSeriesDeliveries?: string;
     createdByName?: string;
     updatedAt?: string;
   };
@@ -46,7 +54,12 @@ type DailyReportEmployeeRow = {
   lunchOut: string;
   lunchIn: string;
   timeOut: string;
+  productionCode1?: string;
+  productionHours1?: string;
+  productionCode2?: string;
+  productionHours2?: string;
   totalHours: string;
+  employeeInitial?: string;
   driver: boolean;
   passenger: boolean;
 };
@@ -152,7 +165,11 @@ export async function buildDailyReportPdf(payload: DailyReportPdfPayload) {
     doc.on("error", reject);
 
     context.cursorY = drawHeader(doc, context, true);
-    drawDailyReportBody(doc, context);
+    if (getDailyReportTemplateForProject(payload.project) === "two-series") {
+      drawTwoSeriesDailyReportBody(doc, context);
+    } else {
+      drawDailyReportBody(doc, context);
+    }
     drawPageFooters(doc);
     doc.end();
   });
@@ -292,6 +309,114 @@ function drawDailyReportBody(doc: PDFKit.PDFDocument, context: PdfContext) {
     drawTextBox(doc, context, "Legacy ITSFM Aboveground Equipment Notes", report.itsfmAbovegroundEquipment ?? "");
     drawTextBox(doc, context, "Legacy ITSFM Cabinet Equipment Notes", report.itsfmCabinetEquipment ?? "");
   }
+}
+
+function drawTwoSeriesDailyReportBody(doc: PDFKit.PDFDocument, context: PdfContext) {
+  const { payload } = context;
+  const { project, report } = payload;
+  const employeeRows = (report.employeeRows ?? []).filter((row) =>
+    [
+      row.employeeClassification,
+      row.truckNumber,
+      row.timeIn,
+      row.lunchOut,
+      row.lunchIn,
+      row.timeOut,
+      row.productionCode1,
+      row.productionHours1,
+      row.productionCode2,
+      row.productionHours2,
+      row.totalHours,
+      row.employeeInitial
+    ].some(Boolean)
+  );
+
+  drawMetaCards(doc, context, [
+    ["Project", project.name],
+    ["Date", payload.date],
+    ["Created By", report.createdByName ?? ""],
+    ["Last Updated", report.updatedAt ? new Date(report.updatedAt).toLocaleString() : ""]
+  ]);
+
+  drawSectionTitle(doc, context, "Employee Time on Site");
+  drawTable(
+    doc,
+    context,
+    [
+      { header: "Employee - Classification", width: 112 },
+      { header: "Truck", width: 38 },
+      { header: "In", width: 34 },
+      { header: "Lunch Out", width: 46 },
+      { header: "Lunch In", width: 44 },
+      { header: "Out", width: 34 },
+      { align: "center", header: "Code", width: 32 },
+      { align: "right", header: "Hour", width: 32 },
+      { align: "center", header: "Code", width: 32 },
+      { align: "right", header: "Hour", width: 32 },
+      { align: "right", header: "Total", width: 42 },
+      { align: "center", header: "Initial", width: 62 }
+    ],
+    employeeRows.length
+      ? employeeRows.map((row) => [
+          row.employeeClassification,
+          row.truckNumber,
+          row.timeIn,
+          row.lunchOut,
+          row.lunchIn,
+          row.timeOut,
+          row.productionCode1 ?? "",
+          row.productionHours1 ?? "",
+          row.productionCode2 ?? "",
+          row.productionHours2 ?? "",
+          row.totalHours,
+          row.employeeInitial ?? ""
+        ])
+      : [["No employee time entered.", "", "", "", "", "", "", "", "", "", "", ""]]
+  );
+
+  drawProductionCodeKey(doc, context);
+  drawTextBox(doc, context, "Detailed Description of Work Completed", report.workDescription ?? "");
+  drawTextBox(doc, context, "Equipment / Tools on Project", report.twoSeriesEquipmentTools ?? "");
+  drawTextBox(doc, context, "Safety Issues & Concerns", report.twoSeriesSafetyIssues ?? "");
+  drawTextBox(doc, context, "Problems or Reasons for Delay", report.twoSeriesDelayReasons ?? "");
+  drawTextBox(doc, context, "Deliveries", report.twoSeriesDeliveries ?? "");
+
+  if (payload.dayNotes?.notes?.trim() || payload.dayNotes?.inventory?.trim()) {
+    drawTextBox(doc, context, "App Notes", payload.dayNotes?.notes ?? "");
+    drawTextBox(doc, context, "Inventory", payload.dayNotes?.inventory ?? "");
+  }
+}
+
+function drawProductionCodeKey(doc: PDFKit.PDFDocument, context: PdfContext) {
+  drawSectionTitle(doc, context, "Production Code Key");
+
+  const half = Math.ceil(TWO_SERIES_PRODUCTION_CODES.length / 2);
+  const rows = Array.from({ length: half }, (_, index) => {
+    const left = TWO_SERIES_PRODUCTION_CODES[index];
+    const right = TWO_SERIES_PRODUCTION_CODES[index + half];
+
+    return [
+      left?.code ?? "",
+      left?.description ?? "",
+      right?.code ?? "",
+      right?.description ?? ""
+    ];
+  });
+
+  drawTable(
+    doc,
+    context,
+    [
+      { align: "center", header: "Code", width: 58 },
+      { header: "Description", width: 212 },
+      { align: "center", header: "Code", width: 58 },
+      { header: "Description", width: 212 }
+    ],
+    rows,
+    {
+      headerFill: "#dbeafe"
+    }
+  );
 }
 
 function drawHeader(doc: PDFKit.PDFDocument, context: PdfContext, firstPage: boolean) {

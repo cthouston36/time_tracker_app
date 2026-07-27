@@ -1,4 +1,5 @@
 import { readProcoreCache, updateProcoreCache, writeProcoreCache } from "@/lib/procore/cache";
+import { projectNameStartsWithTwo } from "@/lib/daily-report-templates";
 import type { PayItem, Project } from "@/lib/procore/types";
 import { runSuiteQL, runSuiteQLAll } from "@/lib/netsuite/client";
 
@@ -95,15 +96,17 @@ export async function addOrUpdateProjectFromNetSuite(projectIdentifier: string) 
     throw new Error("No NetSuite project matched that NetSuite or Procore project ID.");
   }
 
+  const projectName = readProjectTitle(projectRow);
   const netSuiteProjectId = readString(rowValue(projectRow, "netsuite_project_id", "id"));
-  const budgetRows = await fetchNetSuiteBudgetRowsForProject(netSuiteProjectId);
+  const isTwoSeriesProject = projectStartsWithTwo(projectName);
+  const budgetRows = isTwoSeriesProject ? [] : await fetchNetSuiteBudgetRowsForProject(netSuiteProjectId);
   const mappedProject = mapNetSuiteProject(projectRow, budgetRows);
 
   if (!mappedProject) {
     throw new Error("The matching NetSuite project is missing a Procore project ID or project title.");
   }
 
-  if (mappedProject.payItems.length === 0) {
+  if (!isTwoSeriesProject && mappedProject.payItems.length === 0) {
     throw new Error("NetSuite returned no budget pay items for the selected project.");
   }
 
@@ -154,19 +157,25 @@ async function fetchEligibleNetSuiteProjects() {
   for (const projectRow of projectRows) {
     const projectName = readProjectTitle(projectRow);
 
-    if (projectStartsWithTwo(projectName)) {
+    const netSuiteProjectId = readString(rowValue(projectRow, "netsuite_project_id", "id"));
+    const isTwoSeriesProject = projectStartsWithTwo(projectName);
+    const procoreProjectId = readString(rowValue(projectRow, "procore_project_id"));
+
+    if (isTwoSeriesProject && !procoreProjectId) {
       continue;
     }
 
-    const netSuiteProjectId = readString(rowValue(projectRow, "netsuite_project_id", "id"));
-    const mappedProject = mapNetSuiteProject(projectRow, budgetRowsByProjectId.get(netSuiteProjectId) ?? []);
+    const mappedProject = mapNetSuiteProject(
+      projectRow,
+      isTwoSeriesProject ? [] : budgetRowsByProjectId.get(netSuiteProjectId) ?? []
+    );
 
     if (!mappedProject) {
       failedProjects.push(`${projectName || netSuiteProjectId || "Unknown project"} (missing Procore project ID or project title)`);
       continue;
     }
 
-    if (mappedProject.payItems.length === 0) {
+    if (!isTwoSeriesProject && mappedProject.payItems.length === 0) {
       continue;
     }
 
@@ -344,7 +353,7 @@ function readProjectTitle(projectRow: NetSuiteProjectRow) {
 }
 
 function projectStartsWithTwo(projectName: string) {
-  return projectName.trimStart().startsWith("2");
+  return projectNameStartsWithTwo(projectName);
 }
 
 function rowValue(row: Record<string, unknown>, ...keys: string[]) {

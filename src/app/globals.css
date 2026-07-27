@@ -661,7 +661,13 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   text-transform: uppercase;
 }
 
-.daily-labor-row input {
+.daily-labor-table.two-series .daily-labor-row {
+  grid-template-columns: 32px minmax(210px, 1.35fr) minmax(80px, 0.55fr) repeat(4, minmax(82px, 0.55fr)) minmax(92px, 0.7fr) minmax(82px, 0.55fr) minmax(92px, 0.7fr) minmax(82px, 0.55fr) minmax(96px, 0.6fr) minmax(92px, 0.55fr);
+  min-width: 1240px;
+}
+
+.daily-labor-row input,
+.daily-labor-row select {
   background: var(--field);
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -687,6 +693,33 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .daily-labor-check input {
   min-height: auto;
   width: auto;
+}
+
+.production-code-key {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.production-code-key-item {
+  align-items: center;
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 46px minmax(0, 1fr);
+  padding: 8px 10px;
+}
+
+.production-code-key-item strong {
+  color: #b8e7ec;
+  font-size: 0.9rem;
+}
+
+.production-code-key-item span {
+  color: var(--muted);
+  font-size: 0.86rem;
 }
 
 .daily-pay-item-table {
@@ -1346,6 +1379,10 @@ a.daily-report-procore-status:hover {
   display: grid;
   gap: 10px;
   grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.daily-status-strip-compact {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .daily-status-item {
@@ -3254,6 +3291,15 @@ a.daily-report-procore-status:hover {
     min-width: 920px;
   }
 
+  .daily-labor-table.two-series .daily-labor-row {
+    grid-template-columns: 30px minmax(180px, 1.3fr) minmax(72px, 0.5fr) repeat(4, minmax(72px, 0.5fr)) minmax(86px, 0.65fr) minmax(72px, 0.5fr) minmax(86px, 0.65fr) minmax(72px, 0.5fr) minmax(88px, 0.55fr) minmax(78px, 0.5fr);
+    min-width: 1120px;
+  }
+
+  .production-code-key {
+    grid-template-columns: 1fr;
+  }
+
   .daily-pay-item-row {
     grid-template-columns: 30px minmax(220px, 1fr) minmax(118px, 0.5fr);
     min-width: 560px;
@@ -3269,6 +3315,7 @@ a.daily-report-procore-status:hover {
   }
 
   .daily-labor-row input,
+  .daily-labor-row select,
   .daily-pay-item-row input,
   .daily-pay-item-row select,
   .daily-itsfm-row input {

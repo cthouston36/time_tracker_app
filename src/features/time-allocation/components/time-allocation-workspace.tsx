@@ -30,6 +30,13 @@ import {
 import { IconLabel } from "@/components/icon-label";
 import { todayInputValue } from "@/lib/date";
 import type { AuthUser } from "@/lib/auth/types";
+import {
+  TWO_SERIES_PRODUCTION_CODES,
+  formatTwoSeriesProductionCodeLabel,
+  getDailyReportTemplateForProject,
+  isTwoSeriesProject,
+  type DailyReportTemplate
+} from "@/lib/daily-report-templates";
 import type { AllocationEntry, CrewLaborType, PayItem, Project } from "@/lib/procore/types";
 
 const PROCORE_SYNC_REQUEST_TIMEOUT_MS = 55_000;
@@ -316,6 +323,10 @@ type DailyReportAnswers = {
   itsfmRows: DailyReportItsfmRow[];
   itsfmAbovegroundEquipment: string;
   itsfmCabinetEquipment: string;
+  twoSeriesEquipmentTools: string;
+  twoSeriesSafetyIssues: string;
+  twoSeriesDelayReasons: string;
+  twoSeriesDeliveries: string;
 };
 
 type DailyReportEmployeeRow = {
@@ -325,7 +336,12 @@ type DailyReportEmployeeRow = {
   lunchOut: string;
   lunchIn: string;
   timeOut: string;
+  productionCode1: string;
+  productionHours1: string;
+  productionCode2: string;
+  productionHours2: string;
   totalHours: string;
+  employeeInitial: string;
   driver: boolean;
   passenger: boolean;
 };
@@ -340,6 +356,10 @@ type DailyReportPayItemRow = {
 type DailyReportValidationResult = {
   errors: string[];
   warnings: string[];
+};
+
+type DailyReportValidationOptions = {
+  template: DailyReportTemplate;
 };
 
 type DailyReportItsfmRow = {
@@ -602,6 +622,8 @@ export function TimeAllocationWorkspace() {
     () => projects.find((project) => project.id === selectedProjectId) ?? projects[0],
     [projects, selectedProjectId]
   );
+  const selectedProjectUsesTwoSeriesDailyReport = isTwoSeriesProject(selectedProject);
+  const selectedProjectUsesPayItems = Boolean(selectedProject && !selectedProjectUsesTwoSeriesDailyReport);
   const selectedProjectEntries = useMemo(
     () => entries.filter((entry) => entry.projectId === selectedProject?.id),
     [entries, selectedProject?.id]
@@ -723,6 +745,11 @@ export function TimeAllocationWorkspace() {
     [currentUserMyJobIds.length, myProjectIdSet, projects, showOnlyMyProjects]
   );
   const totalHours = visibleEntries.reduce((total, entry) => total + entry.hours, 0);
+  const selectedDayTotalHours = selectedProjectUsesPayItems
+    ? totalHours
+    : currentDailyReport
+      ? getDailyReportEmployeeTotalHours(currentDailyReport.employeeRows)
+      : 0;
   const draftEntryCount = selectedProject
     ? selectedProject.payItems.filter((item) => draftIsSaveable(draftsByPayItem[item.id])).length
     : 0;
@@ -2224,7 +2251,9 @@ export function TimeAllocationWorkspace() {
     const dayKey = getDayKey(selectedProject.id, workDate);
     const existingReport = dailyReportsByKey[dayKey];
     const now = new Date().toISOString();
-    const validation = validateDailyReportAnswers(dailyReportDraft, selectedProject.payItems);
+    const validation = validateDailyReportAnswers(dailyReportDraft, selectedProject.payItems, {
+      template: getDailyReportTemplateForProject(selectedProject)
+    });
 
     if (validation.errors.length > 0) {
       setDailyReportDraftNotice(formatDailyReportValidationMessage(validation.errors));
@@ -2285,7 +2314,9 @@ export function TimeAllocationWorkspace() {
       return;
     }
 
-    const validation = validateDailyReportAnswers(currentDailyReport, selectedProject.payItems);
+    const validation = validateDailyReportAnswers(currentDailyReport, selectedProject.payItems, {
+      template: getDailyReportTemplateForProject(selectedProject)
+    });
 
     if (validation.errors.length > 0) {
       setDailyReportUploadNotice({
@@ -2351,7 +2382,9 @@ export function TimeAllocationWorkspace() {
       return;
     }
 
-    const validation = validateDailyReportAnswers(currentDailyReport, selectedProject.payItems);
+    const validation = validateDailyReportAnswers(currentDailyReport, selectedProject.payItems, {
+      template: getDailyReportTemplateForProject(selectedProject)
+    });
 
     if (validation.errors.length > 0) {
       setDailyReportUploadNotice({
@@ -2434,7 +2467,9 @@ export function TimeAllocationWorkspace() {
     showCurrentDayNotice: boolean;
   }) {
     const dayKey = getDayKey(project.id, date);
-    const validation = validateDailyReportAnswers(report, project.payItems);
+    const validation = validateDailyReportAnswers(report, project.payItems, {
+      template: getDailyReportTemplateForProject(project)
+    });
 
     if (validation.errors.length > 0) {
       showDailyReportUploadMessage(formatDailyReportValidationMessage(validation.errors), "error", showCurrentDayNotice);
@@ -4326,7 +4361,7 @@ export function TimeAllocationWorkspace() {
               </div>
               <div className="metric">
                 <span>Total Hours For Selected Day</span>
-                <strong>{totalHours.toFixed(2)}</strong>
+                <strong>{selectedDayTotalHours.toFixed(2)}</strong>
               </div>
             </div>
             <DailyStatusStrip
@@ -4335,9 +4370,12 @@ export function TimeAllocationWorkspace() {
               draftEntryCount={draftEntryCount}
               entryCount={visibleEntries.length}
               procoreStatus={currentDailyReportProcoreStatus}
+              showEntryStatus={selectedProjectUsesPayItems}
               uploadedImageCount={uploadedJobImageCount}
             />
 
+            {selectedProjectUsesPayItems ? (
+              <>
             <div className="panel workflow-panel">
               <div className="panel-heading">
                 <h2 className="workflow-title">
@@ -4607,13 +4645,16 @@ export function TimeAllocationWorkspace() {
                 </div>
               )}
             </div>
+              </>
+            ) : null}
 
             <div className="workflow-section-heading">
-              <span>Step 3</span>
+              <span>{selectedProjectUsesPayItems ? "Step 3" : "Step 1"}</span>
               <strong>Daily Wrap-Up</strong>
             </div>
 
-            <div className="panel">
+            {selectedProjectUsesPayItems ? (
+              <div className="panel">
               <div className="panel-heading">
                 <h2>Crew Hours Summary</h2>
                 <IconLabel icon={Users} text={`${crewSummaryRows.length} crew member${crewSummaryRows.length === 1 ? "" : "s"}`} />
@@ -4633,7 +4674,8 @@ export function TimeAllocationWorkspace() {
                   ))}
                 </div>
               )}
-            </div>
+              </div>
+            ) : null}
 
             <div className="panel">
               <div className="panel-heading">
@@ -4717,14 +4759,23 @@ export function TimeAllocationWorkspace() {
                     <span>Updated</span>
                     <strong>{new Date(currentDailyReport.updatedAt).toLocaleString()}</strong>
                   </div>
-                  <div>
-                    <span>Inspector Quantities</span>
-                    <strong>{formatYesNoAnswer(currentDailyReport.quantitiesTurnedIn)}</strong>
-                  </div>
-                  <div>
-                    <span>Incidents</span>
-                    <strong>{formatYesNoAnswer(currentDailyReport.incidentOccurred)}</strong>
-                  </div>
+                  {selectedProjectUsesTwoSeriesDailyReport ? (
+                    <div>
+                      <span>Template</span>
+                      <strong>Field Report</strong>
+                    </div>
+                  ) : (
+                    <>
+                      <div>
+                        <span>Inspector Quantities</span>
+                        <strong>{formatYesNoAnswer(currentDailyReport.quantitiesTurnedIn)}</strong>
+                      </div>
+                      <div>
+                        <span>Incidents</span>
+                        <strong>{formatYesNoAnswer(currentDailyReport.incidentOccurred)}</strong>
+                      </div>
+                    </>
+                  )}
                 </div>
               ) : (
                 <div className="empty-state">No daily report has been created for this job and date.</div>
@@ -4923,24 +4974,28 @@ export function TimeAllocationWorkspace() {
             </div>
 
             <div className="mobile-sticky-action-bar" aria-label="Entry actions">
-              <button
-                className="primary-button"
-                disabled={draftEntryCount === 0 || dayIsSubmitted}
-                onClick={saveAllocationEntries}
-                type="button"
-              >
-                <Save aria-hidden="true" size={17} />
-                Save
-              </button>
-              <button
-                className="secondary-button"
-                disabled={dayIsSubmitted || visibleEntries.length === 0}
-                onClick={submitDay}
-                type="button"
-              >
-                <Send aria-hidden="true" size={17} />
-                Submit
-              </button>
+              {selectedProjectUsesPayItems ? (
+                <>
+                  <button
+                    className="primary-button"
+                    disabled={draftEntryCount === 0 || dayIsSubmitted}
+                    onClick={saveAllocationEntries}
+                    type="button"
+                  >
+                    <Save aria-hidden="true" size={17} />
+                    Save
+                  </button>
+                  <button
+                    className="secondary-button"
+                    disabled={dayIsSubmitted || visibleEntries.length === 0}
+                    onClick={submitDay}
+                    type="button"
+                  >
+                    <Send aria-hidden="true" size={17} />
+                    Submit
+                  </button>
+                </>
+              ) : null}
               <button className="secondary-button" disabled={!selectedProject} onClick={openDailyReportModal} type="button">
                 <Edit3 aria-hidden="true" size={17} />
                 Daily
@@ -4992,6 +5047,7 @@ export function TimeAllocationWorkspace() {
           date={workDate}
           draft={dailyReportDraft}
           draftNotice={dailyReportDraftNotice}
+          isTwoSeriesTemplate={selectedProjectUsesTwoSeriesDailyReport}
           payItems={selectedProject.payItems}
           previousCrewTimeLabel={
             previousDailyReportCrewTime ? `Copy Crew/Time from ${formatDate(previousDailyReportCrewTime.date)}` : "No Previous Crew/Time"
@@ -5018,6 +5074,7 @@ function DailyStatusStrip({
   draftEntryCount,
   entryCount,
   procoreStatus,
+  showEntryStatus,
   uploadedImageCount
 }: {
   dailyReport: DailyReport | undefined;
@@ -5025,16 +5082,21 @@ function DailyStatusStrip({
   draftEntryCount: number;
   entryCount: number;
   procoreStatus: DailyReportProcoreStatus;
+  showEntryStatus: boolean;
   uploadedImageCount: number;
 }) {
   return (
-    <div className="daily-status-strip" aria-label="Daily status">
-      <DailyStatusItem
-        label="Entries"
-        tone={draftEntryCount > 0 ? "warning" : entryCount > 0 ? "success" : "neutral"}
-        value={draftEntryCount > 0 ? `${draftEntryCount} unsaved` : entryCount > 0 ? `${entryCount} saved` : "Not started"}
-      />
-      <DailyStatusItem label="Day" tone={dayIsSubmitted ? "success" : "warning"} value={dayIsSubmitted ? "Submitted" : "Draft"} />
+    <div className={`daily-status-strip ${showEntryStatus ? "" : "daily-status-strip-compact"}`} aria-label="Daily status">
+      {showEntryStatus ? (
+        <>
+          <DailyStatusItem
+            label="Entries"
+            tone={draftEntryCount > 0 ? "warning" : entryCount > 0 ? "success" : "neutral"}
+            value={draftEntryCount > 0 ? `${draftEntryCount} unsaved` : entryCount > 0 ? `${entryCount} saved` : "Not started"}
+          />
+          <DailyStatusItem label="Day" tone={dayIsSubmitted ? "success" : "warning"} value={dayIsSubmitted ? "Submitted" : "Draft"} />
+        </>
+      ) : null}
       <DailyStatusItem
         label="Daily Report"
         tone={dailyReport ? "success" : "neutral"}
@@ -5138,6 +5200,7 @@ function DailyReportModal({
   date,
   draft,
   draftNotice,
+  isTwoSeriesTemplate,
   payItems,
   previousCrewTimeLabel,
   projectName,
@@ -5156,6 +5219,7 @@ function DailyReportModal({
   date: string;
   draft: DailyReportAnswers;
   draftNotice: string;
+  isTwoSeriesTemplate: boolean;
   payItems: Project["payItems"];
   previousCrewTimeLabel: string;
   projectName: string;
@@ -5207,7 +5271,11 @@ function DailyReportModal({
                 {previousCrewTimeLabel}
               </button>
             </div>
-            <div className="daily-labor-table" role="table" aria-label="Employee time on site">
+            <div
+              className={isTwoSeriesTemplate ? "daily-labor-table two-series" : "daily-labor-table"}
+              role="table"
+              aria-label="Employee time on site"
+            >
               <div className="daily-labor-row daily-labor-header" role="row">
                 <span>#</span>
                 <span>Employee Name - Classification</span>
@@ -5216,9 +5284,22 @@ function DailyReportModal({
                 <span>Lunch Out</span>
                 <span>Lunch In</span>
                 <span>Time Out</span>
-                <span>Total Hours</span>
-                <span>Driver</span>
-                <span>Passenger</span>
+                {isTwoSeriesTemplate ? (
+                  <>
+                    <span>Code</span>
+                    <span>Hour</span>
+                    <span>Code</span>
+                    <span>Hour</span>
+                    <span>Total Hours</span>
+                    <span>Employee Initial</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Total Hours</span>
+                    <span>Driver</span>
+                    <span>Passenger</span>
+                  </>
+                )}
               </div>
               {draft.employeeRows.map((row, index) => (
                 <div className="daily-labor-row" key={index} role="row">
@@ -5269,33 +5350,96 @@ function DailyReportModal({
                     onChange={(event) => onEmployeeChange(index, "timeOut", event.target.value)}
                     onBlur={() => onEmployeeTimeBlur(index, "timeOut")}
                   />
+                  {isTwoSeriesTemplate ? (
+                    <>
+                      <select
+                        aria-label={`Production code 1 row ${index + 1}`}
+                        value={row.productionCode1}
+                        onChange={(event) => onEmployeeChange(index, "productionCode1", event.target.value)}
+                      >
+                        <option value="">Code</option>
+                        {TWO_SERIES_PRODUCTION_CODES.map((productionCode) => (
+                          <option key={productionCode.code} value={productionCode.code}>
+                            {formatTwoSeriesProductionCodeLabel(productionCode)}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        aria-label={`Production hours 1 row ${index + 1}`}
+                        inputMode="decimal"
+                        min="0"
+                        placeholder="Hours"
+                        type="number"
+                        value={row.productionHours1}
+                        onChange={(event) => onEmployeeChange(index, "productionHours1", event.target.value)}
+                        onWheel={(event) => event.currentTarget.blur()}
+                      />
+                      <select
+                        aria-label={`Production code 2 row ${index + 1}`}
+                        value={row.productionCode2}
+                        onChange={(event) => onEmployeeChange(index, "productionCode2", event.target.value)}
+                      >
+                        <option value="">Code</option>
+                        {TWO_SERIES_PRODUCTION_CODES.map((productionCode) => (
+                          <option key={productionCode.code} value={productionCode.code}>
+                            {formatTwoSeriesProductionCodeLabel(productionCode)}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        aria-label={`Production hours 2 row ${index + 1}`}
+                        inputMode="decimal"
+                        min="0"
+                        placeholder="Hours"
+                        type="number"
+                        value={row.productionHours2}
+                        onChange={(event) => onEmployeeChange(index, "productionHours2", event.target.value)}
+                        onWheel={(event) => event.currentTarget.blur()}
+                      />
+                    </>
+                  ) : null}
                   <input
                     aria-label={`Total hours row ${index + 1}`}
                     readOnly
                     tabIndex={-1}
                     value={row.totalHours}
                   />
-                  <label className="daily-labor-check">
+                  {isTwoSeriesTemplate ? (
                     <input
-                      checked={row.driver}
-                      type="checkbox"
-                      onChange={(event) => onEmployeeChange(index, "driver", event.target.checked)}
+                      aria-label={`Employee initial row ${index + 1}`}
+                      maxLength={4}
+                      value={row.employeeInitial}
+                      onChange={(event) => onEmployeeChange(index, "employeeInitial", event.target.value)}
                     />
-                    <span className="sr-only">Driver row {index + 1}</span>
-                  </label>
-                  <label className="daily-labor-check">
-                    <input
-                      checked={row.passenger}
-                      type="checkbox"
-                      onChange={(event) => onEmployeeChange(index, "passenger", event.target.checked)}
-                    />
-                    <span className="sr-only">Passenger row {index + 1}</span>
-                  </label>
+                  ) : (
+                    <>
+                      <label className="daily-labor-check">
+                        <input
+                          checked={row.driver}
+                          type="checkbox"
+                          onChange={(event) => onEmployeeChange(index, "driver", event.target.checked)}
+                        />
+                        <span className="sr-only">Driver row {index + 1}</span>
+                      </label>
+                      <label className="daily-labor-check">
+                        <input
+                          checked={row.passenger}
+                          type="checkbox"
+                          onChange={(event) => onEmployeeChange(index, "passenger", event.target.checked)}
+                        />
+                        <span className="sr-only">Passenger row {index + 1}</span>
+                      </label>
+                    </>
+                  )}
                 </div>
               ))}
             </div>
           </section>
 
+          {isTwoSeriesTemplate ? (
+            <TwoSeriesDailyReportFields draft={draft} onChange={onChange} />
+          ) : (
+            <>
           <section>
             <h3>Inspector / Quantities</h3>
             <div className="daily-report-grid two">
@@ -5497,6 +5641,8 @@ function DailyReportModal({
             <h3>ITSFM Itemized List</h3>
             <DailyReportItsfmMatrix rows={draft.itsfmRows} onChange={onItsfmChange} />
           </section>
+            </>
+          )}
         </div>
 
         <div className="modal-actions">
@@ -5510,6 +5656,90 @@ function DailyReportModal({
         </div>
       </div>
     </div>
+  );
+}
+
+function TwoSeriesDailyReportFields({
+  draft,
+  onChange
+}: {
+  draft: DailyReportAnswers;
+  onChange: (field: keyof DailyReportAnswers, value: string) => void;
+}) {
+  return (
+    <>
+      <section>
+        <h3>Production Code Key</h3>
+        <div className="production-code-key">
+          {TWO_SERIES_PRODUCTION_CODES.map((productionCode) => (
+            <div className="production-code-key-item" key={productionCode.code}>
+              <strong>{productionCode.code}</strong>
+              <span>{productionCode.description}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section>
+        <h3>Work Completed</h3>
+        <div className="field-group">
+          <label htmlFor="daily-two-series-work-description">Detailed Description of Work Completed</label>
+          <textarea
+            id="daily-two-series-work-description"
+            value={draft.workDescription}
+            onChange={(event) => onChange("workDescription", event.target.value)}
+          />
+        </div>
+      </section>
+
+      <section>
+        <h3>Equipment / Tools on Project</h3>
+        <div className="field-group">
+          <label htmlFor="daily-two-series-equipment-tools">Equipment / Tools on Project</label>
+          <textarea
+            id="daily-two-series-equipment-tools"
+            value={draft.twoSeriesEquipmentTools}
+            onChange={(event) => onChange("twoSeriesEquipmentTools", event.target.value)}
+          />
+        </div>
+      </section>
+
+      <section>
+        <h3>Safety Issues & Concerns</h3>
+        <div className="field-group">
+          <label htmlFor="daily-two-series-safety">Safety Issues & Concerns</label>
+          <textarea
+            id="daily-two-series-safety"
+            value={draft.twoSeriesSafetyIssues}
+            onChange={(event) => onChange("twoSeriesSafetyIssues", event.target.value)}
+          />
+        </div>
+      </section>
+
+      <section>
+        <h3>Problems / Delays</h3>
+        <div className="field-group">
+          <label htmlFor="daily-two-series-delays">Problems or Reasons for Delay</label>
+          <textarea
+            id="daily-two-series-delays"
+            value={draft.twoSeriesDelayReasons}
+            onChange={(event) => onChange("twoSeriesDelayReasons", event.target.value)}
+          />
+        </div>
+      </section>
+
+      <section>
+        <h3>Deliveries</h3>
+        <div className="field-group">
+          <label htmlFor="daily-two-series-deliveries">Deliveries</label>
+          <textarea
+            id="daily-two-series-deliveries"
+            value={draft.twoSeriesDeliveries}
+            onChange={(event) => onChange("twoSeriesDeliveries", event.target.value)}
+          />
+        </div>
+      </section>
+    </>
   );
 }
 
@@ -10189,7 +10419,11 @@ function createEmptyDailyReportAnswers(): DailyReportAnswers {
     fdotIndex: "",
     itsfmRows: createEmptyDailyReportItsfmRows(),
     itsfmAbovegroundEquipment: "",
-    itsfmCabinetEquipment: ""
+    itsfmCabinetEquipment: "",
+    twoSeriesEquipmentTools: "",
+    twoSeriesSafetyIssues: "",
+    twoSeriesDelayReasons: "",
+    twoSeriesDeliveries: ""
   };
 }
 
@@ -10217,7 +10451,11 @@ function getDailyReportAnswers(report: DailyReport): DailyReportAnswers {
     fdotIndex: report.fdotIndex ?? "",
     itsfmRows: normalizeDailyReportItsfmRows(report.itsfmRows),
     itsfmAbovegroundEquipment: report.itsfmAbovegroundEquipment ?? "",
-    itsfmCabinetEquipment: report.itsfmCabinetEquipment ?? ""
+    itsfmCabinetEquipment: report.itsfmCabinetEquipment ?? "",
+    twoSeriesEquipmentTools: report.twoSeriesEquipmentTools ?? "",
+    twoSeriesSafetyIssues: report.twoSeriesSafetyIssues ?? "",
+    twoSeriesDelayReasons: report.twoSeriesDelayReasons ?? "",
+    twoSeriesDeliveries: report.twoSeriesDeliveries ?? ""
   };
 }
 
@@ -10228,12 +10466,19 @@ function normalizeDailyReportAnswersForSave(report: DailyReportAnswers): DailyRe
     incidentDetails: report.incidentOccurred === "yes" ? report.incidentDetails : "",
     inspectorName: report.quantitiesTurnedIn === "yes" ? report.inspectorName : "",
     inspectorQuantityDetails: report.quantitiesTurnedIn === "yes" ? report.inspectorQuantityDetails : "",
+    employeeRows: normalizeDailyReportEmployeeRows(report.employeeRows),
+    payItemRows: normalizeDailyReportPayItemRows(report.payItemRows),
     itsfmRows: normalizeDailyReportItsfmRows(report.itsfmRows)
   };
 }
 
-function validateDailyReportAnswers(report: DailyReportAnswers, payItems: PayItem[]): DailyReportValidationResult {
+function validateDailyReportAnswers(
+  report: DailyReportAnswers,
+  payItems: PayItem[],
+  options: DailyReportValidationOptions = { template: "standard" }
+): DailyReportValidationResult {
   const errors: string[] = [];
+  const isTwoSeriesTemplate = options.template === "two-series";
   const payItemIds = new Set(payItems.map((payItem) => payItem.id));
   const employeeRows = normalizeDailyReportEmployeeRows(report.employeeRows);
   const activeEmployeeRows = employeeRows
@@ -10289,6 +10534,10 @@ function validateDailyReportAnswers(report: DailyReportAnswers, payItems: PayIte
     if (Number.isFinite(calculatedTotalHours) && calculatedTotalHours > 12) {
       errors.push(`${rowLabel}: Total Hours cannot exceed 12.`);
     }
+
+    if (isTwoSeriesTemplate) {
+      validateTwoSeriesProductionAllocation(row, rowLabel, calculatedTotalHours, errors);
+    }
   }
 
   const payItemRows = normalizeDailyReportPayItemRows(report.payItemRows);
@@ -10296,59 +10545,127 @@ function validateDailyReportAnswers(report: DailyReportAnswers, payItems: PayIte
     .map((row, index) => ({ index, row }))
     .filter(({ row }) => dailyReportPayItemRowHasContent(row));
 
-  if (activePayItemRows.length === 0) {
-    errors.push("Add at least one Work Performed pay item row.");
-  }
-
-  for (const { index, row } of activePayItemRows) {
-    const rowLabel = `Work Performed row ${index + 1}`;
-    const quantity = parseDailyReportPositiveNumber(row.quantity);
-
-    if (!row.payItemId.trim()) {
-      errors.push(`${rowLabel}: select a pay item.`);
-    } else if (!payItemIds.has(row.payItemId)) {
-      errors.push(`${rowLabel}: select a valid pay item for this job.`);
+  if (!isTwoSeriesTemplate) {
+    if (activePayItemRows.length === 0) {
+      errors.push("Add at least one Work Performed pay item row.");
     }
 
-    if (!row.quantity.trim()) {
-      errors.push(`${rowLabel}: enter quantity.`);
-    } else if (quantity === null || quantity <= 0) {
-      errors.push(`${rowLabel}: quantity must be greater than 0.`);
-    }
-  }
+    for (const { index, row } of activePayItemRows) {
+      const rowLabel = `Work Performed row ${index + 1}`;
+      const quantity = parseDailyReportPositiveNumber(row.quantity);
 
-  if (!isAnsweredYesNo(report.quantitiesTurnedIn)) {
-    errors.push("Answer whether quantities were turned into the inspector.");
-  }
+      if (!row.payItemId.trim()) {
+        errors.push(`${rowLabel}: select a pay item.`);
+      } else if (!payItemIds.has(row.payItemId)) {
+        errors.push(`${rowLabel}: select a valid pay item for this job.`);
+      }
 
-  if (report.quantitiesTurnedIn === "yes") {
-    if (!report.inspectorName.trim()) {
-      errors.push("Enter the inspector name.");
-    }
-
-    if (!report.inspectorQuantityDetails.trim()) {
-      errors.push("Enter the quantities and items turned into the inspector.");
-    }
-  }
-
-  if (!isAnsweredYesNo(report.incidentOccurred)) {
-    errors.push("Answer whether there were incidents or accidents today.");
-  }
-
-  if (report.incidentOccurred === "yes") {
-    if (!isAnsweredYesNo(report.accidentReportFiled)) {
-      errors.push("Answer whether an accident report was filed.");
+      if (!row.quantity.trim()) {
+        errors.push(`${rowLabel}: enter quantity.`);
+      } else if (quantity === null || quantity <= 0) {
+        errors.push(`${rowLabel}: quantity must be greater than 0.`);
+      }
     }
 
-    if (!report.incidentDetails.trim()) {
-      errors.push("Enter incident / accident details.");
+    if (!isAnsweredYesNo(report.quantitiesTurnedIn)) {
+      errors.push("Answer whether quantities were turned into the inspector.");
     }
+
+    if (report.quantitiesTurnedIn === "yes") {
+      if (!report.inspectorName.trim()) {
+        errors.push("Enter the inspector name.");
+      }
+
+      if (!report.inspectorQuantityDetails.trim()) {
+        errors.push("Enter the quantities and items turned into the inspector.");
+      }
+    }
+
+    if (!isAnsweredYesNo(report.incidentOccurred)) {
+      errors.push("Answer whether there were incidents or accidents today.");
+    }
+
+    if (report.incidentOccurred === "yes") {
+      if (!isAnsweredYesNo(report.accidentReportFiled)) {
+        errors.push("Answer whether an accident report was filed.");
+      }
+
+      if (!report.incidentDetails.trim()) {
+        errors.push("Enter incident / accident details.");
+      }
+    }
+  } else if (!report.workDescription.trim()) {
+    errors.push("Enter the detailed description of work completed.");
   }
 
   return {
     errors,
     warnings: []
   };
+}
+
+function validateTwoSeriesProductionAllocation(
+  row: DailyReportEmployeeRow,
+  rowLabel: string,
+  totalHours: number,
+  errors: string[]
+) {
+  const productionPairs = [
+    {
+      code: row.productionCode1.trim(),
+      hours: row.productionHours1.trim(),
+      label: "first production code"
+    },
+    {
+      code: row.productionCode2.trim(),
+      hours: row.productionHours2.trim(),
+      label: "second production code"
+    }
+  ];
+  const allowedCodes = new Set(TWO_SERIES_PRODUCTION_CODES.map((productionCode) => productionCode.code));
+  let productionHoursTotal = 0;
+  let completeProductionPairCount = 0;
+
+  for (const pair of productionPairs) {
+    const hasCode = Boolean(pair.code);
+    const hasHours = Boolean(pair.hours);
+    const parsedHours = parseDailyReportPositiveNumber(pair.hours);
+
+    if (!hasCode && !hasHours) {
+      continue;
+    }
+
+    if (!hasCode) {
+      errors.push(`${rowLabel}: select the ${pair.label}.`);
+      continue;
+    }
+
+    if (!allowedCodes.has(pair.code)) {
+      errors.push(`${rowLabel}: select a valid ${pair.label}.`);
+    }
+
+    if (!hasHours) {
+      errors.push(`${rowLabel}: enter hours for the ${pair.label}.`);
+      continue;
+    }
+
+    if (parsedHours === null || parsedHours <= 0) {
+      errors.push(`${rowLabel}: production hours must be greater than 0.`);
+      continue;
+    }
+
+    productionHoursTotal += parsedHours;
+    completeProductionPairCount += 1;
+  }
+
+  if (completeProductionPairCount === 0) {
+    errors.push(`${rowLabel}: add at least one production code and hours.`);
+    return;
+  }
+
+  if (Number.isFinite(totalHours) && totalHours > 0 && Math.abs(productionHoursTotal - totalHours) > 0.01) {
+    errors.push(`${rowLabel}: production hours must equal Total Hours.`);
+  }
 }
 
 function parseDailyReportPositiveNumber(value: string) {
@@ -10416,7 +10733,12 @@ function createEmptyDailyReportEmployeeRows() {
     lunchOut: "",
     lunchIn: "",
     timeOut: "",
+    productionCode1: "",
+    productionHours1: "",
+    productionCode2: "",
+    productionHours2: "",
     totalHours: "",
+    employeeInitial: "",
     driver: false,
     passenger: false
   }));
@@ -10459,10 +10781,26 @@ function dailyReportEmployeeRowHasContent(row: DailyReportEmployeeRow) {
     Boolean(row.lunchOut.trim()) ||
     Boolean(row.lunchIn.trim()) ||
     Boolean(row.timeOut.trim()) ||
+    Boolean(row.productionCode1.trim()) ||
+    Boolean(row.productionHours1.trim()) ||
+    Boolean(row.productionCode2.trim()) ||
+    Boolean(row.productionHours2.trim()) ||
     Boolean(row.totalHours.trim()) ||
+    Boolean(row.employeeInitial.trim()) ||
     row.driver ||
     row.passenger
   );
+}
+
+function getDailyReportEmployeeTotalHours(rows: DailyReportEmployeeRow[] | undefined) {
+  return normalizeDailyReportEmployeeRows(rows).reduce((total, row) => {
+    if (!dailyReportEmployeeRowHasContent(row)) {
+      return total;
+    }
+
+    const rowHours = Number(row.totalHours || calculateDailyReportTotalHours(row));
+    return Number.isFinite(rowHours) ? total + rowHours : total;
+  }, 0);
 }
 
 function dailyReportPayItemRowHasContent(row: DailyReportPayItemRow) {
