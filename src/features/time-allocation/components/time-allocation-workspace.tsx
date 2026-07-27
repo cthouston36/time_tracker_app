@@ -595,9 +595,20 @@ export function TimeAllocationWorkspace() {
     () => projects.find((project) => project.id === selectedProjectId) ?? projects[0],
     [projects, selectedProjectId]
   );
+  const selectedProjectEntries = useMemo(
+    () => entries.filter((entry) => entry.projectId === selectedProject?.id),
+    [entries, selectedProject?.id]
+  );
   const visibleEntries = useMemo(
-    () => entries.filter((entry) => entry.projectId === selectedProject?.id && entry.date === workDate),
-    [entries, selectedProject?.id, workDate]
+    () => selectedProjectEntries.filter((entry) => entry.date === workDate),
+    [selectedProjectEntries, workDate]
+  );
+  const remainingQuantitiesByPayItem = useMemo(
+    () =>
+      selectedProject
+        ? buildRemainingQuantitiesByPayItem(selectedProject.payItems, selectedProjectEntries, workDate)
+        : {},
+    [selectedProject, selectedProjectEntries, workDate]
   );
   const workedPayItemCount = selectedProject
     ? selectedProject.payItems.filter((payItem) => payItemHasWork(payItem.id, draftsByPayItem, visibleEntries)).length
@@ -4343,13 +4354,14 @@ export function TimeAllocationWorkspace() {
                     const draft = draftsByPayItem[item.id];
                     const savedEntry = visibleEntries.find((entry) => entry.payItemId === item.id);
                     const rowHasWork = Boolean(savedEntry) || draftHasAnyInput(draft);
+                    const remainingQuantity = remainingQuantitiesByPayItem[item.id] ?? item.budgetedQuantity;
 
                     return (
                       <div className={rowHasWork ? "matrix-row worked-row" : "matrix-row"} key={item.id} role="row">
                         <span className="matrix-code" data-label="Code">{item.code}</span>
                         <span className="matrix-name" data-label="Pay Item">{item.name}</span>
-                        <span className="matrix-budget" data-label="QTY">
-                          {item.budgetedQuantity.toLocaleString()} {item.unitOfMeasure.toUpperCase()}
+                        <span className="matrix-budget" data-label="QTY" title="Remaining quantity before this date">
+                          {formatPayItemQuantity(remainingQuantity)} {item.unitOfMeasure.toUpperCase()}
                         </span>
                         <span className="matrix-saved" data-label="Saved Hrs">{savedEntry ? savedEntry.hours.toFixed(2) : "-"}</span>
                         <span className="matrix-saved" data-label="Saved Qty">{savedEntry ? savedEntry.quantityCompleted.toFixed(2) : "-"}</span>
@@ -4401,6 +4413,7 @@ export function TimeAllocationWorkspace() {
                   dayIsSubmitted={dayIsSubmitted}
                   draftsByPayItem={draftsByPayItem}
                   payItems={displayedPayItems}
+                  remainingQuantity={remainingQuantitiesByPayItem[mobileSelectedPayItem.id] ?? mobileSelectedPayItem.budgetedQuantity}
                   savedEntries={visibleEntries}
                   selectedPayItem={mobileSelectedPayItem}
                   crewMembers={selectedProjectCrewMembers}
@@ -5697,6 +5710,7 @@ function MobilePayItemEntry({
   dayIsSubmitted,
   draftsByPayItem,
   payItems,
+  remainingQuantity,
   savedEntries,
   selectedPayItem,
   onCrewHoursChange,
@@ -5709,6 +5723,7 @@ function MobilePayItemEntry({
   dayIsSubmitted: boolean;
   draftsByPayItem: DraftsByPayItem;
   payItems: Project["payItems"];
+  remainingQuantity: number;
   savedEntries: AllocationEntry[];
   selectedPayItem: Project["payItems"][number];
   onCrewHoursChange: (payItemId: string, crewMemberId: string, value: string) => void;
@@ -5745,7 +5760,7 @@ function MobilePayItemEntry({
         <div>
           <span>QTY</span>
           <strong>
-            {selectedPayItem.budgetedQuantity.toLocaleString()} {selectedPayItem.unitOfMeasure.toUpperCase()}
+            {formatPayItemQuantity(remainingQuantity)} {selectedPayItem.unitOfMeasure.toUpperCase()}
           </strong>
         </div>
         <div>
@@ -9794,6 +9809,36 @@ function draftHasAnyInput(draft: PayItemDraft | undefined) {
 
 function payItemHasWork(payItemId: string, draftsByPayItem: DraftsByPayItem, visibleEntries: AllocationEntry[]) {
   return visibleEntries.some((entry) => entry.payItemId === payItemId) || draftHasAnyInput(draftsByPayItem[payItemId]);
+}
+
+function buildRemainingQuantitiesByPayItem(
+  payItems: Project["payItems"],
+  projectEntries: AllocationEntry[],
+  selectedDate: string
+) {
+  const previousQuantitiesByPayItem: Record<string, number> = {};
+
+  for (const entry of projectEntries) {
+    if (entry.date >= selectedDate) {
+      continue;
+    }
+
+    previousQuantitiesByPayItem[entry.payItemId] =
+      (previousQuantitiesByPayItem[entry.payItemId] ?? 0) + entry.quantityCompleted;
+  }
+
+  return payItems.reduce<Record<string, number>>((remainingQuantities, payItem) => {
+    remainingQuantities[payItem.id] = payItem.budgetedQuantity - (previousQuantitiesByPayItem[payItem.id] ?? 0);
+
+    return remainingQuantities;
+  }, {});
+}
+
+function formatPayItemQuantity(value: number) {
+  return value.toLocaleString(undefined, {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 0
+  });
 }
 
 function buildEntryConflictSignature(entries: AllocationEntry[]) {
