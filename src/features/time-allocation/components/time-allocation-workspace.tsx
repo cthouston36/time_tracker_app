@@ -86,7 +86,13 @@ type ProcoreSyncSummary = {
   failed: number;
   skippedExisting: number;
   failedProjects: string[];
+  dailyReportOnlyProjects?: number;
+  eligibleProjects?: number;
+  payItemProjects?: number;
   remainingNewProjects?: number;
+  skippedMissingProcoreProjectId?: number;
+  skippedNoPayItems?: number;
+  totalNetSuiteProjects?: number;
 };
 
 type SyncLogEntry = {
@@ -407,6 +413,7 @@ type JobImageUploadStatus = "failed" | "uploaded";
 
 type JobImageUpload = {
   attemptedAt?: string;
+  caption?: string;
   clientId?: string;
   contentType?: string;
   date: string;
@@ -429,6 +436,7 @@ type JobImageUpload = {
 type JobImageUploadsByDay = Record<string, JobImageUpload[]>;
 
 type JobImageQueueItem = {
+  caption: string;
   error?: string;
   file: File;
   id: string;
@@ -2575,6 +2583,7 @@ export function TimeAllocationWorkspace() {
     jobImagePreviewUrlsRef.current.add(previewUrl);
 
     return {
+      caption: "",
       file: preparedFile,
       id: crypto.randomUUID(),
       originalName: file.name || preparedFile.name,
@@ -2582,6 +2591,10 @@ export function TimeAllocationWorkspace() {
       size: preparedFile.size,
       status: "queued"
     };
+  }
+
+  function updateJobImageCaption(imageId: string, caption: string) {
+    setJobImageQueue((current) => current.map((item) => (item.id === imageId ? { ...item, caption } : item)));
   }
 
   function revokeJobImagePreview(previewUrl: string) {
@@ -2762,6 +2775,7 @@ export function TimeAllocationWorkspace() {
         for (const item of batch) {
           formData.append("images", item.file, item.file.name);
           formData.append("imageClientIds", item.id);
+          formData.append("imageCaptions", item.caption);
           formData.append("originalFileNames", item.originalName);
         }
 
@@ -4649,7 +4663,7 @@ export function TimeAllocationWorkspace() {
 
             <div className="workflow-section-heading">
               <span>{selectedProjectUsesPayItems ? "Step 3" : "Step 1"}</span>
-              <strong>Daily Wrap-Up</strong>
+              <strong>{selectedProjectUsesPayItems ? "Daily Wrap-Up" : "Daily Report"}</strong>
             </div>
 
             {selectedProjectUsesPayItems ? (
@@ -4841,6 +4855,13 @@ export function TimeAllocationWorkspace() {
               ) : null}
             </div>
 
+            {!selectedProjectUsesPayItems ? (
+              <div className="workflow-section-heading">
+                <span>Step 2</span>
+                <strong>Job Images</strong>
+              </div>
+            ) : null}
+
             <div className="panel job-images-panel">
               <div className="panel-heading">
                 <h2>Job Images</h2>
@@ -4912,6 +4933,16 @@ export function TimeAllocationWorkspace() {
                             <span>{formatFileSize(item.size)}</span>
                           </div>
                           <span className={`job-image-status ${item.status}`}>{formatJobImageQueueStatus(item)}</span>
+                          <label className="job-image-caption-field">
+                            <span>Caption</span>
+                            <input
+                              disabled={item.status === "uploading" || item.status === "uploaded"}
+                              maxLength={160}
+                              placeholder="Optional photo caption"
+                              value={item.caption}
+                              onChange={(event) => updateJobImageCaption(item.id, event.target.value)}
+                            />
+                          </label>
                           {item.uploadedFileName ? <span className="job-image-meta">{item.uploadedFileName}</span> : null}
                           {item.error ? <p>{item.error}</p> : null}
                         </div>
@@ -4955,6 +4986,7 @@ export function TimeAllocationWorkspace() {
                             {upload.fileSizeBytes ? ` - ${formatFileSize(upload.fileSizeBytes)}` : ""}
                           </span>
                           {upload.originalFileName ? <span>Original: {upload.originalFileName}</span> : null}
+                          {upload.caption ? <span>Caption: {upload.caption}</span> : null}
                           {upload.error ? <p>{upload.error}</p> : null}
                         </div>
                         {upload.folderUrl ? (
@@ -5425,6 +5457,7 @@ function DailyReportModal({
                 </div>
               ))}
             </div>
+            {isTwoSeriesTemplate ? <TwoSeriesProductionTotals rows={draft.employeeRows} /> : null}
           </section>
 
           {isTwoSeriesTemplate ? (
@@ -5646,6 +5679,34 @@ function DailyReportModal({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function TwoSeriesProductionTotals({ rows }: { rows: DailyReportEmployeeRow[] }) {
+  const productionTotals = getTwoSeriesProductionTotals(rows);
+
+  return (
+    <div className="production-code-totals" aria-label="Production code hour totals">
+      <div className="production-code-totals-heading">
+        <strong>Production Code Totals</strong>
+        <span>{formatHours(productionTotals.reduce((total, row) => total + row.hours, 0))} hrs</span>
+      </div>
+      {productionTotals.length === 0 ? (
+        <span className="field-note">No production hours entered yet.</span>
+      ) : (
+        <div className="production-code-total-list">
+          {productionTotals.map((total) => (
+            <div className="production-code-total-row" key={total.code}>
+              <span>
+                <strong>{total.code}</strong>
+                {total.description}
+              </span>
+              <strong>{formatHours(total.hours)}</strong>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -7009,7 +7070,9 @@ function WeeklyStatusReport({
                 const status =
                   calendarStatusMode === "daily_reports"
                     ? getDailyReportCalendarStatus(dailyReportsByKey[dayKey], dailyReportUploadsByKey[dayKey])
-                    : getEntryCalendarStatus(daySubmissions[dayKey]);
+                    : isTwoSeriesProject(project)
+                      ? getNotApplicableCalendarStatus()
+                      : getEntryCalendarStatus(daySubmissions[dayKey]);
 
                 return (
                   <button
@@ -7043,6 +7106,13 @@ function getEntryCalendarStatus(daySubmission: DaySubmission | undefined) {
   return {
     className: "draft",
     label: "Draft"
+  };
+}
+
+function getNotApplicableCalendarStatus() {
+  return {
+    className: "not-applicable",
+    label: "N/A"
   };
 }
 
@@ -7496,14 +7566,36 @@ function ReportPaginationControls({
 }
 
 function SyncSummaryCard({ summary }: { summary: ProcoreSyncSummary }) {
+  const dailyReportOnlyProjects = summary.dailyReportOnlyProjects ?? 0;
+  const eligibleProjects = summary.eligibleProjects ?? summary.attempted + summary.skippedExisting;
+  const payItemProjects = summary.payItemProjects ?? 0;
   const remainingNewProjects = summary.remainingNewProjects ?? 0;
+  const skippedMissingProcoreProjectId = summary.skippedMissingProcoreProjectId ?? 0;
+  const skippedNoPayItems = summary.skippedNoPayItems ?? 0;
 
   return (
     <div className={hasSyncWarnings(summary) ? "sync-summary warning" : "sync-summary"}>
       <strong>
         Synced {summary.synced} of {summary.attempted} attempted project{summary.attempted === 1 ? "" : "s"}
       </strong>
+      {summary.totalNetSuiteProjects !== undefined ? (
+        <span>
+          NetSuite scan: {summary.totalNetSuiteProjects} project{summary.totalNetSuiteProjects === 1 ? "" : "s"} inspected,{" "}
+          {eligibleProjects} eligible.
+        </span>
+      ) : null}
+      {summary.payItemProjects !== undefined || summary.dailyReportOnlyProjects !== undefined ? (
+        <span>
+          Eligible mix: {payItemProjects} pay-item project{payItemProjects === 1 ? "" : "s"},{" "}
+          {dailyReportOnlyProjects} daily-report-only 2-series project{dailyReportOnlyProjects === 1 ? "" : "s"}.
+        </span>
+      ) : null}
       <span>{summary.skippedExisting} existing project{summary.skippedExisting === 1 ? "" : "s"} skipped.</span>
+      {skippedMissingProcoreProjectId > 0 || skippedNoPayItems > 0 ? (
+        <span>
+          Skipped from app: {skippedMissingProcoreProjectId} missing Procore project ID, {skippedNoPayItems} with no pay items.
+        </span>
+      ) : null}
       {remainingNewProjects > 0 ? (
         <span>
           {remainingNewProjects} new project{remainingNewProjects === 1 ? "" : "s"} still queued. Run Sync New Projects again to continue.
@@ -10665,6 +10757,43 @@ function parseDailyReportPositiveNumber(value: string) {
   return Number.isFinite(number) ? number : null;
 }
 
+function formatHours(value: number) {
+  return value.toFixed(2);
+}
+
+function getTwoSeriesProductionTotals(rows: DailyReportEmployeeRow[]) {
+  const codeDescriptions = new Map(
+    TWO_SERIES_PRODUCTION_CODES.map((productionCode) => [productionCode.code, productionCode.description])
+  );
+  const totalsByCode = new Map<string, number>();
+
+  for (const row of rows) {
+    const pairs = [
+      [row.productionCode1, row.productionHours1],
+      [row.productionCode2, row.productionHours2]
+    ];
+
+    for (const [codeValue, hoursValue] of pairs) {
+      const code = codeValue.trim();
+      const hours = parseDailyReportPositiveNumber(hoursValue);
+
+      if (!code || hours === null || hours <= 0) {
+        continue;
+      }
+
+      totalsByCode.set(code, (totalsByCode.get(code) ?? 0) + hours);
+    }
+  }
+
+  return TWO_SERIES_PRODUCTION_CODES
+    .filter((productionCode) => totalsByCode.has(productionCode.code))
+    .map((productionCode) => ({
+      code: productionCode.code,
+      description: codeDescriptions.get(productionCode.code) ?? productionCode.description,
+      hours: totalsByCode.get(productionCode.code) ?? 0
+    }));
+}
+
 function isAnsweredYesNo(value: string) {
   return value === "yes" || value === "no";
 }
@@ -10944,10 +11073,12 @@ function buildSyncStatus(prefix: string, summary: ProcoreSyncSummary | undefined
     return `${prefix} complete`;
   }
 
+  const dailyReportOnlyText =
+    summary.dailyReportOnlyProjects !== undefined ? `, ${summary.dailyReportOnlyProjects} daily-report-only` : "";
   const remainingNewProjects = summary.remainingNewProjects ?? 0;
   const queuedText = remainingNewProjects > 0 ? `, ${remainingNewProjects} queued` : "";
 
-  return `${prefix}: ${summary.synced} synced, ${summary.failed} failed${queuedText}`;
+  return `${prefix}: ${summary.synced} synced, ${summary.failed} failed${dailyReportOnlyText}${queuedText}`;
 }
 
 function hasSyncWarnings(summary: ProcoreSyncSummary | undefined) {
@@ -10955,10 +11086,19 @@ function hasSyncWarnings(summary: ProcoreSyncSummary | undefined) {
 }
 
 function formatSyncSummaryLine(summary: ProcoreSyncSummary) {
+  const eligibleText = summary.eligibleProjects !== undefined ? `, ${summary.eligibleProjects} eligible` : "";
   const remainingNewProjects = summary.remainingNewProjects ?? 0;
   const queuedText = remainingNewProjects > 0 ? `, ${remainingNewProjects} queued` : "";
+  const skippedDetails =
+    summary.skippedMissingProcoreProjectId !== undefined || summary.skippedNoPayItems !== undefined
+      ? `, ${summary.skippedMissingProcoreProjectId ?? 0} missing Procore ID, ${summary.skippedNoPayItems ?? 0} no pay items`
+      : "";
+  const sourceDetails =
+    summary.payItemProjects !== undefined || summary.dailyReportOnlyProjects !== undefined
+      ? `, ${summary.payItemProjects ?? 0} pay-item, ${summary.dailyReportOnlyProjects ?? 0} 2-series`
+      : "";
 
-  return `${summary.synced} synced, ${summary.skippedExisting} skipped, ${summary.failed} failed${queuedText}`;
+  return `${summary.synced} synced, ${summary.skippedExisting} existing skipped, ${summary.failed} failed${eligibleText}${sourceDetails}${skippedDetails}${queuedText}`;
 }
 
 async function postProjectsWithTimeout(path: string, timeoutMessage: string) {

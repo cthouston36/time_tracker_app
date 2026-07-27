@@ -106,6 +106,7 @@ type ProcoreUploadDebugInfo = {
 };
 
 export type JobImageUploadInput = {
+  caption?: string;
   clientId: string;
   contentType: string;
   file: Uint8Array;
@@ -114,6 +115,7 @@ export type JobImageUploadInput = {
 };
 
 export type JobImageUploadResult = {
+  caption?: string;
   clientId: string;
   contentType: string;
   error?: string;
@@ -246,6 +248,7 @@ export async function uploadJobImagesToProcore({
       });
 
       uploads.push({
+        caption: image.caption,
         clientId: image.clientId,
         contentType: image.contentType,
         fileName: uploadResult.fileName,
@@ -259,6 +262,7 @@ export async function uploadJobImagesToProcore({
       });
     } catch (error) {
       uploads.push({
+        caption: image.caption,
         clientId: image.clientId,
         contentType: image.contentType,
         error: error instanceof Error ? error.message : "Unable to upload image to Procore.",

@@ -695,6 +695,57 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   width: auto;
 }
 
+.production-code-totals {
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px 12px;
+}
+
+.production-code-totals-heading,
+.production-code-total-row {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.production-code-totals-heading strong {
+  color: var(--foreground);
+}
+
+.production-code-totals-heading span {
+  color: #b8e7ec;
+  font-weight: 700;
+}
+
+.production-code-total-list {
+  display: grid;
+  gap: 6px;
+}
+
+.production-code-total-row {
+  background: var(--panel-soft);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 8px 10px;
+}
+
+.production-code-total-row span {
+  color: var(--muted);
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.production-code-total-row span strong,
+.production-code-total-row > strong {
+  color: #d7fbff;
+}
+
 .production-code-key {
   display: grid;
   gap: 8px;
@@ -1071,6 +1122,28 @@ a.daily-report-procore-status:hover {
   color: #ffc7d1;
   font-size: 0.78rem;
   margin: 0;
+}
+
+.job-image-caption-field {
+  display: grid;
+  gap: 4px;
+}
+
+.job-image-caption-field span {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.job-image-caption-field input {
+  background: var(--background);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--foreground);
+  min-height: 34px;
+  padding: 6px 8px;
+  width: 100%;
 }
 
 .job-image-status {
@@ -2686,6 +2759,11 @@ a.daily-report-procore-status:hover {
 .status-badge.missing {
   background: #2d1820;
   color: #ffc7d1;
+}
+
+.status-badge.not-applicable {
+  background: #111a25;
+  color: #9fb0c4;
 }
 
 .report-info-panel {

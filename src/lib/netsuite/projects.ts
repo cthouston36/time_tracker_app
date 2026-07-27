@@ -18,7 +18,13 @@ export type NetSuiteSyncSummary = {
   failed: number;
   skippedExisting: number;
   failedProjects: string[];
+  dailyReportOnlyProjects?: number;
+  eligibleProjects?: number;
+  payItemProjects?: number;
   remainingNewProjects?: number;
+  skippedMissingProcoreProjectId?: number;
+  skippedNoPayItems?: number;
+  totalNetSuiteProjects?: number;
 };
 
 export type NetSuiteSyncResult = {
@@ -47,6 +53,16 @@ type MappedNetSuiteProject = Project & {
   procoreProjectId: string;
 };
 
+type EligibleNetSuiteProjectsResult = {
+  dailyReportOnlyProjects: number;
+  failedProjects: string[];
+  payItemProjects: number;
+  projects: MappedNetSuiteProject[];
+  skippedMissingProcoreProjectId: number;
+  skippedNoPayItems: number;
+  totalNetSuiteProjects: number;
+};
+
 export async function syncProjectsFromNetSuite(): Promise<NetSuiteSyncResult> {
   const sourceProjects = await fetchEligibleNetSuiteProjects();
   const cachedProjects = await readProcoreCache();
@@ -58,10 +74,16 @@ export async function syncProjectsFromNetSuite(): Promise<NetSuiteSyncResult> {
     projects: cache.projects,
     summary: {
       attempted: newProjects.length,
+      dailyReportOnlyProjects: sourceProjects.dailyReportOnlyProjects,
+      eligibleProjects: sourceProjects.projects.length,
       failed: sourceProjects.failedProjects.length,
       failedProjects: sourceProjects.failedProjects,
+      payItemProjects: sourceProjects.payItemProjects,
       skippedExisting: sourceProjects.projects.length - newProjects.length,
-      synced: newProjects.length
+      skippedMissingProcoreProjectId: sourceProjects.skippedMissingProcoreProjectId,
+      skippedNoPayItems: sourceProjects.skippedNoPayItems,
+      synced: newProjects.length,
+      totalNetSuiteProjects: sourceProjects.totalNetSuiteProjects
     }
   };
 }
@@ -74,10 +96,16 @@ export async function syncAllProjectsFromNetSuite(): Promise<NetSuiteSyncResult>
     projects: cache.projects,
     summary: {
       attempted: sourceProjects.projects.length,
+      dailyReportOnlyProjects: sourceProjects.dailyReportOnlyProjects,
+      eligibleProjects: sourceProjects.projects.length,
       failed: sourceProjects.failedProjects.length,
       failedProjects: sourceProjects.failedProjects,
+      payItemProjects: sourceProjects.payItemProjects,
       skippedExisting: 0,
-      synced: sourceProjects.projects.length
+      skippedMissingProcoreProjectId: sourceProjects.skippedMissingProcoreProjectId,
+      skippedNoPayItems: sourceProjects.skippedNoPayItems,
+      synced: sourceProjects.projects.length,
+      totalNetSuiteProjects: sourceProjects.totalNetSuiteProjects
     }
   };
 }
@@ -148,11 +176,15 @@ export async function getNetSuiteConnectionTest() {
   };
 }
 
-async function fetchEligibleNetSuiteProjects() {
+async function fetchEligibleNetSuiteProjects(): Promise<EligibleNetSuiteProjectsResult> {
   const [projectRows, budgetLineRows] = await Promise.all([fetchNetSuiteProjectRows(), fetchNetSuiteBudgetLineRows()]);
   const budgetRowsByProjectId = groupBudgetRowsByProjectId(budgetLineRows);
   const projects: MappedNetSuiteProject[] = [];
   const failedProjects: string[] = [];
+  let dailyReportOnlyProjects = 0;
+  let payItemProjects = 0;
+  let skippedMissingProcoreProjectId = 0;
+  let skippedNoPayItems = 0;
 
   for (const projectRow of projectRows) {
     const projectName = readProjectTitle(projectRow);
@@ -161,7 +193,8 @@ async function fetchEligibleNetSuiteProjects() {
     const isTwoSeriesProject = projectStartsWithTwo(projectName);
     const procoreProjectId = readString(rowValue(projectRow, "procore_project_id"));
 
-    if (isTwoSeriesProject && !procoreProjectId) {
+    if (!procoreProjectId) {
+      skippedMissingProcoreProjectId += 1;
       continue;
     }
 
@@ -176,15 +209,27 @@ async function fetchEligibleNetSuiteProjects() {
     }
 
     if (!isTwoSeriesProject && mappedProject.payItems.length === 0) {
+      skippedNoPayItems += 1;
       continue;
+    }
+
+    if (isTwoSeriesProject) {
+      dailyReportOnlyProjects += 1;
+    } else {
+      payItemProjects += 1;
     }
 
     projects.push(mappedProject);
   }
 
   return {
+    dailyReportOnlyProjects,
     failedProjects,
-    projects
+    payItemProjects,
+    projects,
+    skippedMissingProcoreProjectId,
+    skippedNoPayItems,
+    totalNetSuiteProjects: projectRows.length
   };
 }
 

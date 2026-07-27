@@ -3,6 +3,7 @@ import { getSql } from "@/lib/db";
 export type StoredJobImageUploadStatus = "failed" | "uploaded";
 
 export type StoredJobImageUpload = {
+  caption?: string;
   clientId?: string;
   id: string;
   projectId: string;
@@ -29,6 +30,7 @@ type JobImageUploadRow = {
   date: string;
   file_name: string;
   original_file_name: string | null;
+  caption: string | null;
   content_type: string | null;
   file_size_bytes: number | null;
   folder_id: string | null;
@@ -71,6 +73,7 @@ export async function readJobImageUploads(projectId: string, date: string) {
       to_char(work_date, 'YYYY-MM-DD') as date,
       file_name,
       original_file_name,
+      caption,
       content_type,
       file_size_bytes,
       folder_id,
@@ -145,6 +148,7 @@ export async function upsertJobImageUploads(jobImageUploads: StoredJobImageUploa
       work_date,
       file_name,
       original_file_name,
+      caption,
       content_type,
       file_size_bytes,
       folder_id,
@@ -166,6 +170,7 @@ export async function upsertJobImageUploads(jobImageUploads: StoredJobImageUploa
       ${upload.date}::date,
       ${upload.fileName},
       ${upload.originalFileName ?? null},
+      ${upload.caption ?? null},
       ${upload.contentType ?? null},
       ${upload.fileSizeBytes ?? null},
       ${upload.folderId ?? null},
@@ -186,6 +191,7 @@ export async function upsertJobImageUploads(jobImageUploads: StoredJobImageUploa
         work_date = excluded.work_date,
         file_name = excluded.file_name,
         original_file_name = excluded.original_file_name,
+        caption = excluded.caption,
         content_type = excluded.content_type,
         file_size_bytes = excluded.file_size_bytes,
         folder_id = excluded.folder_id,
@@ -244,6 +250,7 @@ async function ensureJobImageUploadTable() {
       work_date date not null,
       file_name text not null,
       original_file_name text,
+      caption text,
       content_type text,
       file_size_bytes integer,
       folder_id text,
@@ -261,6 +268,7 @@ async function ensureJobImageUploadTable() {
     )
   `;
 
+  await sql`alter table job_image_uploads add column if not exists caption text`;
   await sql`create index if not exists job_image_uploads_project_date_idx on job_image_uploads (project_id, work_date)`;
   await sql`create index if not exists job_image_uploads_status_idx on job_image_uploads (status)`;
   await sql`create index if not exists job_image_uploads_uploaded_idx on job_image_uploads (uploaded_at)`;
@@ -301,6 +309,7 @@ function normalizeJobImageUploadRow(row: JobImageUploadRow): StoredJobImageUploa
     date: readString(rawUpload, "date") || row.date,
     fileName: readString(rawUpload, "fileName") || row.file_name,
     originalFileName: readOptionalString(rawUpload, "originalFileName") ?? row.original_file_name ?? undefined,
+    caption: readOptionalString(rawUpload, "caption") ?? row.caption ?? undefined,
     contentType: readOptionalString(rawUpload, "contentType") ?? row.content_type ?? undefined,
     fileSizeBytes: readOptionalNumber(rawUpload, "fileSizeBytes") ?? row.file_size_bytes ?? undefined,
     folderId: readOptionalString(rawUpload, "folderId") ?? row.folder_id ?? undefined,

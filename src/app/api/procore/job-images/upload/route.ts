@@ -25,6 +25,7 @@ export async function POST(request: NextRequest) {
     const project = readProject(formData.get("project"));
     const files = formData.getAll("images").filter(isFile);
     const clientIds = formData.getAll("imageClientIds").map(readFormString);
+    const captions = formData.getAll("imageCaptions").map(readFormString);
     const originalFileNames = formData.getAll("originalFileNames").map(readFormString);
 
     if (!project?.id || !project.name || !ISO_DATE_PATTERN.test(date)) {
@@ -54,6 +55,7 @@ export async function POST(request: NextRequest) {
       }
 
       images.push({
+        caption: captions[index] || undefined,
         clientId: clientIds[index] || crypto.randomUUID(),
         contentType: file.type || "image/jpeg",
         file: new Uint8Array(await file.arrayBuffer()),
@@ -103,6 +105,7 @@ export async function POST(request: NextRequest) {
     const now = new Date().toISOString();
     const uploads: StoredJobImageUpload[] = uploadResult.uploads.map((upload) => ({
       attemptedAt: now,
+      caption: upload.caption,
       clientId: upload.clientId,
       contentType: upload.contentType,
       date,

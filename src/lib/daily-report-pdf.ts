@@ -93,6 +93,12 @@ type TableColumn = {
   width: number;
 };
 
+type ProductionCodeTotal = {
+  code: string;
+  description: string;
+  hours: number;
+};
+
 const DAILY_REPORT_ITSFM_ITEMS: DailyReportItsfmItem[] = [
   { group: "Aboveground Equipment", key: "cctv-1", label: "CCTV #1" },
   { group: "Aboveground Equipment", key: "cctv-2", label: "CCTV #2" },
@@ -367,9 +373,15 @@ function drawTwoSeriesDailyReportBody(doc: PDFKit.PDFDocument, context: PdfConte
           row.productionHours2 ?? "",
           row.totalHours
         ])
-      : [["No employee time entered.", "", "", "", "", "", "", "", "", "", ""]]
+      : [["No employee time entered.", "", "", "", "", "", "", "", "", "", ""]],
+    {
+      cellFontSize: 8,
+      headerFontSize: 7,
+      headerHeight: 26
+    }
   );
 
+  drawTwoSeriesProductionTotals(doc, context, employeeRows);
   drawProductionCodeKey(doc, context);
   drawTextBox(doc, context, "Detailed Description of Work Completed", report.workDescription ?? "");
   drawTextBox(doc, context, "Equipment / Tools on Project", report.twoSeriesEquipmentTools ?? "");
@@ -381,6 +393,31 @@ function drawTwoSeriesDailyReportBody(doc: PDFKit.PDFDocument, context: PdfConte
     drawTextBox(doc, context, "App Notes", payload.dayNotes?.notes ?? "");
     drawTextBox(doc, context, "Inventory", payload.dayNotes?.inventory ?? "");
   }
+}
+
+function drawTwoSeriesProductionTotals(
+  doc: PDFKit.PDFDocument,
+  context: PdfContext,
+  employeeRows: DailyReportEmployeeRow[]
+) {
+  const totals = getTwoSeriesProductionTotals(employeeRows);
+
+  drawSectionTitle(doc, context, "Production Code Totals");
+  drawTable(
+    doc,
+    context,
+    [
+      { align: "center", header: "Code", width: 64 },
+      { header: "Description", width: 346 },
+      { align: "right", header: "Hours", width: 130 }
+    ],
+    totals.length
+      ? totals.map((total) => [total.code, total.description, formatPdfNumber(total.hours)])
+      : [["", "No production hours entered.", ""]],
+    {
+      headerFill: "#dbeafe"
+    }
+  );
 }
 
 function drawProductionCodeKey(doc: PDFKit.PDFDocument, context: PdfContext) {
@@ -417,6 +454,7 @@ function drawProductionCodeKey(doc: PDFKit.PDFDocument, context: PdfContext) {
 
 function drawHeader(doc: PDFKit.PDFDocument, context: PdfContext, firstPage: boolean) {
   const y = PAGE_MARGIN - 8;
+  const title = getDailyReportTemplateForProject(context.payload.project) === "two-series" ? "Field Daily Report" : "Daily Report";
 
   if (context.logoBuffer) {
     doc.image(context.logoBuffer, PAGE_MARGIN, y, {
@@ -430,7 +468,7 @@ function drawHeader(doc: PDFKit.PDFDocument, context: PdfContext, firstPage: boo
     .fillColor(BRAND_BLUE)
     .font("Helvetica-Bold")
     .fontSize(firstPage ? 23 : 15)
-    .text("Daily Report", PAGE_MARGIN + 195, y + 1, {
+    .text(title, PAGE_MARGIN + 195, y + 1, {
       align: "right",
       width: CONTENT_WIDTH - 195
     });
@@ -540,9 +578,11 @@ function drawTable(
   context: PdfContext,
   columns: TableColumn[],
   rows: string[][],
-  options: { headerFill?: string } = {}
+  options: { cellFontSize?: number; headerFill?: string; headerFontSize?: number; headerHeight?: number } = {}
 ) {
-  const headerHeight = 22;
+  const cellFontSize = options.cellFontSize ?? 8.3;
+  const headerFontSize = options.headerFontSize ?? 7.5;
+  const headerHeight = options.headerHeight ?? 22;
 
   function drawHeaderRow() {
     ensureSpace(doc, context, headerHeight + 6);
@@ -550,9 +590,8 @@ function drawTable(
 
     doc.rect(PAGE_MARGIN, context.cursorY, CONTENT_WIDTH, headerHeight).fillAndStroke(options.headerFill ?? SOFT_BLUE, LINE);
     columns.forEach((column) => {
-      doc.fillColor(BRAND_BLUE).font("Helvetica-Bold").fontSize(7.5).text(column.header.toUpperCase(), x + 5, context.cursorY + 7, {
+      doc.fillColor(BRAND_BLUE).font("Helvetica-Bold").fontSize(headerFontSize).text(column.header.toUpperCase(), x + 5, context.cursorY + 7, {
         align: column.align ?? "left",
-        lineBreak: false,
         width: column.width - 10
       });
       x += column.width;
@@ -563,6 +602,7 @@ function drawTable(
   drawHeaderRow();
 
   rows.forEach((row, rowIndex) => {
+    doc.font("Helvetica").fontSize(cellFontSize);
     const rowHeight = Math.max(
       22,
       ...columns.map((column, columnIndex) =>
@@ -583,7 +623,7 @@ function drawTable(
 
     doc.rect(PAGE_MARGIN, context.cursorY, CONTENT_WIDTH, rowHeight).fillAndStroke(fill, LINE);
     columns.forEach((column, columnIndex) => {
-      doc.fillColor(TEXT).font("Helvetica").fontSize(8.3).text(row[columnIndex] ?? "", x + 5, context.cursorY + 6, {
+      doc.fillColor(TEXT).font("Helvetica").fontSize(cellFontSize).text(row[columnIndex] ?? "", x + 5, context.cursorY + 6, {
         align: column.align ?? "left",
         width: column.width - 10
       });
@@ -642,6 +682,46 @@ function readLogoBuffer() {
   const logoPath = join(process.cwd(), "public", "chinchor-logo.png");
 
   return existsSync(logoPath) ? readFileSync(logoPath) : null;
+}
+
+function getTwoSeriesProductionTotals(rows: DailyReportEmployeeRow[]): ProductionCodeTotal[] {
+  const totalsByCode = new Map<string, number>();
+
+  for (const row of rows) {
+    const pairs = [
+      [row.productionCode1 ?? "", row.productionHours1 ?? ""],
+      [row.productionCode2 ?? "", row.productionHours2 ?? ""]
+    ];
+
+    for (const [codeValue, hoursValue] of pairs) {
+      const code = codeValue.trim();
+      const hours = parsePdfNumber(hoursValue);
+
+      if (!code || hours <= 0) {
+        continue;
+      }
+
+      totalsByCode.set(code, (totalsByCode.get(code) ?? 0) + hours);
+    }
+  }
+
+  return TWO_SERIES_PRODUCTION_CODES
+    .filter((productionCode) => totalsByCode.has(productionCode.code))
+    .map((productionCode) => ({
+      code: productionCode.code,
+      description: productionCode.description,
+      hours: totalsByCode.get(productionCode.code) ?? 0
+    }));
+}
+
+function parsePdfNumber(value: string) {
+  const number = Number(value.replaceAll(",", "").trim());
+
+  return Number.isFinite(number) ? number : 0;
+}
+
+function formatPdfNumber(value: number) {
+  return value.toFixed(2);
 }
 
 function normalizeDailyReportItsfmRows(rows: DailyReportItsfmRow[] | undefined) {
