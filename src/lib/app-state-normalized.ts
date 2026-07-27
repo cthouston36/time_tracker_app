@@ -9,6 +9,8 @@ type CrewMember = {
   name: string;
   jobTitle: string;
   subcontractorCompany?: string;
+  netSuiteVendorEntityId?: string;
+  netSuiteVendorId?: string;
 };
 
 type SharedAppStateRecord = Record<string, unknown>;
@@ -766,6 +768,8 @@ function normalizeCrewMember(value: unknown): CrewMember | null {
     name: laborType === "subcontractor" ? subcontractorCompany ?? name : name,
     jobTitle: laborType === "subcontractor" ? "Subcontractor" : readString(crewMember, "jobTitle"),
     laborType,
+    netSuiteVendorEntityId: readNullableString(crewMember, "netSuiteVendorEntityId") ?? undefined,
+    netSuiteVendorId: readNullableString(crewMember, "netSuiteVendorId") ?? undefined,
     subcontractorCompany
   };
 }

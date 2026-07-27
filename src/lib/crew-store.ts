@@ -7,6 +7,8 @@ export type StoredCrewMember = {
   name: string;
   jobTitle: string;
   subcontractorCompany?: string;
+  netSuiteVendorId?: string;
+  netSuiteVendorEntityId?: string;
 };
 
 export type StoredCrewMembersByProject = Record<string, StoredCrewMember[]>;
@@ -16,6 +18,7 @@ type CrewMemberRow = {
   labor_type: string | null;
   name: string;
   job_title: string;
+  raw_data: unknown;
   subcontractor_company: string | null;
 };
 
@@ -25,6 +28,7 @@ type ProjectCrewMemberRow = {
   crew_member_name: string;
   job_title: string;
   labor_type: string | null;
+  raw_data: unknown;
   subcontractor_company: string | null;
 };
 
@@ -41,13 +45,13 @@ export async function readCrewData() {
   await ensureCrewTables();
 
   const crewRows = (await sql`
-    select id, name, job_title, labor_type, subcontractor_company
+    select id, name, job_title, labor_type, subcontractor_company, raw_data
     from crew_members
     order by lower(name), lower(job_title), id
   `) as CrewMemberRow[];
 
   const projectCrewRows = (await sql`
-    select project_id, crew_member_id, crew_member_name, job_title, labor_type, subcontractor_company
+    select project_id, crew_member_id, crew_member_name, job_title, labor_type, subcontractor_company, raw_data
     from project_crew_members
     order by project_id, lower(crew_member_name), lower(job_title), crew_member_id
   `) as ProjectCrewMemberRow[];
@@ -55,6 +59,7 @@ export async function readCrewData() {
   const crewDirectory = crewRows
     .map((row) =>
       normalizeCrewMember({
+        ...readRawRecord(row.raw_data),
         id: row.id,
         laborType: normalizeCrewLaborType(row.labor_type),
         name: row.name,
@@ -68,6 +73,7 @@ export async function readCrewData() {
   for (const row of projectCrewRows) {
     crewMembersByProject[row.project_id] = crewMembersByProject[row.project_id] ?? [];
     const crewMember = normalizeCrewMember({
+      ...readRawRecord(row.raw_data),
       id: row.crew_member_id,
       laborType: normalizeCrewLaborType(row.labor_type),
       name: row.crew_member_name,
@@ -595,6 +601,8 @@ function normalizeCrewMember(crewMember: StoredCrewMember | unknown) {
     laborType,
     jobTitle: laborType === "subcontractor" ? "Subcontractor" : readString(record.jobTitle),
     name: laborType === "subcontractor" ? subcontractorCompany : name,
+    netSuiteVendorEntityId: readString(record.netSuiteVendorEntityId) || undefined,
+    netSuiteVendorId: readString(record.netSuiteVendorId) || undefined,
     subcontractorCompany: subcontractorCompany || undefined
   };
 }
@@ -617,4 +625,12 @@ function normalizeCrewLaborType(value: unknown): CrewLaborType {
 
 function readString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function readRawRecord(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  return value as Record<string, unknown>;
 }

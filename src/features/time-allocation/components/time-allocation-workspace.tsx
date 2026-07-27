@@ -158,6 +158,22 @@ type ProjectControlsResponse = {
   error?: string;
 };
 
+type NetSuiteVendor = {
+  id: string;
+  name: string;
+  entityId?: string;
+  companyName?: string;
+  defaultAddress: string;
+};
+
+type NetSuiteVendorsResponse = {
+  databaseConfigured?: boolean;
+  error?: string;
+  ok?: boolean;
+  syncedAt?: string | null;
+  vendors?: NetSuiteVendor[];
+};
+
 type ManagedAppUser = AuthUser & {
   active: boolean;
   createdAt?: string;
@@ -226,6 +242,8 @@ type CrewMember = {
   jobTitle: string;
   laborType?: CrewLaborType;
   subcontractorCompany?: string;
+  netSuiteVendorEntityId?: string;
+  netSuiteVendorId?: string;
 };
 
 type CrewMembersByProject = Record<string, CrewMember[]>;
@@ -508,7 +526,11 @@ export function TimeAllocationWorkspace() {
   const [crewMemberName, setCrewMemberName] = useState("");
   const [crewMemberJobTitle, setCrewMemberJobTitle] = useState("");
   const [crewMemberLaborType, setCrewMemberLaborType] = useState<CrewLaborType>(DEFAULT_CREW_LABOR_TYPE);
-  const [crewMemberSubcontractorCompany, setCrewMemberSubcontractorCompany] = useState("");
+  const [netSuiteVendors, setNetSuiteVendors] = useState<NetSuiteVendor[]>([]);
+  const [netSuiteVendorsSyncedAt, setNetSuiteVendorsSyncedAt] = useState<string | null>(null);
+  const [loadingNetSuiteVendors, setLoadingNetSuiteVendors] = useState(false);
+  const [syncingNetSuiteVendors, setSyncingNetSuiteVendors] = useState(false);
+  const [selectedSubcontractorVendorId, setSelectedSubcontractorVendorId] = useState("");
   const [selectedExistingCrewMemberId, setSelectedExistingCrewMemberId] = useState("");
   const [mergeSourceCrewMemberId, setMergeSourceCrewMemberId] = useState("");
   const [mergeTargetCrewMemberId, setMergeTargetCrewMemberId] = useState("");
@@ -700,7 +722,7 @@ export function TimeAllocationWorkspace() {
     setCrewMemberName("");
     setCrewMemberJobTitle("");
     setCrewMemberLaborType(DEFAULT_CREW_LABOR_TYPE);
-    setCrewMemberSubcontractorCompany("");
+    setSelectedSubcontractorVendorId("");
     setSelectedExistingCrewMemberId("");
     setDraftsByPayItem({});
     clearJobImageQueue();
@@ -914,6 +936,40 @@ export function TimeAllocationWorkspace() {
 
     void loadProcoreConnectionStatus();
     void loadProjects();
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (!currentUser) {
+      setNetSuiteVendors([]);
+      setNetSuiteVendorsSyncedAt(null);
+      setSelectedSubcontractorVendorId("");
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadVendors() {
+      setLoadingNetSuiteVendors(true);
+
+      try {
+        const data = await loadDatabaseNetSuiteVendors();
+
+        if (!cancelled && data) {
+          setNetSuiteVendors(data.vendors);
+          setNetSuiteVendorsSyncedAt(data.syncedAt);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingNetSuiteVendors(false);
+        }
+      }
+    }
+
+    void loadVendors();
+
+    return () => {
+      cancelled = true;
+    };
   }, [currentUser]);
 
   useEffect(() => {
@@ -1355,7 +1411,9 @@ export function TimeAllocationWorkspace() {
     setCrewMemberName("");
     setCrewMemberJobTitle("");
     setCrewMemberLaborType(DEFAULT_CREW_LABOR_TYPE);
-    setCrewMemberSubcontractorCompany("");
+    setNetSuiteVendors([]);
+    setNetSuiteVendorsSyncedAt(null);
+    setSelectedSubcontractorVendorId("");
     setSelectedExistingCrewMemberId("");
     setMergeSourceCrewMemberId("");
     setMergeTargetCrewMemberId("");
@@ -1513,6 +1571,48 @@ export function TimeAllocationWorkspace() {
     }
   }
 
+  async function syncNetSuiteVendorDirectory() {
+    if (currentUser?.role !== "admin") {
+      return;
+    }
+
+    setSyncingNetSuiteVendors(true);
+    setAdminMaintenanceNotice(null);
+
+    try {
+      const data = await syncDatabaseNetSuiteVendors();
+
+      setNetSuiteVendors(data.vendors);
+      setNetSuiteVendorsSyncedAt(data.syncedAt);
+      setSelectedSubcontractorVendorId((currentVendorId) =>
+        data.vendors.some((vendor) => vendor.id === currentVendorId) ? currentVendorId : ""
+      );
+      setAdminMaintenanceNotice({
+        message: `Loaded ${data.vendors.length} NetSuite vendor${data.vendors.length === 1 ? "" : "s"} with default addresses.`,
+        status: "success"
+      });
+      addSyncLog({
+        action: "Get Vendors",
+        status: "success",
+        message: `Loaded ${data.vendors.length} NetSuite vendor${data.vendors.length === 1 ? "" : "s"}.`
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to sync NetSuite vendors.";
+
+      setAdminMaintenanceNotice({
+        message,
+        status: "error"
+      });
+      addSyncLog({
+        action: "Get Vendors",
+        status: "error",
+        message
+      });
+    } finally {
+      setSyncingNetSuiteVendors(false);
+    }
+  }
+
   async function clearStagingOperationalData() {
     if (currentUser?.role !== "admin") {
       return;
@@ -1560,7 +1660,7 @@ export function TimeAllocationWorkspace() {
       setCrewMemberName("");
       setCrewMemberJobTitle("");
       setCrewMemberLaborType(DEFAULT_CREW_LABOR_TYPE);
-      setCrewMemberSubcontractorCompany("");
+      setSelectedSubcontractorVendorId("");
       setSelectedExistingCrewMemberId("");
       setMergeSourceCrewMemberId("");
       setMergeTargetCrewMemberId("");
@@ -2650,58 +2750,71 @@ export function TimeAllocationWorkspace() {
     setCrewMemberName("");
     setCrewMemberJobTitle("");
     setCrewMemberLaborType(DEFAULT_CREW_LABOR_TYPE);
-    setCrewMemberSubcontractorCompany("");
+    setSelectedSubcontractorVendorId("");
     setSelectedExistingCrewMemberId("");
     setEditingCrewMember(null);
     setEntryNotice(`${name} added to ${selectedProject.name}.`);
   }
 
-  function addSubcontractorCompany() {
+  function addSubcontractorVendorToProject() {
     if (!selectedProject) {
       return;
     }
 
-    const companyName = crewMemberSubcontractorCompany.trim();
+    const vendor = netSuiteVendors.find((candidate) => candidate.id === selectedSubcontractorVendorId);
 
-    if (!companyName) {
-      setEntryNotice("Enter the subcontractor company name.");
+    if (!vendor) {
+      setEntryNotice("Select a NetSuite vendor to add as a subcontractor.");
       return;
     }
 
+    const companyName = vendor.name.trim();
+    const vendorCrewMemberId = getNetSuiteVendorCrewMemberId(vendor.id);
     const matchingSubcontractor = crewDirectory.find(
       (member) =>
         getCrewLaborType(member) === "subcontractor" &&
-        normalizeCrewName(getCrewDisplayName(member)) === normalizeCrewName(companyName)
+        (member.id === vendorCrewMemberId ||
+          member.netSuiteVendorId === vendor.id ||
+          normalizeCrewName(getCrewDisplayName(member)) === normalizeCrewName(companyName))
     );
 
-    if (matchingSubcontractor) {
-      setEntryNotice(`A subcontractor named ${getCrewDisplayName(matchingSubcontractor)} already exists. Select them from existing crew instead.`);
-      return;
-    }
-
     const crewMember = {
-      id: crypto.randomUUID(),
+      ...(matchingSubcontractor ?? {}),
+      id: matchingSubcontractor?.id ?? vendorCrewMemberId,
       laborType: "subcontractor" as CrewLaborType,
       name: companyName,
       jobTitle: "Subcontractor",
+      netSuiteVendorEntityId: vendor.entityId,
+      netSuiteVendorId: vendor.id,
       subcontractorCompany: companyName
     };
 
-    setCrewDirectory((current) => sortCrewMembersByName([...current, crewMember]));
+    const alreadyOnProject = projectHasCrewMember(selectedProjectCrewMembers, crewMember.id);
+
+    setCrewDirectory((current) =>
+      sortCrewMembersByName(
+        current.some((member) => member.id === crewMember.id)
+          ? current.map((member) => (member.id === crewMember.id ? crewMember : member))
+          : [...current, crewMember]
+      )
+    );
     setCrewMembersByProject((current) => ({
       ...current,
-      [selectedProject.id]: [
-        ...(current[selectedProject.id] ?? []),
-        crewMember
-      ]
+      [selectedProject.id]: alreadyOnProject
+        ? sortCrewMembersByName(
+            (current[selectedProject.id] ?? []).map((member) => (member.id === crewMember.id ? crewMember : member))
+          )
+        : sortCrewMembersByName([...(current[selectedProject.id] ?? []), crewMember])
     }));
     void addDatabaseCrewMemberToProject(selectedProject.id, crewMember).catch((error) => {
       setEntryNotice(error instanceof Error ? error.message : "Subcontractor added locally, but did not sync.");
     });
-    setCrewMemberSubcontractorCompany("");
+    setSelectedSubcontractorVendorId("");
     setSelectedExistingCrewMemberId("");
     setEditingCrewMember(null);
-    setEntryNotice(`${companyName} added to ${selectedProject.name}.`);
+    setEntryNotice(
+      alreadyOnProject ? `${companyName} is already saved to this job.` : `${companyName} added to ${selectedProject.name}.`
+    );
   }
 
   function addExistingCrewMemberToProject() {
@@ -2807,7 +2920,9 @@ export function TimeAllocationWorkspace() {
         ])
       ) as CrewMembersByProject
     );
+    const originalCrewMember = crewDirectory.find((member) => member.id === editingCrewMember.crewMemberId);
     const updatedCrewMember = {
+      ...(originalCrewMember ?? {}),
       id: editingCrewMember.crewMemberId,
       laborType,
       name,
@@ -3671,9 +3786,13 @@ export function TimeAllocationWorkspace() {
             <AdminMaintenancePanel
               clearing={clearingStagingData}
               clearingProjectCache={clearingProjectCache}
+              netSuiteVendorCount={netSuiteVendors.length}
+              netSuiteVendorsSyncedAt={netSuiteVendorsSyncedAt}
               notice={adminMaintenanceNotice}
               onClearProjectCache={clearCachedProjectData}
               onClearStagingData={clearStagingOperationalData}
+              onSyncNetSuiteVendors={syncNetSuiteVendorDirectory}
+              syncingNetSuiteVendors={syncingNetSuiteVendors}
             />
           ) : null}
 
@@ -3807,18 +3926,36 @@ export function TimeAllocationWorkspace() {
                 <div className="crew-form-section">
                   <h3>Subcontractor</h3>
                   <div className="field-group">
-                    <label htmlFor="crew-member-subcontractor-company">Company Name</label>
-                    <input
-                      id="crew-member-subcontractor-company"
-                      disabled={!selectedProject}
-                      value={crewMemberSubcontractorCompany}
-                      onChange={(event) => setCrewMemberSubcontractorCompany(event.target.value)}
-                    />
+                    <label htmlFor="crew-member-subcontractor-vendor">NetSuite Vendor</label>
+                    <select
+                      id="crew-member-subcontractor-vendor"
+                      disabled={!selectedProject || loadingNetSuiteVendors || netSuiteVendors.length === 0}
+                      value={selectedSubcontractorVendorId}
+                      onChange={(event) => setSelectedSubcontractorVendorId(event.target.value)}
+                    >
+                      <option value="">
+                        {loadingNetSuiteVendors
+                          ? "Loading vendors..."
+                          : netSuiteVendors.length === 0
+                            ? "No vendors loaded"
+                            : "Select vendor"}
+                      </option>
+                      {netSuiteVendors.map((vendor) => (
+                        <option key={vendor.id} value={vendor.id}>
+                          {formatNetSuiteVendorOption(vendor)}
+                        </option>
+                      ))}
+                    </select>
                   </div>
+                  {netSuiteVendors.length === 0 ? (
+                    <div className="field-note">
+                      Admins can use Get Vendors in Admin Tools to load NetSuite vendors with default addresses.
+                    </div>
+                  ) : null}
                   <button
                     className="secondary-button crew-add-button"
-                    disabled={!selectedProject}
-                    onClick={addSubcontractorCompany}
+                    disabled={!selectedProject || !selectedSubcontractorVendorId}
+                    onClick={addSubcontractorVendorToProject}
                     type="button"
                   >
                     <UserPlus aria-hidden="true" size={18} />
@@ -7250,24 +7387,47 @@ function AdminUsersPanel({
 function AdminMaintenancePanel({
   clearing,
   clearingProjectCache,
+  netSuiteVendorCount,
+  netSuiteVendorsSyncedAt,
   notice,
   onClearProjectCache,
-  onClearStagingData
+  onClearStagingData,
+  onSyncNetSuiteVendors,
+  syncingNetSuiteVendors
 }: {
   clearing: boolean;
   clearingProjectCache: boolean;
+  netSuiteVendorCount: number;
+  netSuiteVendorsSyncedAt: string | null;
   notice: { message: string; status: "success" | "error" } | null;
   onClearProjectCache: () => void;
   onClearStagingData: () => void;
+  onSyncNetSuiteVendors: () => void;
+  syncingNetSuiteVendors: boolean;
 }) {
   return (
     <details className="admin-maintenance">
       <summary>
-        <Trash2 aria-hidden="true" size={16} />
-        Staging Cleanup
+        <ListChecks aria-hidden="true" size={16} />
+        Admin Tools
       </summary>
       <div className="admin-maintenance-body">
         {notice ? <div className={notice.status === "error" ? "inline-alert" : "success-alert"}>{notice.message}</div> : null}
+        <p className="field-note">
+          Pulls NetSuite vendors that have a default address and makes them available as subcontractor companies.
+          {netSuiteVendorsSyncedAt
+            ? ` Current vendor cache: ${netSuiteVendorCount} vendor${netSuiteVendorCount === 1 ? "" : "s"}, refreshed ${formatDate(netSuiteVendorsSyncedAt)}.`
+            : " No vendor cache has been loaded yet."}
+        </p>
+        <button
+          className="secondary-button admin-clear-button"
+          disabled={syncingNetSuiteVendors}
+          onClick={onSyncNetSuiteVendors}
+          type="button"
+        >
+          <RefreshCw aria-hidden="true" size={16} />
+          {syncingNetSuiteVendors ? "Loading vendors..." : "Get Vendors"}
+        </button>
         <p className="field-note">
           Clears daily entries, day statuses, notes, daily reports, upload statuses, and crew records. Preserves users,
           cached jobs/pay items, sync log, project blacklist, and My Projects.
@@ -8407,6 +8567,42 @@ async function loadDatabaseProjectControls() {
   }
 }
 
+async function loadDatabaseNetSuiteVendors() {
+  try {
+    const response = await fetch("/api/netsuite/vendors", {
+      cache: "no-store"
+    });
+    const data = (await response.json()) as NetSuiteVendorsResponse;
+
+    if (!response.ok || !data.databaseConfigured) {
+      return null;
+    }
+
+    return {
+      syncedAt: data.syncedAt ?? null,
+      vendors: data.vendors ?? []
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function syncDatabaseNetSuiteVendors() {
+  const response = await fetch("/api/netsuite/vendors", {
+    method: "POST"
+  });
+  const data = (await response.json()) as NetSuiteVendorsResponse;
+
+  if (!response.ok || data.ok === false) {
+    throw new Error(data.error ?? "Unable to sync NetSuite vendors.");
+  }
+
+  return {
+    syncedAt: data.syncedAt ?? null,
+    vendors: data.vendors ?? []
+  };
+}
+
 async function saveDatabaseMyJobs(userId: string, projectIds: string[]) {
   const response = await fetch("/api/project-controls", {
     body: JSON.stringify({
@@ -8835,6 +9031,14 @@ function formatCrewMemberMeta(member: { jobTitle: string; laborType?: CrewLaborT
 
 function formatCrewMemberOption(member: CrewMember) {
   return `${getCrewDisplayName(member)} - ${formatCrewMemberMeta(member)}`;
+}
+
+function formatNetSuiteVendorOption(vendor: NetSuiteVendor) {
+  return vendor.entityId && vendor.entityId !== vendor.name ? `${vendor.name} (${vendor.entityId})` : vendor.name;
+}
+
+function getNetSuiteVendorCrewMemberId(vendorId: string) {
+  return `netsuite-vendor-${vendorId}`;
 }
 
 function normalizeCrewName(name: string) {
