@@ -7,7 +7,7 @@ export async function GET() {
   const user = await getCurrentUser();
 
   if (!user) {
-    return NextResponse.json({ error: "Sign in before loading Procore projects." }, { status: 401 });
+    return NextResponse.json({ error: "Sign in before loading projects." }, { status: 401 });
   }
 
   try {
@@ -19,7 +19,7 @@ export async function GET() {
       syncedAt: cache?.syncedAt ?? null
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to load Procore projects.";
+    const message = error instanceof Error ? error.message : "Unable to load projects.";
 
     return NextResponse.json(
       {

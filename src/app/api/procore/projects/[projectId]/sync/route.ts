@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getAuditRequestMetadata, recordAuditLog } from "@/lib/audit-log";
+import { addOrUpdateProjectFromNetSuite } from "@/lib/netsuite/projects";
 import { readProcoreCache } from "@/lib/procore/cache";
-import { addOrUpdateProjectFromProcore } from "@/lib/procore/projects";
+
+export const runtime = "nodejs";
 
 type RouteContext = {
   params: Promise<{
@@ -20,11 +22,11 @@ export async function POST(_request: NextRequest, context: RouteContext) {
   const { projectId } = await context.params;
 
   try {
-    const projects = await addOrUpdateProjectFromProcore(projectId);
+    const projects = await addOrUpdateProjectFromNetSuite(projectId);
     const cache = await readProcoreCache();
 
     await recordAuditLog({
-      action: "procore.project_sync_completed",
+      action: "netsuite.project_sync_completed",
       actor: user,
       metadata: {
         projectId,
@@ -43,7 +45,7 @@ export async function POST(_request: NextRequest, context: RouteContext) {
     const message = error instanceof Error ? error.message : "Unable to add or update project.";
 
     await recordAuditLog({
-      action: "procore.project_sync_failed",
+      action: "netsuite.project_sync_failed",
       actor: user,
       metadata: {
         error: message,

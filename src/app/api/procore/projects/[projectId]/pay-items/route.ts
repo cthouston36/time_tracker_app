@@ -12,7 +12,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
   const user = await getCurrentUser();
 
   if (!user) {
-    return NextResponse.json({ error: "Sign in before loading Procore pay items." }, { status: 401 });
+    return NextResponse.json({ error: "Sign in before loading pay items." }, { status: 401 });
   }
 
   const { projectId } = await context.params;
@@ -21,7 +21,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     const payItems = await getCachedProjectPayItems(projectId);
     return NextResponse.json({ payItems });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to load Procore pay items.";
+    const message = error instanceof Error ? error.message : "Unable to load pay items.";
 
     return NextResponse.json(
       {

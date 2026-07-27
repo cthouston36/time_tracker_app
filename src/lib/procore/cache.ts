@@ -72,7 +72,12 @@ async function readProcoreTablesCache() {
   await ensureProcoreCacheTables();
 
   const projectRows = (await sql`
-    select id, name
+    select
+      id,
+      name,
+      netsuite_project_id,
+      procore_project_id,
+      source_system
     from procore_projects
     order by lower(name), id
   `) as ProcoreProjectRow[];
@@ -118,7 +123,10 @@ async function readProcoreTablesCache() {
     projects: projectRows.map((project) => ({
       id: project.id,
       name: project.name,
-      payItems: payItemsByProjectId.get(project.id) ?? []
+      netSuiteProjectId: project.netsuite_project_id || undefined,
+      payItems: payItemsByProjectId.get(project.id) ?? [],
+      procoreProjectId: project.procore_project_id || project.id,
+      sourceSystem: readSourceSystem(project.source_system)
     }))
   } satisfies ProcoreCache;
 }
@@ -135,7 +143,10 @@ async function writeProcoreTablesCache(projects: Project[], syncedAt: string) {
   const normalizedProjects = normalizeProjects(projects);
   const projectRows = normalizedProjects.map((project) => ({
     id: project.id,
-    name: project.name
+    name: project.name,
+    netsuite_project_id: project.netSuiteProjectId ?? null,
+    procore_project_id: project.procoreProjectId ?? project.id,
+    source_system: project.sourceSystem ?? "procore"
   }));
   const projectIds = projectRows.map((project) => project.id);
   const payItemRows = normalizedProjects.flatMap((project) =>
@@ -153,11 +164,33 @@ async function writeProcoreTablesCache(projects: Project[], syncedAt: string) {
 
   if (projectRows.length > 0) {
     await sql`
-      insert into procore_projects (id, name, updated_at)
-      select id, name, now()
-      from jsonb_to_recordset(${JSON.stringify(projectRows)}::jsonb) as project(id text, name text)
+      insert into procore_projects (
+        id,
+        name,
+        netsuite_project_id,
+        procore_project_id,
+        source_system,
+        updated_at
+      )
+      select
+        id,
+        name,
+        netsuite_project_id,
+        procore_project_id,
+        source_system,
+        now()
+      from jsonb_to_recordset(${JSON.stringify(projectRows)}::jsonb) as project(
+        id text,
+        name text,
+        netsuite_project_id text,
+        procore_project_id text,
+        source_system text
+      )
       on conflict (id) do update
       set name = excluded.name,
+          netsuite_project_id = excluded.netsuite_project_id,
+          procore_project_id = excluded.procore_project_id,
+          source_system = excluded.source_system,
           updated_at = now()
     `;
   }
@@ -263,9 +296,16 @@ async function ensureProcoreCacheTables() {
     create table if not exists procore_projects (
       id text primary key,
       name text not null,
+      netsuite_project_id text,
+      procore_project_id text,
+      source_system text not null default 'procore',
       updated_at timestamptz not null default now()
     )
   `;
+
+  await sql`alter table procore_projects add column if not exists netsuite_project_id text`;
+  await sql`alter table procore_projects add column if not exists procore_project_id text`;
+  await sql`alter table procore_projects add column if not exists source_system text not null default 'procore'`;
 
   await sql`
     create table if not exists procore_pay_items (
@@ -297,45 +337,52 @@ async function ensureProcoreCacheTables() {
   procoreCacheTablesReady = true;
 }
 
-function normalizeProjects(projects: Project[]) {
-  return projects
-    .map((project) => {
-      const id = readString(project.id);
-      const name = readString(project.name);
+function normalizeProjects(projects: Project[]): Project[] {
+  const normalizedProjects: Project[] = [];
 
-      if (!id || !name) {
-        return null;
-      }
+  for (const project of projects) {
+    const id = readString(project.id);
+    const name = readString(project.name);
 
-      return {
-        id,
-        name,
-        payItems: normalizePayItems(project.payItems)
-      } satisfies Project;
-    })
-    .filter((project): project is Project => Boolean(project));
+    if (!id || !name) {
+      continue;
+    }
+
+    normalizedProjects.push({
+      id,
+      name,
+      netSuiteProjectId: readString(project.netSuiteProjectId) || undefined,
+      payItems: normalizePayItems(project.payItems),
+      procoreProjectId: readString(project.procoreProjectId) || id,
+      sourceSystem: readSourceSystem(project.sourceSystem)
+    });
+  }
+
+  return normalizedProjects;
 }
 
-function normalizePayItems(payItems: PayItem[] | undefined) {
-  return (payItems ?? [])
-    .map((payItem) => {
-      const id = readString(payItem.id);
-      const code = readString(payItem.code);
-      const name = readString(payItem.name);
+function normalizePayItems(payItems: PayItem[] | undefined): PayItem[] {
+  const normalizedPayItems: PayItem[] = [];
 
-      if (!id || !code || !name) {
-        return null;
-      }
+  for (const payItem of payItems ?? []) {
+    const id = readString(payItem.id);
+    const code = readString(payItem.code);
+    const name = readString(payItem.name);
 
-      return {
-        id,
-        code,
-        name,
-        budgetedQuantity: toNumber(payItem.budgetedQuantity),
-        unitOfMeasure: readString(payItem.unitOfMeasure) || "EA"
-      } satisfies PayItem;
-    })
-    .filter((payItem): payItem is PayItem => Boolean(payItem));
+    if (!id || !code || !name) {
+      continue;
+    }
+
+    normalizedPayItems.push({
+      id,
+      code,
+      name,
+      budgetedQuantity: toNumber(payItem.budgetedQuantity),
+      unitOfMeasure: readString(payItem.unitOfMeasure)
+    });
+  }
+
+  return normalizedPayItems;
 }
 
 function readString(value: unknown) {
@@ -368,6 +415,9 @@ function toIsoDateString(value: unknown) {
 type ProcoreProjectRow = {
   id: string;
   name: string;
+  netsuite_project_id: string | null;
+  procore_project_id: string | null;
+  source_system: string | null;
 };
 
 type ProcorePayItemRow = {
@@ -383,3 +433,7 @@ type ProcorePayItemRow = {
 type ProcoreSyncStateRow = {
   synced_at: string | Date;
 };
+
+function readSourceSystem(value: unknown) {
+  return value === "netsuite" ? "netsuite" : "procore";
+}

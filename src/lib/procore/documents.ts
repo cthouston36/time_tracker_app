@@ -103,11 +103,17 @@ export async function uploadDailyReportToProcore(payload: DailyReportUploadPaylo
 
   const config = getProcoreConfig();
   const folderPath = "Daily Reports";
+  const procoreProjectId = resolveProcoreProjectId(payload.project);
+
+  if (!procoreProjectId) {
+    throw new Error("The selected project does not have a Procore project ID for document upload.");
+  }
+
   const folder = await findOrCreateProjectFolder({
     accessToken,
     baseUrl: config.baseUrl,
     companyId: config.companyId,
-    projectId: payload.project.id,
+    projectId: procoreProjectId,
     folderName: folderPath
   });
 
@@ -121,7 +127,7 @@ export async function uploadDailyReportToProcore(payload: DailyReportUploadPaylo
     accessToken,
     baseUrl: config.baseUrl,
     companyId: config.companyId,
-    projectId: payload.project.id,
+    projectId: procoreProjectId,
     folderId: folder.id,
     fileName,
     file: pdf,
@@ -133,10 +139,14 @@ export async function uploadDailyReportToProcore(payload: DailyReportUploadPaylo
     fileName: uploadResult.fileName,
     folderId: folder.id,
     folderPath,
-    folderUrl: buildProjectDocumentsFolderUrl(config.companyId, payload.project.id, folder.id),
+    folderUrl: buildProjectDocumentsFolderUrl(config.companyId, procoreProjectId, folder.id),
     procoreFileId: extractId(uploadResult.response),
     procoreUpload: uploadResult.procoreUpload
   };
+}
+
+function resolveProcoreProjectId(project: Project) {
+  return firstString(project.procoreProjectId, project.id);
 }
 
 function buildProjectDocumentsFolderUrl(companyId: string, projectId: string, folderId: string) {

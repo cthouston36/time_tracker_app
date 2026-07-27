@@ -793,7 +793,7 @@ export function TimeAllocationWorkspace() {
           });
         }
         setSyncedAt(data.syncedAt ?? null);
-        setConnectionStatus(data.syncedAt ? "Cached Procore data loaded" : "No cached Procore data");
+        setConnectionStatus(data.syncedAt ? "Cached project data loaded" : "No cached project data");
       } catch (error) {
         setProjectLoadError(error instanceof Error ? error.message : "Unable to load projects.");
       }
@@ -1336,7 +1336,7 @@ export function TimeAllocationWorkspace() {
         "",
         "This will permanently remove daily pay item entries, submitted/draft day statuses, daily notes, daily reports, daily report upload status, and all crew members/crew project assignments.",
         "",
-        "It will keep user profiles/passwords, Procore projects, Procore pay items, Procore sync state/log, project blacklist, and My Projects."
+        "It will keep user profiles/passwords, cached projects, cached pay items, sync state/log, project blacklist, and My Projects."
       ].join("\n")
     );
 
@@ -1382,7 +1382,7 @@ export function TimeAllocationWorkspace() {
       setEntryNotice("Staging daily entry, daily report, and crew data cleared.");
       setAdminMaintenanceNotice({
         message: data.databaseConfigured
-          ? "Staging data cleared. Users, Procore projects/pay items, sync state, blacklist, and My Projects were preserved."
+          ? "Staging data cleared. Users, cached projects/pay items, sync state, blacklist, and My Projects were preserved."
           : "Local staging data cleared.",
         status: "success"
       });
@@ -2504,7 +2504,7 @@ export function TimeAllocationWorkspace() {
       );
 
       if (!response.ok) {
-        throw new Error(data.error ?? "Unable to sync Procore data.");
+        throw new Error(data.error ?? "Unable to sync NetSuite project data.");
       }
 
       const sortedProjects = sortProjectsByName(data.projects);
@@ -2527,9 +2527,9 @@ export function TimeAllocationWorkspace() {
         summary: data.summary
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unable to sync Procore data.";
+      const message = error instanceof Error ? error.message : "Unable to sync NetSuite project data.";
       setProjectLoadError(message);
-      setConnectionStatus("Procore sync failed");
+      setConnectionStatus("Project sync failed");
       addSyncLog({
         action: "Sync New Projects",
         status: "error",
@@ -2552,7 +2552,7 @@ export function TimeAllocationWorkspace() {
       );
 
       if (!response.ok) {
-        throw new Error(data.error ?? "Unable to sync all Procore projects.");
+        throw new Error(data.error ?? "Unable to sync all NetSuite projects.");
       }
 
       const sortedProjects = sortProjectsByName(data.projects);
@@ -2575,7 +2575,7 @@ export function TimeAllocationWorkspace() {
         summary: data.summary
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unable to sync all Procore projects.";
+      const message = error instanceof Error ? error.message : "Unable to sync all NetSuite projects.";
       setProjectLoadError(message);
       setConnectionStatus("Full sync failed");
       addSyncLog({
@@ -2589,7 +2589,7 @@ export function TimeAllocationWorkspace() {
   }
 
   async function addOrUpdateProject() {
-    const projectId = window.prompt("Enter the Procore project ID to add or update.", selectedProjectId);
+    const projectId = window.prompt("Enter the NetSuite project ID or Procore project ID to add or update.", selectedProjectId);
     const trimmedProjectId = projectId?.trim();
 
     if (!trimmedProjectId) {
@@ -2612,10 +2612,9 @@ export function TimeAllocationWorkspace() {
 
       const sortedProjects = sortProjectsByName(data.projects);
       const visibleSyncedProjects = filterProjectsByBlacklist(sortedProjects, projectBlacklistById);
+      const syncedProject = visibleSyncedProjects.find((project) => projectMatchesIdentifier(project, trimmedProjectId));
       setAllProjects(sortedProjects);
-      setSelectedProjectId((currentProjectId) =>
-        visibleSyncedProjects.some((project) => project.id === trimmedProjectId) ? trimmedProjectId : currentProjectId
-      );
+      setSelectedProjectId((currentProjectId) => syncedProject?.id ?? currentProjectId);
       setSyncedAt(data.syncedAt ?? null);
       setConnectionStatus("Project added or updated");
       setDraftsByPayItem({});
@@ -3114,7 +3113,7 @@ export function TimeAllocationWorkspace() {
             <div className="empty-state">
               {allProjects.length > 0
                 ? "All cached projects are currently blacklisted."
-                : "No projects with pay items returned from Procore."}
+                : "No projects with pay items are cached yet."}
             </div>
           ) : null}
           {projectLoadError ? <div className="inline-alert">{projectLoadError}</div> : null}
@@ -3122,7 +3121,7 @@ export function TimeAllocationWorkspace() {
           {syncedAt ? (
             <div className="field-note">Last synced {new Date(syncedAt).toLocaleString()}</div>
           ) : (
-            <div className="field-note">Use Sync New Projects to load uncached jobs and pay items.</div>
+            <div className="field-note">Use Sync New Projects to load uncached NetSuite jobs and pay items.</div>
           )}
           {currentUser.role === "admin" ? <SyncLogPanel entries={syncLog} /> : null}
           {currentUser.role === "admin" ? (
@@ -6557,7 +6556,7 @@ function AdminMaintenancePanel({
         {notice ? <div className={notice.status === "error" ? "inline-alert" : "success-alert"}>{notice.message}</div> : null}
         <p className="field-note">
           Clears daily entries, day statuses, notes, daily reports, upload statuses, and crew records. Preserves users,
-          Procore jobs/pay items, sync log, project blacklist, and My Projects.
+          cached jobs/pay items, sync log, project blacklist, and My Projects.
         </p>
         <button className="secondary-button admin-clear-button" disabled={clearing} onClick={onClearStagingData} type="button">
           <Trash2 aria-hidden="true" size={16} />
@@ -7242,6 +7241,14 @@ function sortProjectsByName(projects: Project[]) {
 
 function filterProjectsByBlacklist(projects: Project[], projectBlacklistById: ProjectBlacklistById) {
   return projects.filter((project) => !projectBlacklistById[project.id]);
+}
+
+function projectMatchesIdentifier(project: Project, identifier: string) {
+  const normalizedIdentifier = identifier.trim().toLowerCase();
+
+  return [project.id, project.procoreProjectId, project.netSuiteProjectId, project.name]
+    .filter((value): value is string => Boolean(value))
+    .some((value) => value.trim().toLowerCase() === normalizedIdentifier);
 }
 
 function buildCrewDirectoryFromProjects(crewMembersByProject: CrewMembersByProject) {

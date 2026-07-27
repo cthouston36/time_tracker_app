@@ -9,7 +9,10 @@ export type PayItem = {
 export type Project = {
   id: string;
   name: string;
+  netSuiteProjectId?: string;
   payItems: PayItem[];
+  procoreProjectId?: string;
+  sourceSystem?: "procore" | "netsuite";
 };
 
 export const CREW_LABOR_TYPES = ["chinchor_employee", "temp_employee", "subcontractor"] as const;

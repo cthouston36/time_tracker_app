@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getAuditRequestMetadata, recordAuditLog } from "@/lib/audit-log";
+import { syncProjectsFromNetSuite } from "@/lib/netsuite/projects";
 import { readProcoreCache } from "@/lib/procore/cache";
-import { syncProjectsFromProcore } from "@/lib/procore/projects";
+
+export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   const user = await getCurrentUser();
@@ -12,17 +14,17 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await syncProjectsFromProcore();
+    const result = await syncProjectsFromNetSuite();
     const cache = await readProcoreCache();
 
     await recordAuditLog({
-      action: "procore.sync_new_completed",
+      action: "netsuite.sync_new_completed",
       actor: user,
       metadata: {
         summary: result.summary,
         syncedAt: cache?.syncedAt ?? null
       },
-      targetType: "procore_sync",
+      targetType: "netsuite_sync",
       ...getAuditRequestMetadata(request.headers)
     });
 
@@ -32,15 +34,15 @@ export async function POST(request: Request) {
       syncedAt: cache?.syncedAt ?? null
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to sync Procore data.";
+    const message = error instanceof Error ? error.message : "Unable to sync NetSuite project data.";
 
     await recordAuditLog({
-      action: "procore.sync_new_failed",
+      action: "netsuite.sync_new_failed",
       actor: user,
       metadata: {
         error: message
       },
-      targetType: "procore_sync",
+      targetType: "netsuite_sync",
       ...getAuditRequestMetadata(request.headers)
     });
 
