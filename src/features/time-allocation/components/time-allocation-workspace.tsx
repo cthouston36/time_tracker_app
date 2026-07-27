@@ -562,17 +562,20 @@ export function TimeAllocationWorkspace() {
     [dailyReportUploadsByKey, dailyReportsByKey, projects]
   );
   const dayIsSubmitted = currentDaySubmission.status === "submitted";
+  const currentUserAutoMyJobIds = useMemo(
+    () => (currentUser ? getDefaultMyJobIdsForUser(currentUser, projects) : []),
+    [currentUser, projects]
+  );
   const currentUserMyJobIds = useMemo(() => {
     if (!currentUser) {
       return [];
     }
 
-    if (Object.prototype.hasOwnProperty.call(myJobsByUser, currentUser.id)) {
-      return (myJobsByUser[currentUser.id] ?? []).filter((projectId) => visibleProjectIds.has(projectId));
-    }
+    const savedJobIds = (myJobsByUser[currentUser.id] ?? []).filter((projectId) => visibleProjectIds.has(projectId));
+    const combinedJobIds = new Set([...currentUserAutoMyJobIds, ...savedJobIds]);
 
-    return getDefaultMyJobIdsForUser(currentUser, projects);
-  }, [currentUser, myJobsByUser, projects, visibleProjectIds]);
+    return projects.filter((project) => combinedJobIds.has(project.id)).map((project) => project.id);
+  }, [currentUser, currentUserAutoMyJobIds, myJobsByUser, projects, visibleProjectIds]);
   const myProjectIdSet = useMemo(() => new Set(currentUserMyJobIds), [currentUserMyJobIds]);
   const jobPickerProjects = useMemo(
     () =>
@@ -1556,7 +1559,10 @@ export function TimeAllocationWorkspace() {
     }
 
     const availableProjectIds = new Set(projects.map((project) => project.id));
-    const uniqueJobIds = Array.from(new Set(jobIds)).filter((jobId) => availableProjectIds.has(jobId));
+    const automaticallyManagedJobIds = new Set(getDefaultMyJobIdsForUser(currentUser, projects));
+    const uniqueJobIds = Array.from(new Set(jobIds)).filter(
+      (jobId) => availableProjectIds.has(jobId) && !automaticallyManagedJobIds.has(jobId)
+    );
 
     setMyJobsByUser((current) => ({
       ...current,
@@ -3189,6 +3195,7 @@ export function TimeAllocationWorkspace() {
           </div>
           {myProjectsEditorOpen ? (
             <MyJobsManager
+              automaticJobIds={currentUserAutoMyJobIds}
               description="Tag projects you work on so they are easier to find in entry and calendar views."
               myJobIds={currentUserMyJobIds}
               projects={projects}
@@ -5114,6 +5121,7 @@ function ReportsView({
   const reportProjectOptions = useMemo(() => buildReportProjectOptions(projects, entries), [entries, projects]);
   const allowedReportProjectIds = useMemo(() => reportProjectOptions.map((project) => project.id), [reportProjectOptions]);
   const canManageMyJobs = currentUser.role === "project_manager" || currentUser.role === "admin";
+  const automaticMyJobIds = useMemo(() => getDefaultMyJobIdsForUser(currentUser, projects), [currentUser, projects]);
   const reportJobPickerOptions = [
     {
       value: "all",
@@ -5388,7 +5396,12 @@ function ReportsView({
           </div>
         ) : null}
         {myJobsEditorOpen ? (
-          <MyJobsManager myJobIds={myJobIds} projects={projects} setMyJobIds={setMyJobIds} />
+          <MyJobsManager
+            automaticJobIds={automaticMyJobIds}
+            myJobIds={myJobIds}
+            projects={projects}
+            setMyJobIds={setMyJobIds}
+          />
         ) : null}
         {reportMode === "crew" && crewPerformanceInfoOpen ? <CrewPerformanceInfo /> : null}
         <div className="report-controls">
@@ -5569,22 +5582,29 @@ function ReportsView({
 }
 
 function MyJobsManager({
+  automaticJobIds = [],
   description = "Tag projects you want to filter quickly.",
   myJobIds,
   projects,
   setMyJobIds,
   title = "My Projects"
 }: {
+  automaticJobIds?: string[];
   description?: string;
   myJobIds: string[];
   projects: Project[];
   setMyJobIds: (jobIds: string[]) => void;
   title?: string;
 }) {
+  const automaticJobIdSet = new Set(automaticJobIds);
   const selectedJobIds = new Set(myJobIds);
   const sortedProjects = sortProjectsByName(projects);
 
   function toggleJob(projectId: string, checked: boolean) {
+    if (automaticJobIdSet.has(projectId)) {
+      return;
+    }
+
     const nextSelectedJobIds = new Set(selectedJobIds);
 
     if (checked) {
@@ -5612,10 +5632,14 @@ function MyJobsManager({
             <label className="my-job-row" key={project.id}>
               <input
                 checked={selectedJobIds.has(project.id)}
+                disabled={automaticJobIdSet.has(project.id)}
                 onChange={(event) => toggleJob(project.id, event.target.checked)}
                 type="checkbox"
               />
-              <span>{project.name}</span>
+              <span>
+                {project.name}
+                {automaticJobIdSet.has(project.id) ? " (NetSuite PM)" : ""}
+              </span>
             </label>
           ))}
         </div>
