@@ -6861,7 +6861,7 @@ function getDailyReportProcoreStatus(
   if (!dailyReport) {
     return {
       className: "missing",
-      label: "Not created",
+      label: "Not Submitted",
       message: "Create and save a daily report before uploading to Procore."
     };
   }
