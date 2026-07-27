@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import NextImage from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BarChart3,
@@ -35,6 +35,10 @@ import type { AllocationEntry, CrewLaborType, Project } from "@/lib/procore/type
 const PROCORE_SYNC_REQUEST_TIMEOUT_MS = 55_000;
 const PROCORE_WEB_BASE_URL = process.env.NEXT_PUBLIC_PROCORE_WEB_BASE_URL ?? "https://us02.procore.com";
 const PROCORE_COMPANY_ID = process.env.NEXT_PUBLIC_PROCORE_COMPANY_ID ?? "598134325538800";
+const MAX_JOB_IMAGE_UPLOAD_BATCH_BYTES = 3.5 * 1024 * 1024;
+const MAX_JOB_IMAGE_QUEUE_ITEMS = 20;
+const JOB_IMAGE_MAX_DIMENSION = 1800;
+const JOB_IMAGE_JPEG_QUALITY = 0.82;
 const CREW_LABOR_TYPE_OPTIONS: Array<{ value: CrewLaborType; label: string }> = [
   { value: "chinchor_employee", label: "Chinchor Employee" },
   { value: "temp_employee", label: "Temp Employee" },
@@ -114,6 +118,24 @@ type DailyReportsResponse = {
   dailyReportsByKey?: DailyReportsByKey;
   databaseConfigured?: boolean;
   error?: string;
+};
+
+type JobImagesResponse = {
+  databaseConfigured?: boolean;
+  error?: string;
+  uploads?: JobImageUpload[];
+};
+
+type JobImageUploadResponse = {
+  databaseConfigured?: boolean;
+  error?: string;
+  failedCount?: number;
+  folderId?: string;
+  folderPath?: string;
+  folderUrl?: string;
+  ok?: boolean;
+  uploadedCount?: number;
+  uploads?: JobImageUpload[];
 };
 
 type DayRecordsResponse = {
@@ -324,6 +346,42 @@ type DailyReportUpload = {
 
 type DailyReportUploadsByKey = Record<string, DailyReportUpload>;
 
+type JobImageUploadStatus = "failed" | "uploaded";
+
+type JobImageUpload = {
+  attemptedAt?: string;
+  clientId?: string;
+  contentType?: string;
+  date: string;
+  error?: string;
+  fileName: string;
+  fileSizeBytes?: number;
+  folderId?: string;
+  folderPath: string;
+  folderUrl?: string;
+  id: string;
+  originalFileName?: string;
+  procoreFileId?: string;
+  projectId: string;
+  status: JobImageUploadStatus;
+  uploadedAt?: string;
+  uploadedByName?: string;
+  uploadedByUserId?: string;
+};
+
+type JobImageUploadsByDay = Record<string, JobImageUpload[]>;
+
+type JobImageQueueItem = {
+  error?: string;
+  file: File;
+  id: string;
+  originalName: string;
+  previewUrl: string;
+  size: number;
+  status: "failed" | "queued" | "uploaded" | "uploading";
+  uploadedFileName?: string;
+};
+
 type DailyReportItsfmItem = {
   group: "Aboveground Equipment" | "Cabinet Equipment";
   key: string;
@@ -434,6 +492,11 @@ export function TimeAllocationWorkspace() {
   const [uploadingDailyReport, setUploadingDailyReport] = useState(false);
   const [retryingDailyReportUploadKey, setRetryingDailyReportUploadKey] = useState("");
   const [dailyReportUploadNotice, setDailyReportUploadNotice] = useState<{ message: string; status: "success" | "error" } | null>(null);
+  const [jobImageUploadsByDay, setJobImageUploadsByDay] = useState<JobImageUploadsByDay>({});
+  const [jobImageQueue, setJobImageQueue] = useState<JobImageQueueItem[]>([]);
+  const [jobImageNotice, setJobImageNotice] = useState<{ message: string; status: "success" | "error" } | null>(null);
+  const [loadingJobImageUploads, setLoadingJobImageUploads] = useState(false);
+  const [uploadingJobImages, setUploadingJobImages] = useState(false);
   const [myJobsByUser, setMyJobsByUser] = useState<MyJobsByUser>({});
   const [crewDirectory, setCrewDirectory] = useState<CrewMember[]>([]);
   const [crewMembersByProject, setCrewMembersByProject] = useState<CrewMembersByProject>({});
@@ -467,6 +530,8 @@ export function TimeAllocationWorkspace() {
   const [updatingProject, setUpdatingProject] = useState(false);
   const [appStateHydrated, setAppStateHydrated] = useState(false);
   const dateInputRef = useRef<HTMLInputElement>(null);
+  const jobImageInputRef = useRef<HTMLInputElement>(null);
+  const jobImagePreviewUrlsRef = useRef<Set<string>>(new Set());
   const dayNotesSaveTimeoutsRef = useRef<Record<string, number>>({});
   const dailyReportDraftAutosaveTimeoutRef = useRef<number | null>(null);
 
@@ -528,6 +593,8 @@ export function TimeAllocationWorkspace() {
     currentDailyReportUpload,
     selectedProject?.id
   );
+  const currentJobImageUploads = selectedProject ? jobImageUploadsByDay[currentDayKey] ?? [] : [];
+  const queuedJobImages = jobImageQueue.filter((image) => image.status !== "uploaded");
   const previousDailyReportCrewTime = useMemo(
     () => (selectedProject ? findPreviousDailyReportWithCrewTime(dailyReportsByKey, selectedProject.id, workDate) : null),
     [dailyReportsByKey, selectedProject, workDate]
@@ -590,7 +657,11 @@ export function TimeAllocationWorkspace() {
     : 0;
   const hasUnsavedPayItemDrafts = Object.values(draftsByPayItem).some(draftHasAnyInput);
   const hasUnsavedChanges =
-    hasUnsavedPayItemDrafts || Boolean(editingEntry) || Boolean(editingCrewMember) || dailyReportModalOpen;
+    hasUnsavedPayItemDrafts ||
+    Boolean(editingEntry) ||
+    Boolean(editingCrewMember) ||
+    dailyReportModalOpen ||
+    queuedJobImages.length > 0;
 
   function confirmDiscardUnsavedChanges(actionDescription: string) {
     if (!hasUnsavedChanges) {
@@ -598,7 +669,7 @@ export function TimeAllocationWorkspace() {
     }
 
     return window.confirm(
-      `You have unsaved changes. Continue to ${actionDescription}? Unsaved pay item inputs or daily report edits will be discarded.`
+      `You have unsaved changes. Continue to ${actionDescription}? Unsaved pay item inputs, queued images, or daily report edits will be discarded.`
     );
   }
 
@@ -622,6 +693,7 @@ export function TimeAllocationWorkspace() {
     setCrewMemberSubcontractorCompany("");
     setSelectedExistingCrewMemberId("");
     setDraftsByPayItem({});
+    clearJobImageQueue();
     clearDailyReportDraftForCurrentContext();
   }
 
@@ -900,6 +972,51 @@ export function TimeAllocationWorkspace() {
 
     window.localStorage.setItem(getLastProjectStorageKey(currentUser.id), selectedProjectId);
   }, [currentUser, selectedProjectId]);
+
+  useEffect(() => {
+    if (!currentUser || !selectedProject) {
+      return;
+    }
+
+    let cancelled = false;
+    const dayKey = getDayKey(selectedProject.id, workDate);
+
+    async function loadJobImagesForDay() {
+      setLoadingJobImageUploads(true);
+
+      try {
+        const uploads = await loadDatabaseJobImageUploads(selectedProject.id, workDate);
+
+        if (!cancelled && uploads) {
+          setJobImageUploadsByDay((current) => ({
+            ...current,
+            [dayKey]: uploads
+          }));
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingJobImageUploads(false);
+        }
+      }
+    }
+
+    void loadJobImagesForDay();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUser, selectedProject, workDate]);
+
+  useEffect(
+    () => () => {
+      for (const previewUrl of jobImagePreviewUrlsRef.current) {
+        URL.revokeObjectURL(previewUrl);
+      }
+
+      jobImagePreviewUrlsRef.current.clear();
+    },
+    []
+  );
 
   useEffect(() => {
     if (!displayedPayItems.length) {
@@ -2131,6 +2248,248 @@ export function TimeAllocationWorkspace() {
     setEntryNotice(message);
   }
 
+  async function createJobImageQueueItem(file: File): Promise<JobImageQueueItem> {
+    if (!file.type.startsWith("image/")) {
+      throw new Error(`${file.name || "Selected file"} is not an image.`);
+    }
+
+    const preparedFile = await prepareJobImageFileForUpload(file);
+    const previewUrl = URL.createObjectURL(preparedFile);
+
+    jobImagePreviewUrlsRef.current.add(previewUrl);
+
+    return {
+      file: preparedFile,
+      id: crypto.randomUUID(),
+      originalName: file.name || preparedFile.name,
+      previewUrl,
+      size: preparedFile.size,
+      status: "queued"
+    };
+  }
+
+  function revokeJobImagePreview(previewUrl: string) {
+    URL.revokeObjectURL(previewUrl);
+    jobImagePreviewUrlsRef.current.delete(previewUrl);
+  }
+
+  async function addJobImages(files: FileList | null) {
+    if (!files || files.length === 0) {
+      return;
+    }
+
+    if (!selectedProject) {
+      setJobImageNotice({
+        message: "Select a job before adding images.",
+        status: "error"
+      });
+      return;
+    }
+
+    const remainingSlots = Math.max(0, MAX_JOB_IMAGE_QUEUE_ITEMS - jobImageQueue.length);
+    const selectedFiles = Array.from(files).slice(0, remainingSlots);
+
+    if (remainingSlots === 0) {
+      setJobImageNotice({
+        message: `Upload or remove queued images before adding more. The temporary queue holds ${MAX_JOB_IMAGE_QUEUE_ITEMS} images.`,
+        status: "error"
+      });
+      return;
+    }
+
+    setJobImageNotice(null);
+
+    try {
+      const queueItems = await Promise.all(selectedFiles.map(createJobImageQueueItem));
+
+      setJobImageQueue((current) => [...current, ...queueItems]);
+
+      if (selectedFiles.length < files.length) {
+        setJobImageNotice({
+          message: `Added ${selectedFiles.length} images. The temporary queue holds ${MAX_JOB_IMAGE_QUEUE_ITEMS} images at a time.`,
+          status: "success"
+        });
+      }
+    } catch (error) {
+      setJobImageNotice({
+        message: error instanceof Error ? error.message : "Unable to prepare selected images.",
+        status: "error"
+      });
+    } finally {
+      if (jobImageInputRef.current) {
+        jobImageInputRef.current.value = "";
+      }
+    }
+  }
+
+  function removeJobImageFromQueue(imageId: string) {
+    setJobImageQueue((current) => {
+      const removedItem = current.find((item) => item.id === imageId);
+
+      if (removedItem) {
+        revokeJobImagePreview(removedItem.previewUrl);
+      }
+
+      return current.filter((item) => item.id !== imageId);
+    });
+  }
+
+  function clearUploadedJobImagesFromQueue() {
+    setJobImageQueue((current) => {
+      const uploadedItems = current.filter((item) => item.status === "uploaded");
+
+      for (const item of uploadedItems) {
+        revokeJobImagePreview(item.previewUrl);
+      }
+
+      return current.filter((item) => item.status !== "uploaded");
+    });
+  }
+
+  function clearJobImageQueue() {
+    setJobImageQueue((current) => {
+      for (const item of current) {
+        revokeJobImagePreview(item.previewUrl);
+      }
+
+      return [];
+    });
+    setJobImageNotice(null);
+  }
+
+  async function uploadQueuedJobImages() {
+    if (!selectedProject) {
+      setJobImageNotice({
+        message: "Select a job before uploading images.",
+        status: "error"
+      });
+      return;
+    }
+
+    const imagesToUpload = jobImageQueue.filter((image) => image.status === "queued" || image.status === "failed");
+
+    if (imagesToUpload.length === 0) {
+      setJobImageNotice({
+        message: "Add at least one image before uploading.",
+        status: "error"
+      });
+      return;
+    }
+
+    setUploadingJobImages(true);
+    setJobImageNotice(null);
+    setJobImageQueue((current) =>
+      current.map((item) =>
+        imagesToUpload.some((image) => image.id === item.id)
+          ? {
+              ...item,
+              error: undefined,
+              status: "uploading"
+            }
+          : item
+      )
+    );
+
+    let uploadedCount = 0;
+    let failedCount = 0;
+
+    try {
+      for (const batch of chunkJobImagesForUpload(imagesToUpload)) {
+        const formData = new FormData();
+
+        formData.set("date", workDate);
+        formData.set(
+          "project",
+          JSON.stringify({
+            id: selectedProject.id,
+            name: selectedProject.name,
+            payItems: [],
+            procoreProjectId: selectedProject.procoreProjectId
+          } satisfies Project)
+        );
+
+        for (const item of batch) {
+          formData.append("images", item.file, item.file.name);
+          formData.append("imageClientIds", item.id);
+          formData.append("originalFileNames", item.originalName);
+        }
+
+        try {
+          const response = await fetch("/api/procore/job-images/upload", {
+            body: formData,
+            method: "POST"
+          });
+          const data = (await response.json()) as JobImageUploadResponse;
+
+          if (!response.ok) {
+            throw new Error(data.error ?? "Unable to upload job images to Procore.");
+          }
+
+          const uploadedByClientId = new Map((data.uploads ?? []).map((upload) => [uploadClientId(upload), upload]));
+          const returnedUploads = data.uploads ?? [];
+
+          uploadedCount += returnedUploads.filter((upload) => upload.status === "uploaded").length;
+          failedCount += returnedUploads.filter((upload) => upload.status === "failed").length;
+
+          setJobImageQueue((current) =>
+            current.map((item) => {
+              const upload = uploadedByClientId.get(item.id);
+
+              if (!upload) {
+                return item;
+              }
+
+              return {
+                ...item,
+                error: upload.error,
+                status: upload.status,
+                uploadedFileName: upload.fileName
+              };
+            })
+          );
+          setJobImageUploadsByDay((current) => ({
+            ...current,
+            [currentDayKey]: mergeJobImageUploads(current[currentDayKey] ?? [], returnedUploads)
+          }));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Unable to upload job images to Procore.";
+
+          failedCount += batch.length;
+          setJobImageQueue((current) =>
+            current.map((item) =>
+              batch.some((image) => image.id === item.id)
+                ? {
+                    ...item,
+                    error: message,
+                    status: "failed"
+                  }
+                : item
+            )
+          );
+        }
+      }
+
+      if (uploadedCount > 0 && failedCount === 0) {
+        setJobImageNotice({
+          message: `Uploaded ${uploadedCount} job image${uploadedCount === 1 ? "" : "s"} to Procore.`,
+          status: "success"
+        });
+      } else if (uploadedCount > 0) {
+        setJobImageNotice({
+          message: `Uploaded ${uploadedCount} image${uploadedCount === 1 ? "" : "s"}; ${failedCount} failed and can be retried.`,
+          status: "error"
+        });
+      } else {
+        setJobImageNotice({
+          message: "No images were uploaded. Review the failed image messages and try again.",
+          status: "error"
+        });
+      }
+    } finally {
+      setUploadingJobImages(false);
+    }
+  }
+
   function connectProcore(intent: PendingProcoreReturn["intent"] = "connect") {
     if (!confirmDiscardUnsavedChanges("connect to Procore")) {
       return;
@@ -3032,7 +3391,7 @@ export function TimeAllocationWorkspace() {
     <main className="app-shell">
       <header className="top-bar">
         <div className="brand-block">
-          <Image
+          <NextImage
             alt="Chinchor Electric Inc."
             className="brand-logo"
             height={908}
@@ -4015,6 +4374,130 @@ export function TimeAllocationWorkspace() {
                   </div>
                 </div>
               ) : null}
+            </div>
+
+            <div className="panel job-images-panel">
+              <div className="panel-heading">
+                <h2>Job Images</h2>
+                <div className="panel-heading-actions">
+                  <input
+                    ref={jobImageInputRef}
+                    accept="image/*"
+                    className="job-image-file-input"
+                    multiple
+                    type="file"
+                    onChange={(event) => void addJobImages(event.target.files)}
+                  />
+                  <button
+                    className="secondary-button"
+                    disabled={!selectedProject || uploadingJobImages}
+                    onClick={() => jobImageInputRef.current?.click()}
+                    type="button"
+                  >
+                    <UploadCloud aria-hidden="true" size={18} />
+                    Add Images
+                  </button>
+                  <button
+                    className="primary-button"
+                    disabled={!selectedProject || queuedJobImages.length === 0 || uploadingJobImages}
+                    onClick={uploadQueuedJobImages}
+                    type="button"
+                  >
+                    <UploadCloud aria-hidden="true" size={18} />
+                    {uploadingJobImages ? "Uploading..." : "Upload Images to Procore"}
+                  </button>
+                </div>
+              </div>
+              <div className="field-note">Selected images stay in a temporary queue until they are uploaded to Procore.</div>
+              {jobImageNotice ? (
+                <div className={jobImageNotice.status === "error" ? "inline-alert job-image-notice" : "success-alert job-image-notice"}>
+                  {jobImageNotice.message}
+                </div>
+              ) : null}
+              {jobImageQueue.length > 0 ? (
+                <div className="job-image-queue">
+                  <div className="job-image-section-heading">
+                    <h3>Temporary Queue</h3>
+                    <div className="job-image-section-actions">
+                      {jobImageQueue.some((item) => item.status === "uploaded") ? (
+                        <button className="text-button" onClick={clearUploadedJobImagesFromQueue} type="button">
+                          Clear uploaded
+                        </button>
+                      ) : null}
+                      <button className="text-button" disabled={uploadingJobImages} onClick={clearJobImageQueue} type="button">
+                        Clear queue
+                      </button>
+                    </div>
+                  </div>
+                  <div className="job-image-grid">
+                    {jobImageQueue.map((item) => (
+                      <div className={`job-image-card ${item.status}`} key={item.id}>
+                        <div
+                          aria-label={item.originalName}
+                          className="job-image-preview"
+                          role="img"
+                          style={{ backgroundImage: `url(${item.previewUrl})` }}
+                        />
+                        <div className="job-image-card-body">
+                          <div>
+                            <strong>{item.originalName}</strong>
+                            <span>{formatFileSize(item.size)}</span>
+                          </div>
+                          <span className={`job-image-status ${item.status}`}>{formatJobImageQueueStatus(item)}</span>
+                          {item.uploadedFileName ? <span className="job-image-meta">{item.uploadedFileName}</span> : null}
+                          {item.error ? <p>{item.error}</p> : null}
+                        </div>
+                        <button
+                          aria-label={`Remove ${item.originalName}`}
+                          className="icon-button"
+                          disabled={item.status === "uploading"}
+                          onClick={() => removeJobImageFromQueue(item.id)}
+                          type="button"
+                        >
+                          <Trash2 aria-hidden="true" size={17} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="empty-state">No images are queued for upload.</div>
+              )}
+              <div className="job-image-history">
+                <div className="job-image-section-heading">
+                  <h3>Uploaded Image History</h3>
+                  <span>{loadingJobImageUploads ? "Loading..." : `${currentJobImageUploads.length} image${currentJobImageUploads.length === 1 ? "" : "s"}`}</span>
+                </div>
+                {currentJobImageUploads.length > 0 ? (
+                  <div className="job-image-history-list">
+                    {currentJobImageUploads.map((upload) => (
+                      <div className={`job-image-history-row ${upload.status}`} key={upload.id}>
+                        <div>
+                          <strong>{upload.fileName}</strong>
+                          <span>
+                            {upload.status === "uploaded" ? "Uploaded" : "Failed"}
+                            {upload.uploadedAt || upload.attemptedAt
+                              ? ` ${new Date(upload.uploadedAt ?? upload.attemptedAt ?? "").toLocaleString()}`
+                              : ""}
+                            {upload.uploadedByName ? ` by ${upload.uploadedByName}` : ""}
+                            {upload.fileSizeBytes ? ` - ${formatFileSize(upload.fileSizeBytes)}` : ""}
+                          </span>
+                          {upload.originalFileName ? <span>Original: {upload.originalFileName}</span> : null}
+                          {upload.error ? <p>{upload.error}</p> : null}
+                        </div>
+                        {upload.folderUrl ? (
+                          <a className="secondary-button" href={upload.folderUrl} rel="noreferrer" target="_blank">
+                            <ExternalLink aria-hidden="true" size={17} />
+                            Open Folder
+                          </a>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="empty-state">No Procore image uploads have been recorded for this job and date.</div>
+                )}
+              </div>
             </div>
 
             <div className="mobile-sticky-action-bar" aria-label="Entry actions">
@@ -7737,6 +8220,26 @@ async function deleteDatabaseDailyReportUpload(projectId: string, date: string) 
   }
 }
 
+async function loadDatabaseJobImageUploads(projectId: string, date: string) {
+  try {
+    const response = await fetch(
+      `/api/job-images?projectId=${encodeURIComponent(projectId)}&date=${encodeURIComponent(date)}`,
+      {
+        cache: "no-store"
+      }
+    );
+    const data = (await response.json()) as JobImagesResponse;
+
+    if (!response.ok || !data.databaseConfigured) {
+      return null;
+    }
+
+    return data.uploads ?? [];
+  } catch {
+    return null;
+  }
+}
+
 async function loadDatabaseDayRecords() {
   try {
     const response = await fetch("/api/day-records", {
@@ -7924,6 +8427,150 @@ async function clearDatabaseProjectCache() {
   }
 
   return data;
+}
+
+async function prepareJobImageFileForUpload(file: File) {
+  const compressedFile = await compressJobImage(file);
+  return compressedFile ?? file;
+}
+
+async function compressJobImage(file: File) {
+  if (!file.type.startsWith("image/")) {
+    throw new Error(`${file.name || "Selected file"} is not an image.`);
+  }
+
+  if (!["image/jpeg", "image/jpg", "image/png", "image/webp"].includes(file.type.toLowerCase())) {
+    return null;
+  }
+
+  if (typeof window === "undefined" || typeof document === "undefined") {
+    return null;
+  }
+
+  return new Promise<File | null>((resolve) => {
+    const objectUrl = URL.createObjectURL(file);
+    const image = new window.Image();
+
+    image.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+
+      const scale = Math.min(1, JOB_IMAGE_MAX_DIMENSION / Math.max(image.naturalWidth, image.naturalHeight));
+      const width = Math.max(1, Math.round(image.naturalWidth * scale));
+      const height = Math.max(1, Math.round(image.naturalHeight * scale));
+      const canvas = document.createElement("canvas");
+
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext("2d")?.drawImage(image, 0, 0, width, height);
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            resolve(null);
+            return;
+          }
+
+          const compressedName = replaceFileExtension(file.name || "job-image", "jpg");
+          resolve(
+            new File([blob], compressedName, {
+              lastModified: Date.now(),
+              type: "image/jpeg"
+            })
+          );
+        },
+        "image/jpeg",
+        JOB_IMAGE_JPEG_QUALITY
+      );
+    };
+
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(null);
+    };
+
+    image.src = objectUrl;
+  });
+}
+
+function chunkJobImagesForUpload(images: JobImageQueueItem[]) {
+  const batches: JobImageQueueItem[][] = [];
+  let currentBatch: JobImageQueueItem[] = [];
+  let currentBatchSize = 0;
+
+  for (const image of images) {
+    if (currentBatch.length > 0 && currentBatchSize + image.size > MAX_JOB_IMAGE_UPLOAD_BATCH_BYTES) {
+      batches.push(currentBatch);
+      currentBatch = [];
+      currentBatchSize = 0;
+    }
+
+    currentBatch.push(image);
+    currentBatchSize += image.size;
+  }
+
+  if (currentBatch.length > 0) {
+    batches.push(currentBatch);
+  }
+
+  return batches;
+}
+
+function mergeJobImageUploads(existingUploads: JobImageUpload[], nextUploads: JobImageUpload[]) {
+  const uploadsById = new Map(existingUploads.map((upload) => [upload.id, upload]));
+
+  for (const upload of nextUploads) {
+    uploadsById.set(upload.id, upload);
+  }
+
+  return Array.from(uploadsById.values()).sort(compareJobImageUploads);
+}
+
+function compareJobImageUploads(a: JobImageUpload, b: JobImageUpload) {
+  const aTimestamp = a.uploadedAt ?? a.attemptedAt ?? "";
+  const bTimestamp = b.uploadedAt ?? b.attemptedAt ?? "";
+
+  return bTimestamp.localeCompare(aTimestamp) || a.fileName.localeCompare(b.fileName);
+}
+
+function uploadClientId(upload: JobImageUpload) {
+  return upload.clientId ?? upload.id;
+}
+
+function replaceFileExtension(fileName: string, extension: string) {
+  const extensionIndex = fileName.lastIndexOf(".");
+
+  if (extensionIndex <= 0) {
+    return `${fileName}.${extension}`;
+  }
+
+  return `${fileName.slice(0, extensionIndex)}.${extension}`;
+}
+
+function formatFileSize(bytes: number | undefined) {
+  if (!bytes || !Number.isFinite(bytes)) {
+    return "";
+  }
+
+  if (bytes < 1024 * 1024) {
+    return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  }
+
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatJobImageQueueStatus(item: JobImageQueueItem) {
+  if (item.status === "uploaded") {
+    return "Uploaded";
+  }
+
+  if (item.status === "uploading") {
+    return "Uploading";
+  }
+
+  if (item.status === "failed") {
+    return "Failed";
+  }
+
+  return "Queued";
 }
 
 function normalizeSharedAppState(state: Partial<SharedAppState> | null | undefined): SharedAppState {

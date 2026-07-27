@@ -5,6 +5,7 @@ import { replaceAllocationEntries } from "@/lib/allocation-entries-store";
 import { replaceCrewData } from "@/lib/crew-store";
 import { replaceDailyReportData } from "@/lib/daily-report-store";
 import { replaceDayRecords } from "@/lib/day-record-store";
+import { clearJobImageUploadData } from "@/lib/job-image-store";
 
 const CONFIRMATION_TEXT = "CLEAR_STAGING_DATA";
 
@@ -25,8 +26,9 @@ export async function POST(request: NextRequest) {
   const dayRecordsResult = await replaceDayRecords({}, {});
   const dailyReportsResult = await replaceDailyReportData({}, {});
   const crewResult = await replaceCrewData([], {});
+  const jobImagesResult = await clearJobImageUploadData();
 
-  if (!entriesResult || !dayRecordsResult || !dailyReportsResult || !crewResult) {
+  if (!entriesResult || !dayRecordsResult || !dailyReportsResult || !crewResult || !jobImagesResult) {
     return NextResponse.json({ error: "Database is not configured for staging data cleanup." }, { status: 503 });
   }
 
@@ -38,7 +40,8 @@ export async function POST(request: NextRequest) {
         crew: crewResult,
         dailyEntries: entriesResult,
         dailyReports: dailyReportsResult,
-        dayRecords: dayRecordsResult
+        dayRecords: dayRecordsResult,
+        jobImages: jobImagesResult
       },
       preserved: [
         "users",
@@ -59,7 +62,8 @@ export async function POST(request: NextRequest) {
       crew: crewResult,
       dailyEntries: entriesResult,
       dailyReports: dailyReportsResult,
-      dayRecords: dayRecordsResult
+      dayRecords: dayRecordsResult,
+      jobImages: jobImagesResult
     },
     databaseConfigured: true,
     ok: true

@@ -94,6 +94,28 @@ type ProcoreUploadDebugInfo = {
   createFilePayload: string;
 };
 
+export type JobImageUploadInput = {
+  clientId: string;
+  contentType: string;
+  file: Uint8Array;
+  fileSizeBytes: number;
+  originalFileName: string;
+};
+
+export type JobImageUploadResult = {
+  clientId: string;
+  contentType: string;
+  error?: string;
+  fileName: string;
+  fileSizeBytes: number;
+  folderId?: string;
+  folderPath: string;
+  folderUrl?: string;
+  originalFileName: string;
+  procoreFileId?: string;
+  status: "failed" | "uploaded";
+};
+
 export async function uploadDailyReportToProcore(payload: DailyReportUploadPayload): Promise<UploadDailyReportResult> {
   const accessToken = await getProcoreIntegrationAccessToken();
 
@@ -102,19 +124,19 @@ export async function uploadDailyReportToProcore(payload: DailyReportUploadPaylo
   }
 
   const config = getProcoreConfig();
-  const folderPath = "Daily Reports";
+  const folderPath = ["Daily Reports"];
   const procoreProjectId = resolveProcoreProjectId(payload.project);
 
   if (!procoreProjectId) {
     throw new Error("The selected project does not have a Procore project ID for document upload.");
   }
 
-  const folder = await findOrCreateProjectFolder({
+  const folder = await findOrCreateProjectFolderPath({
     accessToken,
     baseUrl: config.baseUrl,
     companyId: config.companyId,
     projectId: procoreProjectId,
-    folderName: folderPath
+    folderPath
   });
 
   if (!folder.id) {
@@ -138,10 +160,110 @@ export async function uploadDailyReportToProcore(payload: DailyReportUploadPaylo
     companyId: config.companyId,
     fileName: uploadResult.fileName,
     folderId: folder.id,
-    folderPath,
+    folderPath: folderPath.join("/"),
     folderUrl: buildProjectDocumentsFolderUrl(config.companyId, procoreProjectId, folder.id),
     procoreFileId: extractId(uploadResult.response),
     procoreUpload: uploadResult.procoreUpload
+  };
+}
+
+export async function uploadJobImagesToProcore({
+  date,
+  images,
+  project,
+  startingImageNumber
+}: {
+  date: string;
+  images: JobImageUploadInput[];
+  project: Project;
+  startingImageNumber: number;
+}) {
+  const accessToken = await getProcoreIntegrationAccessToken();
+
+  if (!accessToken) {
+    throw new Error("Procore upload has not been configured by an admin.");
+  }
+
+  const config = getProcoreConfig();
+  const folderPath = ["Daily Reports", "Job Images"];
+  const folderPathText = folderPath.join("/");
+  const procoreProjectId = resolveProcoreProjectId(project);
+
+  if (!procoreProjectId) {
+    throw new Error("The selected project does not have a Procore project ID for image upload.");
+  }
+
+  const folder = await findOrCreateProjectFolderPath({
+    accessToken,
+    baseUrl: config.baseUrl,
+    companyId: config.companyId,
+    folderPath,
+    projectId: procoreProjectId
+  });
+
+  if (!folder.id) {
+    throw new Error("Unable to resolve the Procore Job Images folder.");
+  }
+
+  const folderUrl = buildProjectDocumentsFolderUrl(config.companyId, procoreProjectId, folder.id);
+  const uploads: JobImageUploadResult[] = [];
+
+  for (const [index, image] of images.entries()) {
+    const fileName = buildJobImageFileName({
+      contentType: image.contentType,
+      date,
+      imageNumber: startingImageNumber + index,
+      originalFileName: image.originalFileName,
+      projectName: project.name
+    });
+
+    try {
+      const uploadResult = await uploadProjectFileWithDirectUpload({
+        accessToken,
+        baseUrl: config.baseUrl,
+        companyId: config.companyId,
+        contentType: image.contentType,
+        file: image.file,
+        fileName,
+        folderId: folder.id,
+        projectId: procoreProjectId
+      });
+
+      uploads.push({
+        clientId: image.clientId,
+        contentType: image.contentType,
+        fileName: uploadResult.fileName,
+        fileSizeBytes: image.fileSizeBytes,
+        folderId: folder.id,
+        folderPath: folderPathText,
+        folderUrl,
+        originalFileName: image.originalFileName,
+        procoreFileId: extractId(uploadResult.response),
+        status: "uploaded"
+      });
+    } catch (error) {
+      uploads.push({
+        clientId: image.clientId,
+        contentType: image.contentType,
+        error: error instanceof Error ? error.message : "Unable to upload image to Procore.",
+        fileName,
+        fileSizeBytes: image.fileSizeBytes,
+        folderId: folder.id,
+        folderPath: folderPathText,
+        folderUrl,
+        originalFileName: image.originalFileName,
+        status: "failed"
+      });
+    }
+  }
+
+  return {
+    companyId: config.companyId,
+    folderId: folder.id,
+    folderPath: folderPathText,
+    folderUrl,
+    projectId: procoreProjectId,
+    uploads
   };
 }
 
@@ -158,6 +280,42 @@ function buildProjectDocumentsFolderUrl(companyId: string, projectId: string, fo
   url.searchParams.set("folder_id", folderId);
 
   return url.toString();
+}
+
+async function findOrCreateProjectFolderPath({
+  accessToken,
+  baseUrl,
+  companyId,
+  folderPath,
+  projectId
+}: {
+  accessToken: string;
+  baseUrl: string;
+  companyId: string;
+  folderPath: string[];
+  projectId: string;
+}) {
+  let parentFolderId: string | undefined;
+  let folder: ProcoreFolder | null = null;
+
+  for (const folderName of folderPath) {
+    folder = await findOrCreateProjectFolder({
+      accessToken,
+      baseUrl,
+      companyId,
+      folderName,
+      parentFolderId,
+      projectId
+    });
+    parentFolderId = folder.id;
+  }
+
+  return (
+    folder ?? {
+      id: "",
+      name: ""
+    }
+  );
 }
 
 async function findOrCreateProjectFolder({
@@ -715,6 +873,54 @@ function buildCollisionSafeFileName(fileName: string) {
   }
 
   return `${fileName.slice(0, extensionIndex)}_${timestamp}${fileName.slice(extensionIndex)}`;
+}
+
+function buildJobImageFileName({
+  contentType,
+  date,
+  imageNumber,
+  originalFileName,
+  projectName
+}: {
+  contentType: string;
+  date: string;
+  imageNumber: number;
+  originalFileName: string;
+  projectName: string;
+}) {
+  const projectNumber = projectName.trim().split(/\s+/)[0]?.slice(0, 8) || "Project";
+  const paddedImageNumber = String(Math.max(1, imageNumber)).padStart(3, "0");
+  const extension = readImageFileExtension(contentType, originalFileName);
+
+  return `${date}_${sanitizeFileName(projectNumber)}_Job_Image_${paddedImageNumber}.${extension}`;
+}
+
+function readImageFileExtension(contentType: string, originalFileName: string) {
+  const normalizedContentType = contentType.trim().toLowerCase();
+
+  if (normalizedContentType === "image/jpeg" || normalizedContentType === "image/jpg") {
+    return "jpg";
+  }
+
+  if (normalizedContentType === "image/png") {
+    return "png";
+  }
+
+  if (normalizedContentType === "image/webp") {
+    return "webp";
+  }
+
+  if (normalizedContentType === "image/heic") {
+    return "heic";
+  }
+
+  const extension = originalFileName.split(".").pop()?.trim().toLowerCase();
+
+  return extension && /^[a-z0-9]{2,5}$/.test(extension) ? extension : "jpg";
+}
+
+function sanitizeFileName(value: string) {
+  return value.replace(/[<>:"/\\|?*\u0000-\u001F]/g, "_");
 }
 
 function firstString(...values: unknown[]) {
