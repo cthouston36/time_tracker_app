@@ -36,7 +36,9 @@ const PROCORE_SYNC_REQUEST_TIMEOUT_MS = 55_000;
 const PROCORE_WEB_BASE_URL = process.env.NEXT_PUBLIC_PROCORE_WEB_BASE_URL ?? "https://us02.procore.com";
 const PROCORE_COMPANY_ID = process.env.NEXT_PUBLIC_PROCORE_COMPANY_ID ?? "598134325538800";
 const MAX_JOB_IMAGE_UPLOAD_BATCH_BYTES = 3.5 * 1024 * 1024;
+const MAX_JOB_IMAGE_UPLOAD_BATCH_ITEMS = 4;
 const MAX_JOB_IMAGE_QUEUE_ITEMS = 20;
+const JOB_IMAGE_CLIENT_BATCH_DELAY_MS = 1_000;
 const JOB_IMAGE_MAX_DIMENSION = 1800;
 const JOB_IMAGE_JPEG_QUALITY = 0.82;
 const CREW_LABOR_TYPE_OPTIONS: Array<{ value: CrewLaborType; label: string }> = [
@@ -532,6 +534,7 @@ export function TimeAllocationWorkspace() {
   const dateInputRef = useRef<HTMLInputElement>(null);
   const jobImageInputRef = useRef<HTMLInputElement>(null);
   const jobImagePreviewUrlsRef = useRef<Set<string>>(new Set());
+  const myProjectsFilterInitializedRef = useRef(false);
   const dayNotesSaveTimeoutsRef = useRef<Record<string, number>>({});
   const dailyReportDraftAutosaveTimeoutRef = useRef<number | null>(null);
 
@@ -964,6 +967,26 @@ export function TimeAllocationWorkspace() {
       setShowOnlyMyProjects(false);
     }
   }, [currentUserMyJobIds.length, showOnlyMyProjects]);
+
+  useEffect(() => {
+    myProjectsFilterInitializedRef.current = false;
+  }, [currentUser?.id]);
+
+  useEffect(() => {
+    if (!currentUser || !appStateHydrated) {
+      return;
+    }
+
+    if (currentUserMyJobIds.length === 0) {
+      setShowOnlyMyProjects(false);
+      return;
+    }
+
+    if (!myProjectsFilterInitializedRef.current) {
+      myProjectsFilterInitializedRef.current = true;
+      setShowOnlyMyProjects(true);
+    }
+  }, [appStateHydrated, currentUser, currentUserMyJobIds.length]);
 
   useEffect(() => {
     if (!currentUser || !selectedProjectId) {
@@ -2394,7 +2417,13 @@ export function TimeAllocationWorkspace() {
     let failedCount = 0;
 
     try {
-      for (const batch of chunkJobImagesForUpload(imagesToUpload)) {
+      const batches = chunkJobImagesForUpload(imagesToUpload);
+
+      for (const [batchIndex, batch] of batches.entries()) {
+        if (batchIndex > 0) {
+          await waitForClientDelay(JOB_IMAGE_CLIENT_BATCH_DELAY_MS);
+        }
+
         const formData = new FormData();
 
         formData.set("date", workDate);
@@ -8497,7 +8526,11 @@ function chunkJobImagesForUpload(images: JobImageQueueItem[]) {
   let currentBatchSize = 0;
 
   for (const image of images) {
-    if (currentBatch.length > 0 && currentBatchSize + image.size > MAX_JOB_IMAGE_UPLOAD_BATCH_BYTES) {
+    if (
+      currentBatch.length > 0 &&
+      (currentBatchSize + image.size > MAX_JOB_IMAGE_UPLOAD_BATCH_BYTES ||
+        currentBatch.length >= MAX_JOB_IMAGE_UPLOAD_BATCH_ITEMS)
+    ) {
       batches.push(currentBatch);
       currentBatch = [];
       currentBatchSize = 0;
@@ -8512,6 +8545,12 @@ function chunkJobImagesForUpload(images: JobImageQueueItem[]) {
   }
 
   return batches;
+}
+
+function waitForClientDelay(milliseconds: number) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, milliseconds);
+  });
 }
 
 function mergeJobImageUploads(existingUploads: JobImageUpload[], nextUploads: JobImageUpload[]) {

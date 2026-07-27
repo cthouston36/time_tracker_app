@@ -5,6 +5,9 @@ import type { Project } from "@/lib/procore/types";
 
 const DEFAULT_FOLDERS_PATH = "/rest/v1.0/folders";
 const DEFAULT_PROCORE_WEB_BASE_URL = "https://us02.procore.com";
+const DEFAULT_PROCORE_RATE_LIMIT_MAX_RETRIES = 2;
+const DEFAULT_PROCORE_RATE_LIMIT_MAX_WAIT_MS = 8_000;
+const DEFAULT_PROCORE_JOB_IMAGE_UPLOAD_DELAY_MS = 1_250;
 
 type DailyReportUploadPayload = {
   project: Project;
@@ -207,8 +210,13 @@ export async function uploadJobImagesToProcore({
 
   const folderUrl = buildProjectDocumentsFolderUrl(config.companyId, procoreProjectId, folder.id);
   const uploads: JobImageUploadResult[] = [];
+  const uploadDelayMs = readPositiveIntegerEnv("PROCORE_JOB_IMAGE_UPLOAD_DELAY_MS", DEFAULT_PROCORE_JOB_IMAGE_UPLOAD_DELAY_MS);
 
   for (const [index, image] of images.entries()) {
+    if (index > 0 && uploadDelayMs > 0) {
+      await delay(uploadDelayMs);
+    }
+
     const fileName = buildJobImageFileName({
       contentType: image.contentType,
       date,
@@ -366,6 +374,7 @@ async function findOrCreateProjectFolder({
       accessToken,
       baseUrl,
       companyId,
+      exhaustive: true,
       projectId,
       parentFolderId
     });
@@ -389,12 +398,14 @@ async function listProjectFolders({
   accessToken,
   baseUrl,
   companyId,
+  exhaustive = false,
   projectId,
   parentFolderId
 }: {
   accessToken: string;
   baseUrl: string;
   companyId: string;
+  exhaustive?: boolean;
   projectId: string;
   parentFolderId?: string;
 }) {
@@ -438,8 +449,14 @@ async function listProjectFolders({
           stage: `list folders at ${path}`
         });
 
-        for (const folder of normalizeFolders(response)) {
+        const folders = normalizeFolders(response);
+
+        for (const folder of folders) {
           foldersById.set(folder.id, folder);
+        }
+
+        if (!exhaustive && folders.length > 0) {
+          return Array.from(foldersById.values());
         }
       } catch (error) {
         lastError = error;
@@ -774,32 +791,50 @@ async function procoreJsonRequest<TResponse>({
     headers.set("Content-Type", contentType);
   }
 
-  const response = await fetch(url, {
-    body,
-    headers,
-    method
-  });
+  const maxRetries = readPositiveIntegerEnv("PROCORE_RATE_LIMIT_MAX_RETRIES", DEFAULT_PROCORE_RATE_LIMIT_MAX_RETRIES);
+  const maxWaitMs = readPositiveIntegerEnv("PROCORE_RATE_LIMIT_MAX_WAIT_MS", DEFAULT_PROCORE_RATE_LIMIT_MAX_WAIT_MS);
 
-  if (!response.ok) {
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    const response = await fetch(url, {
+      body,
+      headers,
+      method
+    });
+
+    if (response.ok) {
+      if (response.status === 204) {
+        return {} as TResponse;
+      }
+
+      const text = await response.text();
+
+      if (!text) {
+        return {} as TResponse;
+      }
+
+      return JSON.parse(text) as TResponse;
+    }
+
     const retryAfter = response.headers.get("retry-after");
     const details = await response.text();
     const retryMessage = retryAfter ? ` Try again after ${formatRetryAfter(retryAfter)}.` : "";
     const message = details ? `${response.status} ${response.statusText}: ${details}` : `${response.status} ${response.statusText}`;
+    const shouldRetry = response.status === 429 && attempt < maxRetries;
+
+    if (shouldRetry) {
+      const retryAfterMs = parseRetryAfterMs(retryAfter);
+      const waitMs = retryAfterMs ?? Math.min(maxWaitMs, 1_500 * 2 ** attempt);
+
+      if (waitMs <= maxWaitMs) {
+        await delay(waitMs);
+        continue;
+      }
+    }
 
     throw new ProcoreDocumentsError(`${stage} failed: ${message}${retryMessage}`, response.status, stage);
   }
 
-  if (response.status === 204) {
-    return {} as TResponse;
-  }
-
-  const text = await response.text();
-
-  if (!text) {
-    return {} as TResponse;
-  }
-
-  return JSON.parse(text) as TResponse;
+  throw new ProcoreDocumentsError(`${stage} failed after rate-limit retries.`, 429, stage);
 }
 
 function normalizeFolders(response: unknown) {
@@ -968,6 +1003,38 @@ function formatRetryAfter(value: string) {
   }
 
   return value;
+}
+
+function parseRetryAfterMs(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const seconds = Number(value);
+
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return seconds * 1000;
+  }
+
+  const timestamp = Date.parse(value);
+
+  if (!Number.isNaN(timestamp)) {
+    return Math.max(0, timestamp - Date.now());
+  }
+
+  return null;
+}
+
+function readPositiveIntegerEnv(key: string, fallback: number) {
+  const value = Number(process.env[key]);
+
+  return Number.isInteger(value) && value >= 0 ? value : fallback;
+}
+
+function delay(milliseconds: number) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, milliseconds);
+  });
 }
 
 class ProcoreDocumentsError extends Error {
