@@ -184,6 +184,8 @@ async function writeProcoreTablesCache(projects: Project[], syncedAt: string) {
         id,
         name,
         netsuite_project_id,
+        netsuite_project_manager_id,
+        netsuite_project_manager_name,
         procore_project_id,
         source_system,
         now()
