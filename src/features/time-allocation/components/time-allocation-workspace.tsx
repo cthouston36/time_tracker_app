@@ -341,7 +341,6 @@ type DailyReportEmployeeRow = {
   productionCode2: string;
   productionHours2: string;
   totalHours: string;
-  employeeInitial: string;
   driver: boolean;
   passenger: boolean;
 };
@@ -5287,11 +5286,10 @@ function DailyReportModal({
                 {isTwoSeriesTemplate ? (
                   <>
                     <span>Code</span>
-                    <span>Hour</span>
+                    <span>Hrs</span>
                     <span>Code</span>
-                    <span>Hour</span>
+                    <span>Hrs</span>
                     <span>Total Hours</span>
-                    <span>Employee Initial</span>
                   </>
                 ) : (
                   <>
@@ -5404,14 +5402,7 @@ function DailyReportModal({
                     tabIndex={-1}
                     value={row.totalHours}
                   />
-                  {isTwoSeriesTemplate ? (
-                    <input
-                      aria-label={`Employee initial row ${index + 1}`}
-                      maxLength={4}
-                      value={row.employeeInitial}
-                      onChange={(event) => onEmployeeChange(index, "employeeInitial", event.target.value)}
-                    />
-                  ) : (
+                  {!isTwoSeriesTemplate ? (
                     <>
                       <label className="daily-labor-check">
                         <input
@@ -5430,7 +5421,7 @@ function DailyReportModal({
                         <span className="sr-only">Passenger row {index + 1}</span>
                       </label>
                     </>
-                  )}
+                  ) : null}
                 </div>
               ))}
             </div>
@@ -10738,7 +10729,6 @@ function createEmptyDailyReportEmployeeRows() {
     productionCode2: "",
     productionHours2: "",
     totalHours: "",
-    employeeInitial: "",
     driver: false,
     passenger: false
   }));
@@ -10786,7 +10776,6 @@ function dailyReportEmployeeRowHasContent(row: DailyReportEmployeeRow) {
     Boolean(row.productionCode2.trim()) ||
     Boolean(row.productionHours2.trim()) ||
     Boolean(row.totalHours.trim()) ||
-    Boolean(row.employeeInitial.trim()) ||
     row.driver ||
     row.passenger
   );

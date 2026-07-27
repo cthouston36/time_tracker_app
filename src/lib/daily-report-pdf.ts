@@ -59,7 +59,6 @@ type DailyReportEmployeeRow = {
   productionCode2?: string;
   productionHours2?: string;
   totalHours: string;
-  employeeInitial?: string;
   driver: boolean;
   passenger: boolean;
 };
@@ -326,8 +325,7 @@ function drawTwoSeriesDailyReportBody(doc: PDFKit.PDFDocument, context: PdfConte
       row.productionHours1,
       row.productionCode2,
       row.productionHours2,
-      row.totalHours,
-      row.employeeInitial
+      row.totalHours
     ].some(Boolean)
   );
 
@@ -343,18 +341,17 @@ function drawTwoSeriesDailyReportBody(doc: PDFKit.PDFDocument, context: PdfConte
     doc,
     context,
     [
-      { header: "Employee - Classification", width: 112 },
+      { header: "Employee - Classification", width: 136 },
       { header: "Truck", width: 38 },
       { header: "In", width: 34 },
-      { header: "Lunch Out", width: 46 },
-      { header: "Lunch In", width: 44 },
+      { header: "Lunch Out", width: 50 },
+      { header: "Lunch In", width: 48 },
       { header: "Out", width: 34 },
-      { align: "center", header: "Code", width: 32 },
-      { align: "right", header: "Hour", width: 32 },
-      { align: "center", header: "Code", width: 32 },
-      { align: "right", header: "Hour", width: 32 },
-      { align: "right", header: "Total", width: 42 },
-      { align: "center", header: "Initial", width: 62 }
+      { align: "center", header: "Code", width: 38 },
+      { align: "right", header: "Hrs", width: 38 },
+      { align: "center", header: "Code", width: 38 },
+      { align: "right", header: "Hrs", width: 38 },
+      { align: "right", header: "Total", width: 48 }
     ],
     employeeRows.length
       ? employeeRows.map((row) => [
@@ -368,10 +365,9 @@ function drawTwoSeriesDailyReportBody(doc: PDFKit.PDFDocument, context: PdfConte
           row.productionHours1 ?? "",
           row.productionCode2 ?? "",
           row.productionHours2 ?? "",
-          row.totalHours,
-          row.employeeInitial ?? ""
+          row.totalHours
         ])
-      : [["No employee time entered.", "", "", "", "", "", "", "", "", "", "", ""]]
+      : [["No employee time entered.", "", "", "", "", "", "", "", "", "", ""]]
   );
 
   drawProductionCodeKey(doc, context);

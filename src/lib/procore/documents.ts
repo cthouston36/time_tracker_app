@@ -61,7 +61,6 @@ type DailyReportEmployeeRow = {
   productionCode2?: string;
   productionHours2?: string;
   totalHours: string;
-  employeeInitial?: string;
   driver: boolean;
   passenger: boolean;
 };
