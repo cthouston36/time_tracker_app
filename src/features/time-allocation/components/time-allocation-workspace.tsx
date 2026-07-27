@@ -150,6 +150,18 @@ type AdminClearStagingDataResponse = {
   ok?: boolean;
 };
 
+type AdminClearProjectCacheResponse = {
+  cleared?: {
+    appSettings: number;
+    payItems: number;
+    projects: number;
+    syncState: number;
+  };
+  databaseConfigured?: boolean;
+  error?: string;
+  ok?: boolean;
+};
+
 type AdminUserFormState = {
   active: boolean;
   firstName: string;
@@ -438,6 +450,7 @@ export function TimeAllocationWorkspace() {
   const [loadingAdminUsers, setLoadingAdminUsers] = useState(false);
   const [savingAdminUser, setSavingAdminUser] = useState(false);
   const [clearingStagingData, setClearingStagingData] = useState(false);
+  const [clearingProjectCache, setClearingProjectCache] = useState(false);
   const [adminMaintenanceNotice, setAdminMaintenanceNotice] = useState<{ message: string; status: "success" | "error" } | null>(null);
   const [syncSummary, setSyncSummary] = useState<ProcoreSyncSummary | null>(null);
   const [syncLog, setSyncLog] = useState<SyncLogEntry[]>([]);
@@ -1393,6 +1406,55 @@ export function TimeAllocationWorkspace() {
       });
     } finally {
       setClearingStagingData(false);
+    }
+  }
+
+  async function clearCachedProjectData() {
+    if (currentUser?.role !== "admin") {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      [
+        "Clear cached jobs and pay items?",
+        "",
+        "This will permanently remove the currently cached Procore-sourced jobs/pay items and the old project cache fallback.",
+        "",
+        "It will keep users, passwords, daily entries, daily reports, crew records, sync log, project blacklist, and My Projects."
+      ].join("\n")
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setClearingProjectCache(true);
+    setAdminMaintenanceNotice(null);
+
+    try {
+      const data = await clearDatabaseProjectCache();
+      const cleared = data.cleared;
+      const projectCount = cleared?.projects ?? 0;
+      const payItemCount = cleared?.payItems ?? 0;
+
+      setAllProjects([]);
+      setSelectedProjectId("");
+      setSyncedAt(null);
+      setSyncSummary(null);
+      setDraftsByPayItem({});
+      setProjectLoadError("");
+      setConnectionStatus("No cached project data");
+      setAdminMaintenanceNotice({
+        message: `Cached project data cleared. Removed ${projectCount} job${projectCount === 1 ? "" : "s"} and ${payItemCount} pay item${payItemCount === 1 ? "" : "s"}. Sync from NetSuite to reload jobs.`,
+        status: "success"
+      });
+    } catch (error) {
+      setAdminMaintenanceNotice({
+        message: error instanceof Error ? error.message : "Unable to clear cached project data.",
+        status: "error"
+      });
+    } finally {
+      setClearingProjectCache(false);
     }
   }
 
@@ -3151,7 +3213,9 @@ export function TimeAllocationWorkspace() {
           {currentUser.role === "admin" ? (
             <AdminMaintenancePanel
               clearing={clearingStagingData}
+              clearingProjectCache={clearingProjectCache}
               notice={adminMaintenanceNotice}
+              onClearProjectCache={clearCachedProjectData}
               onClearStagingData={clearStagingOperationalData}
             />
           ) : null}
@@ -6539,11 +6603,15 @@ function AdminUsersPanel({
 
 function AdminMaintenancePanel({
   clearing,
+  clearingProjectCache,
   notice,
+  onClearProjectCache,
   onClearStagingData
 }: {
   clearing: boolean;
+  clearingProjectCache: boolean;
   notice: { message: string; status: "success" | "error" } | null;
+  onClearProjectCache: () => void;
   onClearStagingData: () => void;
 }) {
   return (
@@ -6561,6 +6629,18 @@ function AdminMaintenancePanel({
         <button className="secondary-button admin-clear-button" disabled={clearing} onClick={onClearStagingData} type="button">
           <Trash2 aria-hidden="true" size={16} />
           {clearing ? "Clearing..." : "Clear staging daily data"}
+        </button>
+        <p className="field-note">
+          Clears only cached jobs/pay items and the old project cache fallback. Use this before the first NetSuite sync.
+        </p>
+        <button
+          className="secondary-button admin-clear-button"
+          disabled={clearingProjectCache}
+          onClick={onClearProjectCache}
+          type="button"
+        >
+          <Trash2 aria-hidden="true" size={16} />
+          {clearingProjectCache ? "Clearing..." : "Clear cached jobs/pay items"}
         </button>
       </div>
     </details>
@@ -7676,6 +7756,25 @@ async function clearDatabaseStagingOperationalData() {
 
   if (!response.ok || data.ok === false) {
     throw new Error(data.error ?? "Unable to clear staging data.");
+  }
+
+  return data;
+}
+
+async function clearDatabaseProjectCache() {
+  const response = await fetch("/api/admin/clear-project-cache", {
+    body: JSON.stringify({
+      confirmation: "CLEAR_PROJECT_CACHE"
+    }),
+    headers: {
+      "Content-Type": "application/json"
+    },
+    method: "POST"
+  });
+  const data = (await response.json()) as AdminClearProjectCacheResponse;
+
+  if (!response.ok || data.ok === false) {
+    throw new Error(data.error ?? "Unable to clear cached project data.");
   }
 
   return data;
