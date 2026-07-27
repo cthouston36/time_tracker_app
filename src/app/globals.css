@@ -1445,6 +1445,17 @@ a.daily-report-procore-status:hover {
   overflow-wrap: anywhere;
 }
 
+.compact-search-input {
+  background: var(--background);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--foreground);
+  font: inherit;
+  min-width: 0;
+  padding: 9px 10px;
+  width: 100%;
+}
+
 .admin-users,
 .admin-maintenance {
   background: var(--field);
@@ -1725,6 +1736,58 @@ a.daily-report-procore-status:hover {
 
 .crew-form-section .field-group {
   margin-bottom: 0;
+}
+
+.vendor-search-picker {
+  display: grid;
+  gap: 8px;
+}
+
+.vendor-search-results {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  max-height: 240px;
+  overflow: auto;
+}
+
+.vendor-search-option {
+  align-items: start;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--foreground);
+  cursor: pointer;
+  display: grid;
+  gap: 3px;
+  padding: 9px 10px;
+  text-align: left;
+}
+
+.vendor-search-option:last-child {
+  border-bottom: 0;
+}
+
+.vendor-search-option:hover,
+.vendor-search-option.selected {
+  background: rgba(39, 169, 183, 0.14);
+}
+
+.vendor-search-option span {
+  font-size: 0.9rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.vendor-search-option small,
+.vendor-search-empty {
+  color: var(--muted);
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+}
+
+.vendor-search-empty {
+  padding: 10px;
 }
 
 .crew-add-button {

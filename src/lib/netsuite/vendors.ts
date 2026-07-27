@@ -11,6 +11,15 @@ export type NetSuiteVendor = {
   defaultAddress: string;
 };
 
+export type NetSuiteVendorBlacklistById = Record<string, true>;
+
+export type NetSuiteVendorCache = {
+  allVendors: NetSuiteVendor[];
+  syncedAt: string | null;
+  vendorBlacklistById: NetSuiteVendorBlacklistById;
+  vendors: NetSuiteVendor[];
+};
+
 type NetSuiteVendorRow = Record<string, unknown> & {
   alt_name?: unknown;
   company_name?: unknown;
@@ -29,6 +38,10 @@ type NetSuiteVendorCacheRow = {
   name: string;
   raw_data: unknown;
   synced_at: string | Date | null;
+};
+
+type NetSuiteVendorBlacklistRow = {
+  vendor_id: string;
 };
 
 let vendorCacheTableReady = false;
@@ -68,17 +81,62 @@ export async function readCachedNetSuiteVendors() {
     from netsuite_vendors
     order by lower(name), lower(entity_id), id
   `) as NetSuiteVendorCacheRow[];
+  const blacklistRows = (await sql`
+    select vendor_id
+    from netsuite_vendor_blacklist
+    order by vendor_id
+  `) as NetSuiteVendorBlacklistRow[];
+  const vendorBlacklistById: NetSuiteVendorBlacklistById = {};
+
+  for (const row of blacklistRows) {
+    vendorBlacklistById[row.vendor_id] = true;
+  }
+
+  const allVendors = rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    entityId: row.entity_id ?? undefined,
+    companyName: row.company_name ?? undefined,
+    defaultAddress: row.default_address
+  }));
 
   return {
+    allVendors,
     syncedAt: toIsoDateString(rows[0]?.synced_at) ?? null,
-    vendors: rows.map((row) => ({
-      id: row.id,
-      name: row.name,
-      entityId: row.entity_id ?? undefined,
-      companyName: row.company_name ?? undefined,
-      defaultAddress: row.default_address
-    }))
-  };
+    vendorBlacklistById,
+    vendors: allVendors.filter((vendor) => !vendorBlacklistById[vendor.id])
+  } satisfies NetSuiteVendorCache;
+}
+
+export async function setNetSuiteVendorBlacklist(vendorId: string, blacklisted: boolean) {
+  const sql = getSql();
+
+  if (!sql) {
+    return null;
+  }
+
+  await ensureNetSuiteVendorCacheTable();
+
+  const normalizedVendorId = readString(vendorId);
+
+  if (!normalizedVendorId) {
+    return false;
+  }
+
+  if (blacklisted) {
+    await sql`
+      insert into netsuite_vendor_blacklist (vendor_id, blacklisted_at)
+      values (${normalizedVendorId}, now())
+      on conflict (vendor_id) do nothing
+    `;
+  } else {
+    await sql`
+      delete from netsuite_vendor_blacklist
+      where vendor_id = ${normalizedVendorId}
+    `;
+  }
+
+  return true;
 }
 
 async function fetchNetSuiteVendors() {
@@ -219,6 +277,13 @@ async function ensureNetSuiteVendorCacheTable() {
       raw_data jsonb not null default '{}'::jsonb,
       synced_at timestamptz not null default now(),
       updated_at timestamptz not null default now()
+    )
+  `;
+
+  await sql`
+    create table if not exists netsuite_vendor_blacklist (
+      vendor_id text primary key,
+      blacklisted_at timestamptz not null default now()
     )
   `;
 
