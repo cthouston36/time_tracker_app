@@ -12,8 +12,11 @@ export type NetSuiteVendor = {
 };
 
 type NetSuiteVendorRow = Record<string, unknown> & {
+  alt_name?: unknown;
   company_name?: unknown;
   default_address?: unknown;
+  default_billing?: unknown;
+  default_shipping?: unknown;
   entity_id?: unknown;
   vendor_id?: unknown;
 };
@@ -79,13 +82,13 @@ export async function readCachedNetSuiteVendors() {
 }
 
 async function fetchNetSuiteVendors() {
-  const rows = await runSuiteQLAll<NetSuiteVendorRow>(buildVendorQuery());
+  const rows = await fetchNetSuiteVendorRows();
   const vendorsById = new Map<string, NetSuiteVendor>();
 
   for (const row of rows) {
     const vendor = mapNetSuiteVendor(row);
 
-    if (vendor) {
+    if (vendor && !vendorsById.has(vendor.id)) {
       vendorsById.set(vendor.id, vendor);
     }
   }
@@ -95,6 +98,25 @@ async function fetchNetSuiteVendors() {
     (left.entityId ?? "").localeCompare(right.entityId ?? "", undefined, { numeric: true, sensitivity: "base" }) ||
     left.id.localeCompare(right.id)
   );
+}
+
+async function fetchNetSuiteVendorRows() {
+  const queries = buildVendorQueries();
+  let lastError: unknown = null;
+
+  for (const query of queries) {
+    try {
+      return await runSuiteQLAll<NetSuiteVendorRow>(query);
+    } catch (error) {
+      lastError = error;
+
+      if (!isSuiteQLSchemaError(error)) {
+        throw error;
+      }
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error("Unable to fetch NetSuite vendors.");
 }
 
 async function writeCachedNetSuiteVendors(vendors: NetSuiteVendor[]) {
@@ -206,18 +228,47 @@ async function ensureNetSuiteVendorCacheTable() {
   vendorCacheTableReady = true;
 }
 
-function buildVendorQuery() {
+function buildVendorQueries() {
+  return [
+    buildVendorAddressBookQuery("addressbookaddress", true),
+    buildVendorAddressBookQuery("addressbookaddress", false),
+    buildVendorAddressBookQuery("addrtext", true),
+    buildVendorAddressBookQuery("addrtext", false)
+  ];
+}
+
+function buildVendorAddressBookQuery(addressTextField: string, includeDefaultFlags: boolean) {
+  const defaultFlagSelect = includeDefaultFlags
+    ? `
+      vab.defaultbilling as default_billing,
+      vab.defaultshipping as default_shipping`
+    : `
+      null as default_billing,
+      null as default_shipping`;
+  const defaultFlagSort = includeDefaultFlags
+    ? `,
+      case
+        when vab.defaultbilling = 'T' then 0
+        when vab.defaultshipping = 'T' then 1
+        else 2
+      end`
+    : "";
+
   return `
     select
-      id as vendor_id,
-      entityid as entity_id,
-      companyname as company_name,
-      altname as alt_name,
-      defaultaddress as default_address
-    from ${NETSUITE_VENDOR_TABLE}
-    where isinactive = 'F'
-      and defaultaddress is not null
-    order by lower(coalesce(companyname, altname, entityid)), id
+      v.id as vendor_id,
+      v.entityid as entity_id,
+      v.companyname as company_name,
+      v.altname as alt_name,
+      vab.${addressTextField} as default_address,${defaultFlagSelect}
+    from ${NETSUITE_VENDOR_TABLE} v
+      join vendorAddressbook vab
+        on vab.entity = v.id
+    where v.isinactive = 'F'
+      and vab.${addressTextField} is not null
+    order by
+      lower(coalesce(v.companyname, v.altname, v.entityid)),
+      v.id${defaultFlagSort}
   `;
 }
 
@@ -268,6 +319,14 @@ function readString(value: unknown) {
   }
 
   return "";
+}
+
+function isSuiteQLSchemaError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return /invalid search query|unknown identifier|unknown table|search error occurred/i.test(error.message);
 }
 
 function toIsoDateString(value: string | Date | null | undefined) {
