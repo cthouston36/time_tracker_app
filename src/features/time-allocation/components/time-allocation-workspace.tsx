@@ -35,6 +35,7 @@ import type { AllocationEntry, CrewLaborType, Project } from "@/lib/procore/type
 const PROCORE_SYNC_REQUEST_TIMEOUT_MS = 55_000;
 const PROCORE_WEB_BASE_URL = process.env.NEXT_PUBLIC_PROCORE_WEB_BASE_URL ?? "https://us02.procore.com";
 const PROCORE_COMPANY_ID = process.env.NEXT_PUBLIC_PROCORE_COMPANY_ID ?? "598134325538800";
+const JOB_IMAGE_DAILY_UPLOAD_LIMIT = 50;
 const MAX_JOB_IMAGE_UPLOAD_BATCH_BYTES = 3.5 * 1024 * 1024;
 const MAX_JOB_IMAGE_UPLOAD_BATCH_ITEMS = 4;
 const MAX_JOB_IMAGE_QUEUE_ITEMS = 20;
@@ -136,6 +137,8 @@ type JobImageUploadResponse = {
   folderPath?: string;
   folderUrl?: string;
   ok?: boolean;
+  uploadedImageCount?: number;
+  uploadedImageLimit?: number;
   uploadedCount?: number;
   uploads?: JobImageUpload[];
 };
@@ -598,6 +601,10 @@ export function TimeAllocationWorkspace() {
   );
   const currentJobImageUploads = selectedProject ? jobImageUploadsByDay[currentDayKey] ?? [] : [];
   const queuedJobImages = jobImageQueue.filter((image) => image.status !== "uploaded");
+  const uploadedJobImageCount = currentJobImageUploads.filter((upload) => upload.status === "uploaded").length;
+  const remainingJobImageSlots = Math.max(0, JOB_IMAGE_DAILY_UPLOAD_LIMIT - uploadedJobImageCount);
+  const remainingQueueableJobImageSlots = Math.max(0, remainingJobImageSlots - queuedJobImages.length);
+  const jobImageDailyLimitReached = remainingJobImageSlots === 0;
   const previousDailyReportCrewTime = useMemo(
     () => (selectedProject ? findPreviousDailyReportWithCrewTime(dailyReportsByKey, selectedProject.id, workDate) : null),
     [dailyReportsByKey, selectedProject, workDate]
@@ -2309,10 +2316,23 @@ export function TimeAllocationWorkspace() {
       return;
     }
 
-    const remainingSlots = Math.max(0, MAX_JOB_IMAGE_QUEUE_ITEMS - jobImageQueue.length);
+    const remainingQueueSlots = Math.max(0, MAX_JOB_IMAGE_QUEUE_ITEMS - jobImageQueue.length);
+    const remainingSlots = Math.min(remainingQueueSlots, remainingQueueableJobImageSlots);
     const selectedFiles = Array.from(files).slice(0, remainingSlots);
 
     if (remainingSlots === 0) {
+      if (remainingQueueableJobImageSlots === 0) {
+        setJobImageNotice({
+          message: jobImageDailyLimitReached
+            ? `This job/day already has the maximum ${JOB_IMAGE_DAILY_UPLOAD_LIMIT} uploaded images.`
+            : `Upload or remove queued images before adding more. ${remainingJobImageSlots} upload slot${
+                remainingJobImageSlots === 1 ? "" : "s"
+              } remain for this job/day.`,
+          status: "error"
+        });
+        return;
+      }
+
       setJobImageNotice({
         message: `Upload or remove queued images before adding more. The temporary queue holds ${MAX_JOB_IMAGE_QUEUE_ITEMS} images.`,
         status: "error"
@@ -2329,7 +2349,7 @@ export function TimeAllocationWorkspace() {
 
       if (selectedFiles.length < files.length) {
         setJobImageNotice({
-          message: `Added ${selectedFiles.length} images. The temporary queue holds ${MAX_JOB_IMAGE_QUEUE_ITEMS} images at a time.`,
+          message: `Added ${selectedFiles.length} image${selectedFiles.length === 1 ? "" : "s"}. Extra selected images were not added because of the job/day limit or temporary queue limit.`,
           status: "success"
         });
       }
@@ -2394,6 +2414,22 @@ export function TimeAllocationWorkspace() {
     if (imagesToUpload.length === 0) {
       setJobImageNotice({
         message: "Add at least one image before uploading.",
+        status: "error"
+      });
+      return;
+    }
+
+    if (remainingJobImageSlots === 0) {
+      setJobImageNotice({
+        message: `This job/day already has the maximum ${JOB_IMAGE_DAILY_UPLOAD_LIMIT} uploaded images.`,
+        status: "error"
+      });
+      return;
+    }
+
+    if (imagesToUpload.length > remainingJobImageSlots) {
+      setJobImageNotice({
+        message: `Only ${remainingJobImageSlots} image${remainingJobImageSlots === 1 ? "" : "s"} can still be uploaded for this job/day. Remove extra queued images before uploading.`,
         status: "error"
       });
       return;
@@ -4419,7 +4455,7 @@ export function TimeAllocationWorkspace() {
                   />
                   <button
                     className="secondary-button"
-                    disabled={!selectedProject || uploadingJobImages}
+                    disabled={!selectedProject || uploadingJobImages || jobImageDailyLimitReached}
                     onClick={() => jobImageInputRef.current?.click()}
                     type="button"
                   >
@@ -4428,7 +4464,7 @@ export function TimeAllocationWorkspace() {
                   </button>
                   <button
                     className="primary-button"
-                    disabled={!selectedProject || queuedJobImages.length === 0 || uploadingJobImages}
+                    disabled={!selectedProject || queuedJobImages.length === 0 || uploadingJobImages || jobImageDailyLimitReached}
                     onClick={uploadQueuedJobImages}
                     type="button"
                   >
@@ -4437,7 +4473,10 @@ export function TimeAllocationWorkspace() {
                   </button>
                 </div>
               </div>
-              <div className="field-note">Selected images stay in a temporary queue until they are uploaded to Procore.</div>
+              <div className="field-note">
+                {uploadedJobImageCount} of {JOB_IMAGE_DAILY_UPLOAD_LIMIT} images uploaded for this job/day. Selected images stay in a
+                temporary queue until they are uploaded to Procore.
+              </div>
               {jobImageNotice ? (
                 <div className={jobImageNotice.status === "error" ? "inline-alert job-image-notice" : "success-alert job-image-notice"}>
                   {jobImageNotice.message}
@@ -4495,7 +4534,11 @@ export function TimeAllocationWorkspace() {
               <div className="job-image-history">
                 <div className="job-image-section-heading">
                   <h3>Uploaded Image History</h3>
-                  <span>{loadingJobImageUploads ? "Loading..." : `${currentJobImageUploads.length} image${currentJobImageUploads.length === 1 ? "" : "s"}`}</span>
+                  <span>
+                    {loadingJobImageUploads
+                      ? "Loading..."
+                      : `${uploadedJobImageCount}/${JOB_IMAGE_DAILY_UPLOAD_LIMIT} uploaded`}
+                  </span>
                 </div>
                 {currentJobImageUploads.length > 0 ? (
                   <div className="job-image-history-list">

@@ -8,6 +8,7 @@ import type { Project } from "@/lib/procore/types";
 export const runtime = "nodejs";
 
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const JOB_IMAGE_DAILY_UPLOAD_LIMIT = 50;
 const MAX_IMAGES_PER_REQUEST = 6;
 const MAX_IMAGE_SIZE_BYTES = 8 * 1024 * 1024;
 
@@ -65,6 +66,32 @@ export async function POST(request: NextRequest) {
 
     if (existingImageCount === null) {
       return NextResponse.json({ error: "Database is not configured for job image upload tracking." }, { status: 503 });
+    }
+
+    const remainingImageSlots = Math.max(0, JOB_IMAGE_DAILY_UPLOAD_LIMIT - existingImageCount);
+
+    if (remainingImageSlots === 0) {
+      return NextResponse.json(
+        {
+          error: `This job/day already has the maximum ${JOB_IMAGE_DAILY_UPLOAD_LIMIT} uploaded images.`,
+          uploadedImageCount: existingImageCount,
+          uploadedImageLimit: JOB_IMAGE_DAILY_UPLOAD_LIMIT
+        },
+        { status: 400 }
+      );
+    }
+
+    if (images.length > remainingImageSlots) {
+      return NextResponse.json(
+        {
+          error: `This job/day has ${existingImageCount} uploaded images. Upload ${remainingImageSlots} image${
+            remainingImageSlots === 1 ? "" : "s"
+          } or fewer.`,
+          uploadedImageCount: existingImageCount,
+          uploadedImageLimit: JOB_IMAGE_DAILY_UPLOAD_LIMIT
+        },
+        { status: 400 }
+      );
     }
 
     const uploadResult = await uploadJobImagesToProcore({
@@ -134,6 +161,8 @@ export async function POST(request: NextRequest) {
       folderPath: uploadResult.folderPath,
       folderUrl: uploadResult.folderUrl,
       ok: failedCount === 0,
+      uploadedImageCount: existingImageCount + uploadedCount,
+      uploadedImageLimit: JOB_IMAGE_DAILY_UPLOAD_LIMIT,
       uploadedCount,
       uploads
     });
