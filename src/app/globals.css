@@ -2030,6 +2030,7 @@ a.daily-report-procore-status:hover {
   border-radius: 8px;
   max-height: 70vh;
   overflow: auto;
+  position: relative;
 }
 
 .matrix-header,
@@ -2039,6 +2040,11 @@ a.daily-report-procore-status:hover {
   gap: 10px;
   grid-template-columns: minmax(90px, 0.7fr) minmax(220px, 1.5fr) minmax(100px, 0.7fr) minmax(80px, 0.55fr) minmax(80px, 0.55fr) minmax(150px, 1fr) minmax(90px, 0.65fr) minmax(100px, 0.7fr);
   padding: 10px 12px;
+}
+
+.matrix-row > * {
+  position: relative;
+  z-index: 0;
 }
 
 .matrix-header {
@@ -2059,12 +2065,17 @@ a.daily-report-procore-status:hover {
   align-self: stretch;
   display: flex;
   left: 0;
+  margin-left: -12px;
+  min-width: calc(100% + 12px);
+  padding-left: 12px;
   position: sticky;
+  z-index: 6;
 }
 
 .matrix-header > span:first-child {
   background: #0d151d;
-  z-index: 4;
+  box-shadow: 1px 0 0 var(--line), 12px 0 18px rgba(0, 0, 0, 0.24);
+  z-index: 8;
 }
 
 .matrix-row {
@@ -2088,9 +2099,9 @@ a.daily-report-procore-status:hover {
 
 .matrix-code {
   background: var(--panel);
+  box-shadow: 1px 0 0 var(--line), 12px 0 18px rgba(0, 0, 0, 0.24);
   color: #b8e7ec;
   font-weight: 700;
-  z-index: 1;
 }
 
 .matrix-row.worked-row .matrix-code {
