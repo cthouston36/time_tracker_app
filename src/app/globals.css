@@ -160,6 +160,81 @@ button {
   min-width: 0;
 }
 
+.desktop-header-menu {
+  min-width: 220px;
+  position: relative;
+}
+
+.desktop-header-menu > summary {
+  align-items: center;
+  background: var(--panel-soft);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: #c8d4df;
+  cursor: pointer;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  list-style: none;
+  min-height: 36px;
+  padding: 7px 11px;
+}
+
+.desktop-header-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.desktop-header-menu > summary span {
+  align-items: baseline;
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.desktop-header-menu > summary strong,
+.desktop-header-menu > summary small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desktop-header-menu > summary strong {
+  font-size: 0.85rem;
+}
+
+.desktop-header-menu > summary small {
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
+.desktop-header-menu[open] > summary svg {
+  transform: rotate(180deg);
+}
+
+.desktop-header-menu-body {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 8px;
+  min-width: 260px;
+  padding: 10px;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 30;
+}
+
+.desktop-header-menu-body > *,
+.desktop-header-menu-body .secondary-button,
+.desktop-header-menu-body .status-pill {
+  justify-content: center;
+  min-width: 0;
+  width: 100%;
+}
+
 .primary-nav {
   align-items: center;
   background: var(--field);
@@ -3520,9 +3595,17 @@ a.daily-report-procore-status:hover {
   }
 
   .header-actions .secondary-button,
-  .header-actions .status-pill,
-  .header-actions .user-chip {
+  .header-actions .status-pill {
     font-size: 0.8rem;
+    min-height: 32px;
+    padding: 6px 9px;
+  }
+
+  .desktop-header-menu {
+    min-width: 210px;
+  }
+
+  .desktop-header-menu > summary {
     min-height: 32px;
     padding: 6px 9px;
   }
@@ -4560,21 +4643,29 @@ a.daily-report-procore-status:hover {
 .top-bar .brand-block h1,
 .top-bar .tab-button.active,
 .top-bar .secondary-button,
+.top-bar .desktop-header-menu > summary,
 .top-bar .mobile-header-menu > summary {
   color: #f6f8fa;
 }
 
 .top-bar .brand-block p,
 .top-bar .tab-button,
+.top-bar .desktop-header-menu > summary small,
 .top-bar .user-chip {
   color: #d0d7de;
 }
 
 .top-bar .primary-nav,
 .top-bar .secondary-button,
+.top-bar .desktop-header-menu > summary,
 .top-bar .mobile-header-menu > summary,
 .top-bar .user-chip {
   background: #32383f;
+  border-color: #57606a;
+}
+
+.top-bar .desktop-header-menu-body {
+  background: #24292f;
   border-color: #57606a;
 }
 

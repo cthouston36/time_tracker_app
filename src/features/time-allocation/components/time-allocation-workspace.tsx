@@ -4138,29 +4138,37 @@ export function TimeAllocationWorkspace() {
           ) : null}
         </nav>
         <div className="header-actions">
-          <span className="user-chip">
-            {formatUserName(currentUser)} - {formatRole(currentUser.role)}
-          </span>
-          <IconLabel icon={CheckCircle2} text={connectionStatus} />
-          {currentUser.role === "project_manager" ? (
-            <button
-              className="secondary-button"
-              disabled={updatingProject}
-              onClick={addOrUpdateProject}
-              type="button"
-            >
-              <RefreshCw aria-hidden="true" size={18} />
-              {updatingProject ? "Updating..." : "Add/Update Project"}
-            </button>
-          ) : null}
-          <button className="secondary-button" onClick={() => setChangePasswordOpen(true)} type="button">
-            <KeyRound aria-hidden="true" size={18} />
-            Change Password
-          </button>
-          <button className="secondary-button" onClick={logout} type="button">
-            <LogOut aria-hidden="true" size={18} />
-            Sign out
-          </button>
+          <details className="desktop-header-menu">
+            <summary>
+              <span>
+                <strong>{formatUserName(currentUser)}</strong>
+                <small>{formatRole(currentUser.role)}</small>
+              </span>
+              <ChevronDown aria-hidden="true" size={18} />
+            </summary>
+            <div className="desktop-header-menu-body">
+              <IconLabel icon={CheckCircle2} text={connectionStatus} />
+              {currentUser.role === "project_manager" ? (
+                <button
+                  className="secondary-button"
+                  disabled={updatingProject}
+                  onClick={addOrUpdateProject}
+                  type="button"
+                >
+                  <RefreshCw aria-hidden="true" size={18} />
+                  {updatingProject ? "Updating..." : "Add/Update Project"}
+                </button>
+              ) : null}
+              <button className="secondary-button" onClick={() => setChangePasswordOpen(true)} type="button">
+                <KeyRound aria-hidden="true" size={18} />
+                Change Password
+              </button>
+              <button className="secondary-button" onClick={logout} type="button">
+                <LogOut aria-hidden="true" size={18} />
+                Sign out
+              </button>
+            </div>
+          </details>
         </div>
         <details className="mobile-header-menu">
           <summary>
