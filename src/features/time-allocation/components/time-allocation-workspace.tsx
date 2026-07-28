@@ -12562,11 +12562,6 @@ function buildDataQualityIssues({
   const duplicateProjectNames = findDuplicateValues(visibleProjects.map((project) => project.name));
   const noPayItemProjects = visibleProjects.filter((project) => !isTwoSeriesProject(project) && project.payItems.length === 0);
   const missingProjectManagerProjects = visibleProjects.filter((project) => !project.netSuiteProjectManagerId);
-  const zeroQuantityPayItems = visibleProjects.flatMap((project) =>
-    project.payItems
-      .filter((payItem) => payItem.budgetedQuantity <= 0)
-      .map((payItem) => `${project.name}: ${payItem.code}`)
-  );
   const duplicatePayItemProjects = visibleProjects.flatMap((project) => {
     const duplicateCodes = findDuplicateValues(project.payItems.map((payItem) => payItem.code));
 
@@ -12617,15 +12612,6 @@ function buildDataQualityIssues({
       id: "duplicate-pay-items",
       severity: "warning",
       title: "Duplicate pay item codes"
-    });
-  }
-
-  if (zeroQuantityPayItems.length > 0) {
-    issues.push({
-      detail: `${zeroQuantityPayItems.length} pay item${zeroQuantityPayItems.length === 1 ? "" : "s"} have zero or negative remaining budget quantity. Examples: ${formatDataQualitySamples(zeroQuantityPayItems)}.`,
-      id: "zero-quantity-pay-items",
-      severity: "warning",
-      title: "Pay items with no quantity"
     });
   }
 
