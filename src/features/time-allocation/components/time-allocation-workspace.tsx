@@ -5492,6 +5492,7 @@ export function TimeAllocationWorkspace() {
         ) : (
           <ReportsView
             currentUser={currentUser}
+            dailyReportsByKey={dailyReportsByKey}
             entries={reportEntries}
             myJobIds={currentUserMyJobIds}
             projects={projects}
@@ -7016,10 +7017,11 @@ type CrewPerformanceRow = {
   payItems: CrewPerformancePayItemRow[];
 };
 
-type ReportMode = "summary" | "detail" | "crew";
+type ReportMode = "summary" | "detail" | "crew" | "employee_hours";
 type DetailGrouping = "crew_day" | "crew_project" | "job_day";
 type DetailSort = "worst_average" | "best_average" | "most_hours" | "most_quantity";
 type ReportMetric = "mean" | "median";
+type EmployeeHoursGrouping = "employee" | "job";
 
 type ReportOptions = {
   excludeOutliers?: boolean;
@@ -7049,6 +7051,27 @@ type ReportPayItemOption = {
   query: string;
 };
 
+type EmployeeHoursDetailRow = {
+  id: string;
+  date: string;
+  employeeName: string;
+  hours: number;
+  jobName: string;
+  projectId: string;
+  truckNumber: string;
+};
+
+type EmployeeHoursReportRow = {
+  id: string;
+  daysWorked: number;
+  detailRows: EmployeeHoursDetailRow[];
+  employeeCount: number;
+  employeeName?: string;
+  jobCount: number;
+  jobName?: string;
+  totalHours: number;
+};
+
 type ReportResponse = {
   databaseConfigured?: boolean;
   error?: string;
@@ -7063,6 +7086,7 @@ type ReportResponse = {
 
 function ReportsView({
   currentUser,
+  dailyReportsByKey,
   entries,
   myJobIds,
   projects,
@@ -7075,6 +7099,7 @@ function ReportsView({
   setReportEndDate
 }: {
   currentUser: AuthUser;
+  dailyReportsByKey: DailyReportsByKey;
   entries: AllocationEntry[];
   myJobIds: string[];
   projects: Project[];
@@ -7090,6 +7115,7 @@ function ReportsView({
   const [detailPayItemQuery, setDetailPayItemQuery] = useState("");
   const [detailGrouping, setDetailGrouping] = useState<DetailGrouping>("crew_day");
   const [detailSort, setDetailSort] = useState<DetailSort>("worst_average");
+  const [employeeHoursGrouping, setEmployeeHoursGrouping] = useState<EmployeeHoursGrouping>("employee");
   const [reportMetric, setReportMetric] = useState<ReportMetric>("median");
   const [excludeReportOutliers, setExcludeReportOutliers] = useState(false);
   const [reportCrewLaborTypes, setReportCrewLaborTypes] = useState<CrewLaborType[]>(ALL_CREW_LABOR_TYPES);
@@ -7111,7 +7137,10 @@ function ReportsView({
     }),
     [excludeReportOutliers, reportMetric]
   );
-  const reportProjectOptions = useMemo(() => buildReportProjectOptions(projects, entries), [entries, projects]);
+  const reportProjectOptions = useMemo(
+    () => buildReportProjectOptions(projects, entries, dailyReportsByKey),
+    [dailyReportsByKey, entries, projects]
+  );
   const allowedReportProjectIds = useMemo(() => reportProjectOptions.map((project) => project.id), [reportProjectOptions]);
   const canManageMyJobs = currentUser.role === "project_manager" || currentUser.role === "admin";
   const automaticMyJobIds = useMemo(() => getDefaultMyJobIdsForUser(currentUser, projects), [currentUser, projects]);
@@ -7178,6 +7207,19 @@ function ReportsView({
     () => buildCrewPerformanceRows(laborFilteredEntries, projects, reportOptions),
     [laborFilteredEntries, projects, reportOptions]
   );
+  const localEmployeeHoursRows = useMemo(
+    () =>
+      buildEmployeeHoursReportRows({
+        dailyReportsByKey,
+        endDate: reportEndDate,
+        grouping: employeeHoursGrouping,
+        myJobIds,
+        projectId: reportProjectId,
+        projects,
+        startDate: reportStartDate
+      }),
+    [dailyReportsByKey, employeeHoursGrouping, myJobIds, projects, reportEndDate, reportProjectId, reportStartDate]
+  );
   const serverReportAvailable = Boolean(reportsUseServerData && reportData?.databaseConfigured && reportData.mode === reportMode);
   const payItemRows =
     serverReportAvailable && reportMode === "summary" ? (reportData?.rows ?? []) as PayItemReportRow[] : localPayItemRows;
@@ -7200,6 +7242,7 @@ function ReportsView({
     detailGrouping,
     detailPayItemQuery,
     detailSort,
+    employeeHoursGrouping,
     excludeReportOutliers,
     reportCrewLaborTypes,
     reportEndDate,
@@ -7210,6 +7253,12 @@ function ReportsView({
   ]);
 
   useEffect(() => {
+    if (reportMode === "employee_hours") {
+      setReportLoading(false);
+      setReportError("");
+      return;
+    }
+
     const controller = new AbortController();
 
     setReportLoading(true);
@@ -7385,6 +7434,13 @@ function ReportsView({
           >
             Crew Performance
           </button>
+          <button
+            className={reportMode === "employee_hours" ? "tab-button active" : "tab-button"}
+            onClick={() => setReportMode("employee_hours")}
+            type="button"
+          >
+            Employee Hours
+          </button>
         </div>
         {canManageMyJobs ? (
           <div className="report-admin-toolbar">
@@ -7470,38 +7526,54 @@ function ReportsView({
               </button>
             </div>
           </div>
-          <div className="field-group">
-            <label htmlFor="report-metric">Hrs / Unit Metric</label>
-            <select
-              id="report-metric"
-              value={reportMetric}
-              onChange={(event) => setReportMetric(event.target.value as ReportMetric)}
-            >
-              <option value="median">Median</option>
-              <option value="mean">Mean</option>
-            </select>
-          </div>
-          <fieldset className="report-labor-filter">
-            <legend>Crew Type</legend>
-            {CREW_LABOR_TYPE_OPTIONS.map((option) => (
-              <label key={option.value}>
+          {reportMode === "employee_hours" ? (
+            <div className="field-group">
+              <label htmlFor="employee-hours-grouping">Group By</label>
+              <select
+                id="employee-hours-grouping"
+                value={employeeHoursGrouping}
+                onChange={(event) => setEmployeeHoursGrouping(event.target.value as EmployeeHoursGrouping)}
+              >
+                <option value="employee">Employee</option>
+                <option value="job">Job</option>
+              </select>
+            </div>
+          ) : (
+            <>
+              <div className="field-group">
+                <label htmlFor="report-metric">Hrs / Unit Metric</label>
+                <select
+                  id="report-metric"
+                  value={reportMetric}
+                  onChange={(event) => setReportMetric(event.target.value as ReportMetric)}
+                >
+                  <option value="median">Median</option>
+                  <option value="mean">Mean</option>
+                </select>
+              </div>
+              <fieldset className="report-labor-filter">
+                <legend>Crew Type</legend>
+                {CREW_LABOR_TYPE_OPTIONS.map((option) => (
+                  <label key={option.value}>
+                    <input
+                      checked={reportCrewLaborTypes.includes(option.value)}
+                      type="checkbox"
+                      onChange={(event) => toggleReportCrewLaborType(option.value, event.target.checked)}
+                    />
+                    <span>{option.label}</span>
+                  </label>
+                ))}
+              </fieldset>
+              <label className="report-toggle-row">
                 <input
-                  checked={reportCrewLaborTypes.includes(option.value)}
+                  checked={excludeReportOutliers}
+                  onChange={(event) => setExcludeReportOutliers(event.target.checked)}
                   type="checkbox"
-                  onChange={(event) => toggleReportCrewLaborType(option.value, event.target.checked)}
                 />
-                <span>{option.label}</span>
+                <span>Exclude outliers</span>
               </label>
-            ))}
-          </fieldset>
-          <label className="report-toggle-row">
-            <input
-              checked={excludeReportOutliers}
-              onChange={(event) => setExcludeReportOutliers(event.target.checked)}
-              type="checkbox"
-            />
-            <span>Exclude outliers</span>
-          </label>
+            </>
+          )}
           <button
             className="secondary-button report-clear-button"
             disabled={
@@ -7521,14 +7593,20 @@ function ReportsView({
             Clear filters
           </button>
         </div>
-        <div className="report-methodology-note">
-          {reportMetric === "median"
-            ? "Median uses the middle row-level hours/unit value for each pay item group."
-            : "Mean uses total hours divided by total quantity for each pay item group."}
-          {excludeReportOutliers
-            ? " Outliers are excluded with the 1.5x IQR rule within each pay item when at least 5 comparable rows exist."
-            : " Outlier filtering is off."}
-        </div>
+        {reportMode === "employee_hours" ? (
+          <div className="report-methodology-note">
+            Employee Hours uses saved Daily Report employee time rows. Empty employee rows and zero-hour rows are excluded.
+          </div>
+        ) : (
+          <div className="report-methodology-note">
+            {reportMetric === "median"
+              ? "Median uses the middle row-level hours/unit value for each pay item group."
+              : "Mean uses total hours divided by total quantity for each pay item group."}
+            {excludeReportOutliers
+              ? " Outliers are excluded with the 1.5x IQR rule within each pay item when at least 5 comparable rows exist."
+              : " Outlier filtering is off."}
+          </div>
+        )}
         {reportError ? <div className="inline-alert">{reportError}</div> : null}
         {reportLoading ? (
           <ReportLoadingSkeleton />
@@ -7567,7 +7645,7 @@ function ReportsView({
               />
             ) : null}
           </>
-        ) : (
+        ) : reportMode === "crew" ? (
           <>
             <CrewPerformanceReport rows={crewRows} />
             {reportPagination ? (
@@ -7580,6 +7658,8 @@ function ReportsView({
               />
             ) : null}
           </>
+        ) : (
+          <EmployeeHoursReport grouping={employeeHoursGrouping} rows={localEmployeeHoursRows} />
         )}
       </div>
     </section>
@@ -8268,6 +8348,89 @@ function CrewPerformanceReport({ rows }: { rows: CrewPerformanceRow[] }) {
   );
 }
 
+function EmployeeHoursReport({
+  grouping,
+  rows
+}: {
+  grouping: EmployeeHoursGrouping;
+  rows: EmployeeHoursReportRow[];
+}) {
+  const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
+
+  if (rows.length === 0) {
+    return (
+      <EmptyState icon={Users} title="No employee hours found">
+        Saved daily report employee time rows that match the filters will appear here.
+      </EmptyState>
+    );
+  }
+
+  const primaryLabel = grouping === "job" ? "Job" : "Employee";
+  const countLabel = grouping === "job" ? "Employees" : "Jobs";
+  const detailPrimaryLabel = grouping === "job" ? "Employee" : "Date";
+  const detailSecondaryLabel = grouping === "job" ? "Date" : "Job";
+
+  return (
+    <div className="report-table employee-hours-table">
+      <div className="report-row report-header employee-hours-row">
+        <span>{primaryLabel}</span>
+        <span>{countLabel}</span>
+        <span>Days Worked</span>
+        <span>Total Hours</span>
+      </div>
+      {rows.map((row) => {
+        const expanded = expandedRowId === row.id;
+        const primaryValue = grouping === "job" ? row.jobName : row.employeeName;
+
+        return (
+          <div className="report-row-group" key={row.id}>
+            <div className="report-row employee-hours-row">
+              <button
+                aria-expanded={expanded}
+                className="report-drilldown-button"
+                onClick={() => setExpandedRowId(expanded ? null : row.id)}
+                type="button"
+              >
+                {expanded ? (
+                  <ChevronDown aria-hidden="true" size={17} />
+                ) : (
+                  <ChevronRight aria-hidden="true" size={17} />
+                )}
+                <span>{primaryValue}</span>
+              </button>
+              <span data-label={countLabel}>{grouping === "job" ? row.employeeCount : row.jobCount}</span>
+              <span data-label="Days Worked">{row.daysWorked}</span>
+              <span data-label="Total Hours">{row.totalHours.toFixed(2)}</span>
+            </div>
+            {expanded ? (
+              <div className="report-detail-panel">
+                <div className="report-detail-row report-detail-header employee-hours-detail-row">
+                  <span>{detailPrimaryLabel}</span>
+                  <span>{detailSecondaryLabel}</span>
+                  <span>Hours</span>
+                  <span>Truck</span>
+                </div>
+                {row.detailRows.map((detailRow) => (
+                  <div className="report-detail-row employee-hours-detail-row" key={detailRow.id}>
+                    <span data-label={detailPrimaryLabel}>
+                      {grouping === "job" ? detailRow.employeeName : formatDate(detailRow.date)}
+                    </span>
+                    <span data-label={detailSecondaryLabel}>
+                      {grouping === "job" ? formatDate(detailRow.date) : detailRow.jobName}
+                    </span>
+                    <span data-label="Hours">{detailRow.hours.toFixed(2)}</span>
+                    <span data-label="Truck">{detailRow.truckNumber || "-"}</span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function ReportPaginationControls({
   loading,
   onPageChange,
@@ -8916,6 +9079,140 @@ function AdminMaintenancePanel({
   );
 }
 
+function buildEmployeeHoursReportRows({
+  dailyReportsByKey,
+  endDate,
+  grouping,
+  myJobIds,
+  projectId,
+  projects,
+  startDate
+}: {
+  dailyReportsByKey: DailyReportsByKey;
+  endDate: string;
+  grouping: EmployeeHoursGrouping;
+  myJobIds: string[];
+  projectId: string;
+  projects: Project[];
+  startDate: string;
+}): EmployeeHoursReportRow[] {
+  const projectNameById = new Map(projects.map((project) => [project.id, project.name]));
+  const groups = new Map<
+    string,
+    EmployeeHoursReportRow & {
+      dateKeys: Set<string>;
+      employeeKeys: Set<string>;
+      jobKeys: Set<string>;
+    }
+  >();
+
+  for (const report of Object.values(dailyReportsByKey)) {
+    if (!dailyReportMatchesEmployeeHoursFilters(report, projectId, myJobIds, startDate, endDate)) {
+      continue;
+    }
+
+    const jobName = projectNameById.get(report.projectId) ?? `Unknown job (${report.projectId})`;
+
+    normalizeDailyReportEmployeeRows(report.employeeRows).forEach((employeeRow, index) => {
+      if (!dailyReportEmployeeRowHasContent(employeeRow)) {
+        return;
+      }
+
+      const employeeName = normalizeEmployeeHoursName(employeeRow.employeeClassification);
+      const hours = Number(employeeRow.totalHours || calculateDailyReportTotalHours(employeeRow));
+
+      if (!employeeName || !Number.isFinite(hours) || hours <= 0) {
+        return;
+      }
+
+      const groupKey = grouping === "job" ? report.projectId : employeeName.toLowerCase();
+      const current = groups.get(groupKey) ?? {
+        id: groupKey,
+        daysWorked: 0,
+        detailRows: [],
+        employeeCount: 0,
+        employeeName: grouping === "employee" ? employeeName : undefined,
+        jobCount: 0,
+        jobName: grouping === "job" ? jobName : undefined,
+        totalHours: 0,
+        dateKeys: new Set<string>(),
+        employeeKeys: new Set<string>(),
+        jobKeys: new Set<string>()
+      };
+
+      current.totalHours += hours;
+      current.detailRows.push({
+        id: `${report.projectId}-${report.date}-${index}`,
+        date: report.date,
+        employeeName,
+        hours,
+        jobName,
+        projectId: report.projectId,
+        truckNumber: employeeRow.truckNumber.trim()
+      });
+      current.dateKeys.add(report.date);
+      current.employeeKeys.add(employeeName.toLowerCase());
+      current.jobKeys.add(report.projectId);
+      current.daysWorked = current.dateKeys.size;
+      current.employeeCount = current.employeeKeys.size;
+      current.jobCount = current.jobKeys.size;
+      groups.set(groupKey, current);
+    });
+  }
+
+  return Array.from(groups.values())
+    .map((row) => {
+      return {
+        id: row.id,
+        daysWorked: row.daysWorked,
+        detailRows: [...row.detailRows].sort((a, b) => {
+          const dateComparison = a.date.localeCompare(b.date);
+
+          if (dateComparison !== 0) {
+            return dateComparison;
+          }
+
+          return grouping === "job"
+            ? a.employeeName.localeCompare(b.employeeName, undefined, { numeric: true, sensitivity: "base" })
+            : a.jobName.localeCompare(b.jobName, undefined, { numeric: true, sensitivity: "base" });
+        }),
+        employeeCount: row.employeeCount,
+        employeeName: row.employeeName,
+        jobCount: row.jobCount,
+        jobName: row.jobName,
+        totalHours: row.totalHours
+      };
+    })
+    .sort((a, b) => {
+      const firstLabel = grouping === "job" ? a.jobName ?? "" : a.employeeName ?? "";
+      const secondLabel = grouping === "job" ? b.jobName ?? "" : b.employeeName ?? "";
+
+      return firstLabel.localeCompare(secondLabel, undefined, {
+        numeric: true,
+        sensitivity: "base"
+      });
+    });
+}
+
+function dailyReportMatchesEmployeeHoursFilters(
+  report: DailyReport,
+  projectId: string,
+  myJobIds: string[],
+  startDate: string,
+  endDate: string
+) {
+  const matchesProject =
+    projectId === "all" || (projectId === "my-jobs" ? myJobIds.includes(report.projectId) : report.projectId === projectId);
+  const matchesStart = !startDate || report.date >= startDate;
+  const matchesEnd = !endDate || report.date <= endDate;
+
+  return matchesProject && matchesStart && matchesEnd;
+}
+
+function normalizeEmployeeHoursName(value: string) {
+  return value.trim().replace(/\s+/g, " ");
+}
+
 function buildPayItemReport(entries: AllocationEntry[], projects: Project[] = [], options?: ReportOptions): PayItemReportRow[] {
   const resolvedOptions = resolveReportOptions(options);
   const samples = applyOutlierFlags(
@@ -9497,12 +9794,20 @@ function getReportTitle(reportMode: ReportMode) {
     return "Crew Performance Summary";
   }
 
+  if (reportMode === "employee_hours") {
+    return "Employee Hours Report";
+  }
+
   return "Pay Item Production Report";
 }
 
 function getReportPageSize(reportMode: ReportMode) {
   if (reportMode === "detail") {
     return 50;
+  }
+
+  if (reportMode === "employee_hours") {
+    return 100;
   }
 
   return 25;
@@ -9542,12 +9847,18 @@ function getEntryProjectName(entry: AllocationEntry, projects: Project[]) {
   return entry.projectName ?? projects.find((project) => project.id === entry.projectId)?.name ?? `Unknown job (${entry.projectId})`;
 }
 
-function buildReportProjectOptions(projects: Project[], entries: AllocationEntry[]) {
+function buildReportProjectOptions(projects: Project[], entries: AllocationEntry[], dailyReportsByKey: DailyReportsByKey = {}) {
   const projectOptions = new Map(projects.map((project) => [project.id, project.name]));
 
   for (const entry of entries) {
     if (!projectOptions.has(entry.projectId)) {
       projectOptions.set(entry.projectId, entry.projectName ?? `Unknown job (${entry.projectId})`);
+    }
+  }
+
+  for (const report of Object.values(dailyReportsByKey)) {
+    if (!projectOptions.has(report.projectId)) {
+      projectOptions.set(report.projectId, `Unknown job (${report.projectId})`);
     }
   }
 
