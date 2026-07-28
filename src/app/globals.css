@@ -2754,32 +2754,42 @@ a.daily-report-procore-status:hover {
 }
 
 .mobile-pay-item-card {
-  background: var(--field);
+  background: #ffffff;
   border: 1px solid var(--line);
   border-radius: 8px;
   display: grid;
-  gap: 10px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   margin-top: 10px;
-  padding: 12px;
+  overflow: hidden;
 }
 
 .mobile-pay-item-card.worked-card {
-  background: #122633;
-  border-color: #2f6f78;
-  box-shadow: inset 3px 0 0 #2bb8c5;
+  background: #ddf4ff;
+  border-color: #54aeef;
+  box-shadow: inset 3px 0 0 #0969da;
 }
 
 .mobile-pay-item-card div {
   min-width: 0;
+  padding: 10px 12px;
+}
+
+.mobile-pay-item-card div:nth-child(odd) {
+  border-right: 1px solid var(--line);
+}
+
+.mobile-pay-item-card div:nth-child(n + 3) {
+  border-top: 1px solid var(--line);
 }
 
 .mobile-pay-item-card span {
   color: var(--muted);
   display: block;
-  font-size: 0.72rem;
+  font-size: 0.66rem;
   font-weight: 700;
-  margin-bottom: 4px;
+  letter-spacing: 0.02em;
+  margin-bottom: 3px;
   text-transform: uppercase;
 }
 
@@ -2789,11 +2799,28 @@ a.daily-report-procore-status:hover {
   overflow-wrap: anywhere;
 }
 
+.mobile-crew-field {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.mobile-crew-field > label {
+  color: var(--foreground);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.mobile-crew-field .crew-allocator summary {
+  justify-content: center;
+  min-height: 42px;
+}
+
 .mobile-pay-item-inputs {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  margin-top: 12px;
+  margin-top: 10px;
 }
 
 .mobile-pay-item-inputs .field-group {
@@ -4516,8 +4543,6 @@ a.daily-report-procore-status:hover {
     width: 100%;
   }
 
-  .mobile-pay-item-card,
-  .mobile-pay-item-inputs,
   .report-row,
   .report-detail-row {
     grid-template-columns: 1fr;

@@ -6908,7 +6908,7 @@ function MobilePayItemEntry({
           <strong>{selectedPayItem.code}</strong>
         </div>
         <div>
-          <span>Remaining QTY</span>
+          <span>Remaining</span>
           <strong>
             {formatPayItemQuantity(remainingQuantity)} {selectedPayItem.unitOfMeasure.toUpperCase()}
           </strong>
@@ -6921,6 +6921,20 @@ function MobilePayItemEntry({
           <span>Saved Qty</span>
           <strong>{savedEntry ? savedEntry.quantityCompleted.toFixed(2) : "-"}</strong>
         </div>
+      </div>
+
+      <div className="mobile-crew-field">
+        <label>Crew</label>
+        <CrewAllocationEditor
+          crewMembers={crewMembers}
+          dayIsSubmitted={dayIsSubmitted}
+          draft={draft}
+          payItemId={selectedPayItem.id}
+          savedEntry={savedEntry}
+          onCrewHoursChange={onCrewHoursChange}
+          onCrewToggle={onCrewToggle}
+          onSplitEvenly={onSplitEvenly}
+        />
       </div>
 
       <div className="mobile-pay-item-inputs">
@@ -6964,16 +6978,6 @@ function MobilePayItemEntry({
           ) : null}
         </div>
       </div>
-      <CrewAllocationEditor
-        crewMembers={crewMembers}
-        dayIsSubmitted={dayIsSubmitted}
-        draft={draft}
-        payItemId={selectedPayItem.id}
-        savedEntry={savedEntry}
-        onCrewHoursChange={onCrewHoursChange}
-        onCrewToggle={onCrewToggle}
-        onSplitEvenly={onSplitEvenly}
-      />
     </div>
   );
 }
