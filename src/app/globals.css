@@ -4778,11 +4778,11 @@ input[type="date"] {
 
 .matrix-header > span:first-child,
 .matrix-code {
-  box-shadow: 1px 0 0 #9da7b3, 12px 0 18px rgb(87 96 106 / 0.18);
+  box-shadow: 1px 0 0 #9da7b3;
 }
 
 .matrix-row,
-.matrix-code {
+.matrix-row .matrix-code {
   background: #ffffff;
 }
 
@@ -4806,6 +4806,11 @@ input[type="date"] {
 
 .matrix-row.quantity-overrun-row .matrix-code {
   color: #9a3412;
+}
+
+.matrix-code {
+  color: #24292f;
+  font-weight: 700;
 }
 
 .job-image-preview {
