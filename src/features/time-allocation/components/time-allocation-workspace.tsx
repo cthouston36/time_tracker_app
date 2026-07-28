@@ -6453,6 +6453,7 @@ function MobileOptionPicker({
   id,
   label,
   options,
+  searchable = true,
   value,
   onChange
 }: {
@@ -6460,6 +6461,7 @@ function MobileOptionPicker({
   id?: string;
   label: string;
   options: MobileOption[];
+  searchable?: boolean;
   value: string;
   onChange: (value: string) => void;
 }) {
@@ -6468,7 +6470,7 @@ function MobileOptionPicker({
   const selectedOption = options.find((option) => option.value === value);
   const normalizedQuery = query.trim().toLowerCase();
   const searchInputId = `mobile-picker-search-${label.toLowerCase().replaceAll(" ", "-")}`;
-  const filteredOptions = normalizedQuery
+  const filteredOptions = searchable && normalizedQuery
     ? options.filter((option) => option.label.toLowerCase().includes(normalizedQuery))
     : options;
 
@@ -6515,20 +6517,22 @@ function MobileOptionPicker({
                 <X aria-hidden="true" size={18} />
               </button>
             </div>
-            <div className="mobile-picker-search-wrap">
-              <label className="sr-only" htmlFor={searchInputId}>
-                Search {label}
-              </label>
-              <input
-                autoFocus
-                className="mobile-picker-search"
-                id={searchInputId}
-                placeholder="Search code or description"
-                type="search"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-              />
-            </div>
+            {searchable ? (
+              <div className="mobile-picker-search-wrap">
+                <label className="sr-only" htmlFor={searchInputId}>
+                  Search {label}
+                </label>
+                <input
+                  autoFocus
+                  className="mobile-picker-search"
+                  id={searchInputId}
+                  placeholder="Search code or description"
+                  type="search"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                />
+              </div>
+            ) : null}
             <div className="mobile-picker-options" role="listbox" aria-label={label}>
               {filteredOptions.length === 0 ? (
                 <div className="mobile-picker-empty">No matches found.</div>
@@ -6818,6 +6822,7 @@ function MobilePayItemEntry({
             value: payItem.id,
             label: `${payItem.code} - ${payItem.name}`
           }))}
+          searchable={false}
           value={selectedPayItem.id}
           onChange={onSelectedPayItemChange}
         />
