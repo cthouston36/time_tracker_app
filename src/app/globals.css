@@ -179,14 +179,6 @@ button {
   white-space: nowrap;
 }
 
-.training-link {
-  color: #dceef4;
-  font-size: 0.84rem;
-  min-height: 34px;
-  padding: 7px 10px;
-  white-space: nowrap;
-}
-
 .user-chip {
   align-items: center;
   background: var(--panel-soft);
@@ -198,6 +190,30 @@ button {
   min-height: 34px;
   padding: 7px 10px;
   white-space: nowrap;
+}
+
+.mobile-header-menu {
+  display: none;
+}
+
+.app-footer {
+  color: var(--muted);
+  font-size: 0.78rem;
+  padding: 0 clamp(16px, 4vw, 40px) 28px;
+  text-align: right;
+}
+
+.app-footer a {
+  align-items: center;
+  color: #9fb0c4;
+  display: inline-flex;
+  gap: 5px;
+  text-decoration: none;
+}
+
+.app-footer a:hover {
+  color: #b8e7ec;
+  text-decoration: underline;
 }
 
 .mobile-install-prompt {
@@ -3442,8 +3458,8 @@ a.daily-report-procore-status:hover {
   .top-bar {
     align-items: stretch;
     grid-template-columns: 1fr;
-    gap: 10px;
-    padding: 14px 12px;
+    gap: 8px;
+    padding: 10px 12px;
     width: 100%;
   }
 
@@ -3461,13 +3477,80 @@ a.daily-report-procore-status:hover {
   }
 
   .brand-logo {
-    height: 34px;
+    height: 30px;
     max-width: min(250px, 100%);
   }
 
+  .brand-block h1 {
+    font-size: 1rem;
+  }
+
   .header-actions {
-    align-items: stretch;
-    flex-direction: column;
+    display: none;
+  }
+
+  .mobile-header-menu {
+    display: block;
+  }
+
+  .mobile-header-menu > summary {
+    align-items: center;
+    background: var(--field);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    color: #dce7ef;
+    cursor: pointer;
+    display: flex;
+    gap: 10px;
+    justify-content: space-between;
+    list-style: none;
+    min-height: 38px;
+    padding: 7px 10px;
+  }
+
+  .mobile-header-menu > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .mobile-header-menu > summary span {
+    align-items: baseline;
+    display: flex;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .mobile-header-menu > summary strong,
+  .mobile-header-menu > summary small {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobile-header-menu > summary strong {
+    font-size: 0.88rem;
+  }
+
+  .mobile-header-menu > summary small {
+    color: var(--muted);
+    font-size: 0.74rem;
+  }
+
+  .mobile-header-menu[open] > summary svg {
+    transform: rotate(180deg);
+  }
+
+  .mobile-header-menu-body {
+    display: grid;
+    gap: 8px;
+    padding-top: 8px;
+  }
+
+  .mobile-header-menu-body > *,
+  .mobile-header-menu-body .secondary-button,
+  .mobile-header-menu-body .status-pill {
+    justify-content: center;
+    min-width: 0;
     width: 100%;
   }
 
@@ -3481,12 +3564,11 @@ a.daily-report-procore-status:hover {
 
   .primary-nav .tab-button {
     border-radius: 6px;
+    min-height: 34px;
     min-width: 0;
+    padding: 6px 8px;
   }
 
-  .header-actions > *,
-  .header-actions .primary-button,
-  .header-actions .secondary-button,
   .status-pill,
   .user-chip {
     justify-content: center;
@@ -3510,6 +3592,11 @@ a.daily-report-procore-status:hover {
     overflow: hidden;
     min-width: 0;
     padding: 12px;
+  }
+
+  .app-footer {
+    padding: 0 12px 96px;
+    text-align: center;
   }
 
   .allocation-grid {

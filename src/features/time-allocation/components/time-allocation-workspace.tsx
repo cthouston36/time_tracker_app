@@ -4143,15 +4143,6 @@ export function TimeAllocationWorkspace() {
           <span className="user-chip">
             {formatUserName(currentUser)} - {formatRole(currentUser.role)}
           </span>
-          <a
-            className="secondary-button training-link"
-            href="https://fdot-field-app.streamlit.app/"
-            rel="noopener noreferrer"
-            target="_blank"
-          >
-            <ExternalLink aria-hidden="true" size={16} />
-            FDOT Pay Items
-          </a>
           <IconLabel icon={CheckCircle2} text={connectionStatus} />
           {currentUser.role === "project_manager" ? (
             <button
@@ -4173,6 +4164,37 @@ export function TimeAllocationWorkspace() {
             Sign out
           </button>
         </div>
+        <details className="mobile-header-menu">
+          <summary>
+            <span>
+              <strong>{formatUserName(currentUser)}</strong>
+              <small>{formatRole(currentUser.role)}</small>
+            </span>
+            <ChevronDown aria-hidden="true" size={18} />
+          </summary>
+          <div className="mobile-header-menu-body">
+            <IconLabel icon={CheckCircle2} text={connectionStatus} />
+            {currentUser.role === "project_manager" ? (
+              <button
+                className="secondary-button"
+                disabled={updatingProject}
+                onClick={addOrUpdateProject}
+                type="button"
+              >
+                <RefreshCw aria-hidden="true" size={18} />
+                {updatingProject ? "Updating..." : "Add/Update Project"}
+              </button>
+            ) : null}
+            <button className="secondary-button" onClick={() => setChangePasswordOpen(true)} type="button">
+              <KeyRound aria-hidden="true" size={18} />
+              Change Password
+            </button>
+            <button className="secondary-button" onClick={logout} type="button">
+              <LogOut aria-hidden="true" size={18} />
+              Sign out
+            </button>
+          </div>
+        </details>
       </header>
 
       {changePasswordOpen ? (
@@ -5473,6 +5495,12 @@ export function TimeAllocationWorkspace() {
           />
         )}
       </div>
+      <footer className="app-footer">
+        <a href="https://fdot-field-app.streamlit.app/" rel="noopener noreferrer" target="_blank">
+          <ExternalLink aria-hidden="true" size={13} />
+          FDOT Pay Items
+        </a>
+      </footer>
       {dailyReportModalOpen && selectedProject ? (
         <DailyReportModal
           canCopyPreviousCrewTime={Boolean(previousDailyReportCrewTime)}
