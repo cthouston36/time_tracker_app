@@ -1,20 +1,20 @@
 :root {
   color-scheme: light;
-  --background: #edf2f7;
-  --foreground: #102033;
-  --muted: #546477;
-  --line: #bac7d5;
-  --panel: #ffffff;
-  --panel-soft: #e6edf5;
-  --field: #f5f8fb;
-  --accent: #007c89;
-  --accent-strong: #006775;
-  --danger: #b91c1c;
-  --success: #15803d;
-  --warning-bg: #fff7ed;
-  --warning-line: #fdba74;
-  --warning-text: #9a3412;
-  --shadow: 0 16px 38px rgb(15 23 42 / 0.16);
+  --background: #d8dee9;
+  --foreground: #1f2937;
+  --muted: #5d6b7c;
+  --line: #9aa8ba;
+  --panel: #eceff4;
+  --panel-soft: #e5e9f0;
+  --field: #f7f9fc;
+  --accent: #5e81ac;
+  --accent-strong: #4c6f98;
+  --danger: #a43e4c;
+  --success: #4f7d5d;
+  --warning-bg: #f5e6c8;
+  --warning-line: #d49a42;
+  --warning-text: #7a4b12;
+  --shadow: 0 18px 42px rgb(46 52 64 / 0.18);
 }
 
 * {
@@ -4495,19 +4495,44 @@ a.daily-report-procore-status:hover {
   }
 }
 
-/* Light operations theme overrides for legacy dark-specific selectors. */
+/* Nord operations theme overrides for legacy dark-specific selectors. */
 .top-bar,
 .mobile-sticky-action-bar {
-  background: #ffffff;
+  background: #2e3440;
 }
 
 .top-bar {
-  border-bottom-color: #b8c5d3;
-  box-shadow: 0 2px 7px rgb(15 23 42 / 0.1);
+  border-bottom-color: #4c566a;
+  box-shadow: 0 4px 14px rgb(46 52 64 / 0.22);
 }
 
 .mobile-sticky-action-bar {
-  box-shadow: 0 -10px 26px rgb(15 23 42 / 0.1);
+  box-shadow: 0 -10px 26px rgb(46 52 64 / 0.18);
+}
+
+.top-bar .brand-block h1,
+.top-bar .tab-button.active,
+.top-bar .secondary-button,
+.top-bar .mobile-header-menu > summary {
+  color: #eceff4;
+}
+
+.top-bar .brand-block p,
+.top-bar .tab-button,
+.top-bar .user-chip {
+  color: #d8dee9;
+}
+
+.top-bar .primary-nav,
+.top-bar .secondary-button,
+.top-bar .mobile-header-menu > summary,
+.top-bar .user-chip {
+  background: #3b4252;
+  border-color: #4c566a;
+}
+
+.top-bar .tab-button.active {
+  background: #5e81ac;
 }
 
 .panel,
@@ -4543,7 +4568,7 @@ a.daily-report-procore-status:hover {
 .metric,
 .entry-row,
 .submitted-entry-row {
-  border-color: #b8c5d3;
+  border-color: #9aa8ba;
 }
 
 .panel,
@@ -4551,7 +4576,7 @@ a.daily-report-procore-status:hover {
 .pay-item-matrix,
 .report-table,
 .weekly-calendar {
-  box-shadow: 0 2px 8px rgb(15 23 42 / 0.08);
+  box-shadow: 0 2px 10px rgb(46 52 64 / 0.12);
 }
 
 .field-group input,
@@ -4570,8 +4595,8 @@ a.daily-report-procore-status:hover {
 .view-tabs,
 .calendar-status-toggle,
 .week-range {
-  background: #f8fbfd;
-  border-color: #c1ccd9;
+  background: #f7f9fc;
+  border-color: #a8b5c6;
 }
 
 .field-group input:focus,
@@ -4580,8 +4605,8 @@ a.daily-report-procore-status:hover {
 .pay-item-matrix input:focus,
 .compact-input:focus,
 .mobile-picker-search:focus {
-  border-color: #007c89;
-  box-shadow: 0 0 0 3px rgb(0 124 137 / 0.14);
+  border-color: #5e81ac;
+  box-shadow: 0 0 0 3px rgb(94 129 172 / 0.18);
   outline: none;
 }
 
@@ -4593,9 +4618,9 @@ a.daily-report-procore-status:hover {
 .status-badge.uploaded,
 .performance-pill.strong,
 .job-image-status.uploaded {
-  background: #ecfdf3;
-  border-color: #bbf7d0;
-  color: #166534;
+  background: #e0ead9;
+  border-color: #9eb88f;
+  color: #365f42;
 }
 
 .status-pill,
@@ -4624,11 +4649,11 @@ a.daily-report-procore-status:hover {
 .matrix-code,
 .report-drilldown-button:hover,
 .empty-state-icon {
-  color: #007c89;
+  color: #4c6f98;
 }
 
 .app-footer a:hover {
-  color: #005f6b;
+  color: #2f536f;
 }
 
 .mobile-picker-option:hover,
@@ -4644,15 +4669,15 @@ select option {
 .mobile-install-prompt,
 .status-alert,
 .password-reset-code-panel {
-  background: #e6f6f8;
-  border-color: #9bdbe3;
-  color: #164e63;
+  background: #d9e8f2;
+  border-color: #8fbcbb;
+  color: #2f536f;
 }
 
 .password-reset-code-panel strong,
 .status-alert,
 .production-code-total-row > strong {
-  color: #164e63;
+  color: #2f536f;
 }
 
 .mobile-install-prompt span,
@@ -4679,7 +4704,7 @@ input[type="date"] {
 }
 
 .loading-skeleton {
-  background: linear-gradient(90deg, #e8eef6 0%, #f7fafc 50%, #e8eef6 100%);
+  background: linear-gradient(90deg, #d8dee9 0%, #eef2f7 50%, #d8dee9 100%);
 }
 
 .inline-alert,
@@ -4690,9 +4715,9 @@ input[type="date"] {
 .status-badge.created,
 .job-image-status.queued,
 .job-image-status.uploading {
-  background: #fff7ed;
-  border-color: #fdba74;
-  color: #9a3412;
+  background: #f5e6c8;
+  border-color: #d49a42;
+  color: #7a4b12;
 }
 
 .daily-report-procore-status.uploaded,
@@ -4700,7 +4725,7 @@ input[type="date"] {
 .sync-summary,
 .success-alert,
 .job-image-status.uploaded {
-  color: #166534;
+  color: #365f42;
 }
 
 .daily-report-procore-status.pending,
@@ -4718,26 +4743,26 @@ input[type="date"] {
 .status-badge.missing,
 .job-image-status.failed,
 .admin-clear-button {
-  color: #b91c1c;
+  color: #a43e4c;
 }
 
 .daily-status-item.error,
 .status-badge.failed,
 .status-badge.missing,
 .job-image-status.failed {
-  background: #fef2f2;
-  border-color: #fecaca;
+  background: #f2d9de;
+  border-color: #c9808b;
 }
 
 .admin-clear-button,
 .job-image-card.failed,
 .job-image-history-row.failed {
-  border-color: #fecaca;
+  border-color: #c9808b;
 }
 
 .admin-clear-button:hover {
-  border-color: #b91c1c;
-  color: #7f1d1d;
+  border-color: #a43e4c;
+  color: #7b2f39;
 }
 
 .matrix-header,
@@ -4747,36 +4772,36 @@ input[type="date"] {
 .daily-itsfm-header,
 .weekly-calendar-header,
 .report-header {
-  background: #e3ebf4;
-  color: #36485c;
+  background: #d8dee9;
+  color: #334155;
 }
 
 .matrix-header > span:first-child,
 .matrix-code {
-  box-shadow: 1px 0 0 #aebccc, 12px 0 18px rgb(148 163 184 / 0.26);
+  box-shadow: 1px 0 0 #9aa8ba, 12px 0 18px rgb(76 86 106 / 0.22);
 }
 
 .matrix-row,
 .matrix-code {
-  background: #ffffff;
+  background: #f7f9fc;
 }
 
 .matrix-row {
-  border-bottom-color: #c4ceda;
+  border-bottom-color: #aeb9c8;
 }
 
 .matrix-row.worked-row,
 .matrix-row.worked-row .matrix-code,
 .mobile-pay-item-card.worked-card {
-  background: #e9f8fb;
-  border-color: #9bdbe3;
-  box-shadow: inset 3px 0 0 #007c89;
+  background: #dcecef;
+  border-color: #8fbcbb;
+  box-shadow: inset 3px 0 0 #5e81ac;
 }
 
 .matrix-row.quantity-overrun-row,
 .matrix-row.quantity-overrun-row .matrix-code {
-  background: #fff7ed;
-  box-shadow: inset 3px 0 0 #f59e0b;
+  background: #f5e6c8;
+  box-shadow: inset 3px 0 0 #d49a42;
 }
 
 .matrix-row.quantity-overrun-row .matrix-code {
@@ -4784,29 +4809,29 @@ input[type="date"] {
 }
 
 .job-image-preview {
-  background-color: #e2e8f0;
+  background-color: #cbd5e1;
 }
 
 .job-image-card.uploaded,
 .job-image-history-row.uploaded,
 .job-checkbox-row.emphasized {
-  background: #f0fdf4;
-  border-color: #bbf7d0;
+  background: #e0ead9;
+  border-color: #9eb88f;
 }
 
 .job-image-card.failed,
 .job-image-history-row.failed {
-  background: #fef2f2;
+  background: #f2d9de;
 }
 
 .page-header {
-  background: linear-gradient(135deg, #dff7fa 0%, #ffffff 72%);
-  border-color: #afd5dc;
+  background: linear-gradient(135deg, #d9e8f2 0%, #eceff4 72%);
+  border-color: #8fbcbb;
 }
 
 .page-header-meta span,
 .mobile-sticky-action-bar {
-  background: #f8fafc;
+  background: #e5e9f0;
 }
 
 .workflow-panel {
@@ -4814,13 +4839,13 @@ input[type="date"] {
 }
 
 .workflow-step {
-  background: #e6f6f8;
-  border-color: #9bdbe3;
-  color: #006775;
+  background: #d9e8f2;
+  border-color: #8fbcbb;
+  color: #4c6f98;
 }
 
 .prominent-action:not(:disabled) {
-  box-shadow: 0 0 0 1px rgb(0 124 137 / 0.16), 0 8px 18px rgb(0 124 137 / 0.14);
+  box-shadow: 0 0 0 1px rgb(94 129 172 / 0.18), 0 8px 18px rgb(94 129 172 / 0.16);
 }
 
 .daily-itsfm-section-heading,
@@ -4828,20 +4853,20 @@ input[type="date"] {
 .vendor-search-option.selected,
 .enhanced-empty-state,
 .empty-state-icon {
-  background: #ecfeff;
+  background: #d9e8f2;
 }
 
 .vendor-search-option:hover,
 .vendor-search-option.selected,
 .empty-state-icon {
-  border-color: #9bdbe3;
+  border-color: #8fbcbb;
 }
 
 .status-badge.draft,
 .status-badge.not-applicable,
 .performance-pill.limited {
-  background: #f1f5f9;
-  color: #64748b;
+  background: #e5e9f0;
+  color: #5d6b7c;
 }
 
 .report-detail-panel,
@@ -4851,13 +4876,13 @@ input[type="date"] {
 .submitted-day-summary div,
 .submitted-crew-row,
 .submitted-entry-header {
-  background: #f8fafc;
+  background: #e5e9f0;
 }
 
 .production-code-total-row,
 .tab-button.active,
 .calendar-status-toggle button.active {
-  background: #ddebf5;
+  background: #d8e6f2;
 }
 
 .tab-button.active,
