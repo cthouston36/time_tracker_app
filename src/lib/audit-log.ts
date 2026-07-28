@@ -15,6 +15,17 @@ export type AuditLogEntry = {
   userAgent?: string;
 };
 
+export type AuditLogFilters = {
+  action?: string;
+  actorUserId?: string;
+  endDate?: string;
+  limit?: number;
+  projectId?: string;
+  startDate?: string;
+  targetId?: string;
+  targetType?: string;
+};
+
 type AuditLogInput = {
   action: string;
   actor?: AuthUser | null;
@@ -87,7 +98,7 @@ export async function recordAuditLog(input: AuditLogInput) {
   }
 }
 
-export async function listAuditLogs(limit = 200) {
+export async function listAuditLogs(filters: AuditLogFilters = {}) {
   const sql = getSql();
 
   if (!sql) {
@@ -96,7 +107,14 @@ export async function listAuditLogs(limit = 200) {
 
   await ensureAuditLogTable();
 
-  const safeLimit = Math.min(Math.max(Math.trunc(limit), 1), 500);
+  const safeLimit = Math.min(Math.max(Math.trunc(filters.limit ?? 200), 1), 500);
+  const action = readOptionalFilter(filters.action);
+  const actorUserId = readOptionalFilter(filters.actorUserId);
+  const targetId = readOptionalFilter(filters.targetId);
+  const targetType = readOptionalFilter(filters.targetType);
+  const projectId = readOptionalFilter(filters.projectId);
+  const startDate = readIsoDateFilter(filters.startDate);
+  const endDate = readIsoDateFilter(filters.endDate);
   const rows = (await sql`
     select
       id,
@@ -111,6 +129,17 @@ export async function listAuditLogs(limit = 200) {
       user_agent,
       created_at::text as created_at
     from audit_log
+    where (${action}::text is null or action ilike '%' || ${action}::text || '%')
+      and (${actorUserId}::text is null or actor_user_id = ${actorUserId})
+      and (${targetId}::text is null or target_id = ${targetId})
+      and (${targetType}::text is null or target_type = ${targetType})
+      and (
+        ${projectId}::text is null
+        or target_id = ${projectId}
+        or metadata ->> 'projectId' = ${projectId}
+      )
+      and (${startDate}::date is null or created_at >= ${startDate}::date)
+      and (${endDate}::date is null or created_at < (${endDate}::date + interval '1 day'))
     order by created_at desc
     limit ${safeLimit}
   `) as AuditLogRow[];
@@ -189,4 +218,18 @@ function formatActorName(user: AuthUser) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function readOptionalFilter(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function readIsoDateFilter(value: unknown) {
+  const normalizedValue = readOptionalFilter(value);
+
+  if (!normalizedValue || !/^\d{4}-\d{2}-\d{2}$/.test(normalizedValue)) {
+    return null;
+  }
+
+  return normalizedValue;
 }

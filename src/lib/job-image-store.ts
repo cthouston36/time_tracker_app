@@ -123,6 +123,55 @@ export async function countJobImageUploads(projectId: string, date: string) {
   return rows[0]?.count ?? 0;
 }
 
+export async function listUnresolvedFailedJobImageUploads(limit = 200) {
+  const sql = getSql();
+
+  if (!sql) {
+    return null;
+  }
+
+  await ensureJobImageUploadTable();
+
+  const safeLimit = Math.min(Math.max(Math.trunc(limit), 1), 500);
+  const rows = (await sql`
+    select
+      failed.id,
+      failed.project_id,
+      to_char(failed.work_date, 'YYYY-MM-DD') as date,
+      failed.file_name,
+      failed.original_file_name,
+      failed.caption,
+      failed.content_type,
+      failed.file_size_bytes,
+      failed.folder_id,
+      failed.folder_path,
+      failed.folder_url,
+      failed.procore_file_id,
+      failed.status,
+      failed.error,
+      failed.uploaded_by_user_id,
+      failed.uploaded_by_name,
+      failed.uploaded_at,
+      failed.attempted_at,
+      failed.raw_upload
+    from job_image_uploads failed
+    where failed.status = 'failed'
+      and not exists (
+        select 1
+        from job_image_uploads uploaded
+        where uploaded.status = 'uploaded'
+          and uploaded.project_id = failed.project_id
+          and uploaded.work_date = failed.work_date
+          and lower(coalesce(nullif(uploaded.original_file_name, ''), uploaded.file_name)) =
+            lower(coalesce(nullif(failed.original_file_name, ''), failed.file_name))
+      )
+    order by coalesce(failed.uploaded_at, failed.attempted_at, failed.updated_at) desc, failed.file_name
+    limit ${safeLimit}
+  `) as JobImageUploadRow[];
+
+  return rows.map(normalizeJobImageUploadRow);
+}
+
 export async function upsertJobImageUploads(jobImageUploads: StoredJobImageUpload[]) {
   const sql = getSql();
 

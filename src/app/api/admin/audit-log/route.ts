@@ -10,8 +10,16 @@ export async function GET(request: Request) {
   }
 
   const requestUrl = new URL(request.url);
-  const limit = Number(requestUrl.searchParams.get("limit") ?? 200);
-  const auditLog = await listAuditLogs(limit);
+  const auditLog = await listAuditLogs({
+    action: requestUrl.searchParams.get("action") ?? undefined,
+    actorUserId: requestUrl.searchParams.get("actorUserId") ?? undefined,
+    endDate: requestUrl.searchParams.get("endDate") ?? undefined,
+    limit: Number(requestUrl.searchParams.get("limit") ?? 200),
+    projectId: requestUrl.searchParams.get("projectId") ?? undefined,
+    startDate: requestUrl.searchParams.get("startDate") ?? undefined,
+    targetId: requestUrl.searchParams.get("targetId") ?? undefined,
+    targetType: requestUrl.searchParams.get("targetType") ?? undefined
+  });
 
   if (!auditLog) {
     return NextResponse.json({
