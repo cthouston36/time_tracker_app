@@ -12337,6 +12337,10 @@ function isAbortError(error: unknown) {
 }
 
 function formatDate(value: string) {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return parseInputDate(value).toLocaleDateString();
+  }
+
   return new Date(value).toLocaleDateString();
 }
 
