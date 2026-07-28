@@ -4964,10 +4964,12 @@ export function TimeAllocationWorkspace() {
               </>
             ) : null}
 
-            <div className="workflow-section-heading">
-              <span>{selectedProjectUsesPayItems ? "Step 3" : "Step 1"}</span>
-              <strong>{selectedProjectUsesPayItems ? "Daily Wrap-Up" : "Daily Report"}</strong>
-            </div>
+            {selectedProjectUsesPayItems ? (
+              <div className="workflow-section-heading">
+                <span>Step 3</span>
+                <strong>Daily Wrap-Up</strong>
+              </div>
+            ) : null}
 
             {selectedProjectUsesPayItems ? (
               <div className="panel">
@@ -5157,13 +5159,6 @@ export function TimeAllocationWorkspace() {
                 </div>
               ) : null}
             </div>
-
-            {!selectedProjectUsesPayItems ? (
-              <div className="workflow-section-heading">
-                <span>Step 2</span>
-                <strong>Job Images</strong>
-              </div>
-            ) : null}
 
             <div className="panel job-images-panel">
               <div className="panel-heading">
