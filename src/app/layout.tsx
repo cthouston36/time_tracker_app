@@ -11,8 +11,20 @@ export const metadata: Metadata = {
     title: "Chinchor Daily"
   },
   icons: {
-    apple: "/chinchor-logo.png",
-    icon: "/chinchor-logo.png"
+    apple: [
+      {
+        sizes: "500x500",
+        type: "image/png",
+        url: "/apple-touch-icon.png"
+      }
+    ],
+    icon: [
+      {
+        sizes: "32x32",
+        type: "image/png",
+        url: "/favicon.png"
+      }
+    ]
   },
   manifest: "/manifest.webmanifest"
 };
