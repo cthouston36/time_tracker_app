@@ -6,8 +6,10 @@ import {
   readProjectControls,
   replaceMyJobsForUser,
   replaceProjectControls,
+  setProjectArchive,
   setProjectBlacklist,
   type StoredMyJobsByUser,
+  type StoredProjectArchiveById,
   type StoredProjectBlacklistById,
   type StoredSyncLogEntry
 } from "@/lib/project-controls-store";
@@ -25,6 +27,7 @@ export async function GET() {
     return NextResponse.json({
       databaseConfigured: false,
       myJobsByUser: {},
+      projectArchiveById: {},
       projectBlacklistById: {},
       syncLog: []
     });
@@ -49,6 +52,7 @@ export async function PUT(request: NextRequest) {
 
   const body = (await request.json()) as {
     myJobsByUser?: StoredMyJobsByUser;
+    projectArchiveById?: StoredProjectArchiveById;
     projectBlacklistById?: StoredProjectBlacklistById;
     syncLog?: StoredSyncLogEntry[];
   };
@@ -57,7 +61,12 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: "Missing project controls." }, { status: 400 });
   }
 
-  const result = await replaceProjectControls(body.myJobsByUser, body.projectBlacklistById, body.syncLog);
+  const result = await replaceProjectControls(
+    body.myJobsByUser,
+    isRecord(body.projectArchiveById) ? body.projectArchiveById : {},
+    body.projectBlacklistById,
+    body.syncLog
+  );
 
   if (!result) {
     return NextResponse.json({
@@ -71,6 +80,7 @@ export async function PUT(request: NextRequest) {
     actor: user,
     metadata: {
       myJobsUserCount: Object.keys(body.myJobsByUser).length,
+      projectArchiveCount: isRecord(body.projectArchiveById) ? Object.keys(body.projectArchiveById).length : 0,
       projectBlacklistCount: Object.keys(body.projectBlacklistById).length,
       syncLogCount: body.syncLog.length
     },
@@ -94,6 +104,7 @@ export async function PATCH(request: NextRequest) {
 
   const body = (await request.json()) as {
     action?: string;
+    archived?: boolean;
     blacklisted?: boolean;
     projectId?: string;
     projectIds?: unknown;
@@ -127,6 +138,18 @@ export async function PATCH(request: NextRequest) {
     }
 
     result = await setProjectBlacklist(projectId, body.blacklisted);
+  } else if (body.action === "set_archive") {
+    const projectId = body.projectId?.trim() ?? "";
+
+    if (user.role !== "admin") {
+      return NextResponse.json({ error: "Only admins can update the project archive." }, { status: 403 });
+    }
+
+    if (!projectId || typeof body.archived !== "boolean") {
+      return NextResponse.json({ error: "Provide projectId and archived." }, { status: 400 });
+    }
+
+    result = await setProjectArchive(projectId, body.archived);
   } else if (body.action === "add_sync_log") {
     if (user.role !== "admin" && user.role !== "project_manager") {
       return NextResponse.json({ error: "Only project managers and admins can add sync log entries." }, { status: 403 });
@@ -170,6 +193,17 @@ export async function PATCH(request: NextRequest) {
       actor: user,
       metadata: {
         blacklisted: body.blacklisted
+      },
+      targetId: body.projectId,
+      targetType: "project",
+      ...getAuditRequestMetadata(request.headers)
+    });
+  } else if (body.action === "set_archive") {
+    await recordAuditLog({
+      action: body.archived ? "project.archived" : "project.unarchived",
+      actor: user,
+      metadata: {
+        archived: body.archived
       },
       targetId: body.projectId,
       targetType: "project",

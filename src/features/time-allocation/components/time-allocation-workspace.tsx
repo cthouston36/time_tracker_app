@@ -3,6 +3,7 @@
 import NextImage from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Archive,
   BarChart3,
   CalendarDays,
   ChevronLeft,
@@ -19,8 +20,10 @@ import {
   LogOut,
   PlugZap,
   RefreshCw,
+  RotateCcw,
   Save,
   Send,
+  Smartphone,
   Trash2,
   UploadCloud,
   UserPlus,
@@ -113,6 +116,7 @@ type SharedAppState = {
   daySubmissions: DaySubmissionsByKey;
   entries: AllocationEntry[];
   myJobsByUser: MyJobsByUser;
+  projectArchiveById: ProjectArchiveById;
   projectBlacklistById: ProjectBlacklistById;
   syncLog: SyncLogEntry[];
 };
@@ -166,6 +170,7 @@ type DayRecordsResponse = {
 
 type ProjectControlsResponse = {
   myJobsByUser?: MyJobsByUser;
+  projectArchiveById?: ProjectArchiveById;
   projectBlacklistById?: ProjectBlacklistById;
   syncLog?: SyncLogEntry[];
   databaseConfigured?: boolean;
@@ -281,6 +286,21 @@ type AuthResponse = {
 type ChangePasswordResponse = {
   error?: string;
   ok?: boolean;
+};
+
+type PasswordResetFormState = {
+  confirmPassword: string;
+  newPassword: string;
+  token: string;
+  userId: string;
+};
+
+type PasswordResetResponse = {
+  error?: string;
+  expiresAt?: string;
+  ok?: boolean;
+  token?: string;
+  userId?: string;
 };
 
 type ProcoreStatusResponse = {
@@ -481,6 +501,7 @@ const DAILY_REPORT_ITSFM_ITEMS: DailyReportItsfmItem[] = [
 type MyJobsByUser = Record<string, string[]>;
 
 type ProjectBlacklistById = Record<string, true>;
+type ProjectArchiveById = Record<string, true>;
 type VendorBlacklistById = Record<string, true>;
 
 type EditingEntry = {
@@ -519,6 +540,7 @@ type DailyReportAutosaveDraft = {
 
 const PENDING_PROCORE_RETURN_KEY = "pending-procore-return";
 const DAILY_REPORT_DRAFT_STORAGE_PREFIX = "daily-report-draft";
+const MOBILE_INSTALL_PROMPT_DISMISSED_KEY = "mobile-install-prompt-dismissed";
 
 export function TimeAllocationWorkspace() {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
@@ -526,6 +548,10 @@ export function TimeAllocationWorkspace() {
   const [loginUserId, setLoginUserId] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [loginError, setLoginError] = useState("");
+  const [passwordResetOpen, setPasswordResetOpen] = useState(false);
+  const [passwordResetForm, setPasswordResetForm] = useState<PasswordResetFormState>(() => createEmptyPasswordResetForm());
+  const [passwordResetNotice, setPasswordResetNotice] = useState<{ message: string; status: "success" | "error" } | null>(null);
+  const [resettingPassword, setResettingPassword] = useState(false);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const [changePasswordForm, setChangePasswordForm] = useState<ChangePasswordFormState>(() => createEmptyChangePasswordForm());
   const [changePasswordNotice, setChangePasswordNotice] = useState<{ message: string; status: "success" | "error" } | null>(null);
@@ -538,6 +564,7 @@ export function TimeAllocationWorkspace() {
   const [calendarProjectIds, setCalendarProjectIds] = useState<string[]>([]);
   const [calendarUseMyProjects, setCalendarUseMyProjects] = useState(true);
   const [allProjects, setAllProjects] = useState<Project[]>([]);
+  const [projectArchiveById, setProjectArchiveById] = useState<ProjectArchiveById>({});
   const [projectBlacklistById, setProjectBlacklistById] = useState<ProjectBlacklistById>({});
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [showOnlyMyProjects, setShowOnlyMyProjects] = useState(false);
@@ -563,6 +590,7 @@ export function TimeAllocationWorkspace() {
   const [jobImageNotice, setJobImageNotice] = useState<{ message: string; status: "success" | "error" } | null>(null);
   const [loadingJobImageUploads, setLoadingJobImageUploads] = useState(false);
   const [uploadingJobImages, setUploadingJobImages] = useState(false);
+  const [mobileInstallPromptVisible, setMobileInstallPromptVisible] = useState(false);
   const [myJobsByUser, setMyJobsByUser] = useState<MyJobsByUser>({});
   const [crewDirectory, setCrewDirectory] = useState<CrewMember[]>([]);
   const [crewMembersByProject, setCrewMembersByProject] = useState<CrewMembersByProject>({});
@@ -588,6 +616,7 @@ export function TimeAllocationWorkspace() {
   const [entryNotice, setEntryNotice] = useState("");
   const [adminUsers, setAdminUsers] = useState<ManagedAppUser[]>([]);
   const [adminUsersNotice, setAdminUsersNotice] = useState("");
+  const [adminPasswordResetToken, setAdminPasswordResetToken] = useState<PasswordResetResponse | null>(null);
   const [adminUserForm, setAdminUserForm] = useState<AdminUserFormState>(() => createEmptyAdminUserForm());
   const [editingAdminUserId, setEditingAdminUserId] = useState("");
   const [loadingAdminUsers, setLoadingAdminUsers] = useState(false);
@@ -610,8 +639,8 @@ export function TimeAllocationWorkspace() {
   const dailyReportDraftAutosaveTimeoutRef = useRef<number | null>(null);
 
   const projects = useMemo(
-    () => allProjects.filter((project) => !projectBlacklistById[project.id]),
-    [allProjects, projectBlacklistById]
+    () => filterActiveProjects(allProjects, projectBlacklistById, projectArchiveById),
+    [allProjects, projectArchiveById, projectBlacklistById]
   );
   const visibleProjectIds = useMemo(() => new Set(projects.map((project) => project.id)), [projects]);
   const reportEntries = entries.filter((entry) => visibleProjectIds.has(entry.projectId));
@@ -691,6 +720,8 @@ export function TimeAllocationWorkspace() {
   const dailyReportNeedsUpload = Boolean(currentDailyReport && currentDailyReportProcoreStatus.className !== "uploaded");
   const currentJobImageUploads = selectedProject ? jobImageUploadsByDay[currentDayKey] ?? [] : [];
   const queuedJobImages = jobImageQueue.filter((image) => image.status !== "uploaded");
+  const failedQueuedJobImages = jobImageQueue.filter((image) => image.status === "failed");
+  const failedJobImageUploads = currentJobImageUploads.filter((upload) => upload.status === "failed");
   const uploadedJobImageCount = currentJobImageUploads.filter((upload) => upload.status === "uploaded").length;
   const remainingJobImageSlots = Math.max(0, JOB_IMAGE_DAILY_UPLOAD_LIMIT - uploadedJobImageCount);
   const remainingQueueableJobImageSlots = Math.max(0, remainingJobImageSlots - queuedJobImages.length);
@@ -1039,6 +1070,21 @@ export function TimeAllocationWorkspace() {
   }, [currentUser]);
 
   useEffect(() => {
+    if (!currentUser || typeof window === "undefined") {
+      setMobileInstallPromptVisible(false);
+      return;
+    }
+
+    const dismissed = window.localStorage.getItem(MOBILE_INSTALL_PROMPT_DISMISSED_KEY) === "true";
+    const isStandalone =
+      window.matchMedia("(display-mode: standalone)").matches ||
+      ("standalone" in window.navigator && Boolean((window.navigator as Navigator & { standalone?: boolean }).standalone));
+    const isMobileWidth = window.matchMedia("(max-width: 820px)").matches;
+
+    setMobileInstallPromptVisible(isMobileWidth && !dismissed && !isStandalone);
+  }, [currentUser]);
+
+  useEffect(() => {
     if (!currentUser) {
       setNetSuiteVendors([]);
       setAllNetSuiteVendors([]);
@@ -1292,6 +1338,7 @@ export function TimeAllocationWorkspace() {
       daySubmissions,
       entries,
       myJobsByUser,
+      projectArchiveById,
       projectBlacklistById,
       syncLog
     });
@@ -1308,6 +1355,7 @@ export function TimeAllocationWorkspace() {
     dailyReportsByKey,
     entries,
     myJobsByUser,
+    projectArchiveById,
     projectBlacklistById,
     syncLog
   ]);
@@ -1474,6 +1522,85 @@ export function TimeAllocationWorkspace() {
     setLoginPassword("");
   }
 
+  function updatePasswordResetForm(field: keyof PasswordResetFormState, value: string) {
+    setPasswordResetNotice(null);
+    setPasswordResetForm((current) => ({
+      ...current,
+      [field]: value
+    }));
+  }
+
+  function openPasswordReset() {
+    setPasswordResetOpen(true);
+    setPasswordResetNotice(null);
+    setPasswordResetForm((current) => ({
+      ...current,
+      userId: current.userId || loginUserId
+    }));
+  }
+
+  function closePasswordReset() {
+    if (resettingPassword) {
+      return;
+    }
+
+    setPasswordResetOpen(false);
+    setPasswordResetForm(createEmptyPasswordResetForm());
+    setPasswordResetNotice(null);
+  }
+
+  async function submitPasswordReset() {
+    const { confirmPassword, newPassword, token, userId } = passwordResetForm;
+
+    if (!userId.trim() || !token.trim() || !newPassword || !confirmPassword) {
+      setPasswordResetNotice({ message: "Enter user ID, reset code, new password, and confirmation.", status: "error" });
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      setPasswordResetNotice({ message: "New password must be at least 8 characters.", status: "error" });
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPasswordResetNotice({ message: "New password and confirmation do not match.", status: "error" });
+      return;
+    }
+
+    setResettingPassword(true);
+    setPasswordResetNotice(null);
+
+    try {
+      const response = await fetch("/api/auth/reset-password", {
+        body: JSON.stringify({
+          newPassword,
+          token,
+          userId
+        }),
+        headers: {
+          "Content-Type": "application/json"
+        },
+        method: "POST"
+      });
+      const data = (await response.json()) as PasswordResetResponse;
+
+      if (!response.ok || data.ok === false) {
+        throw new Error(data.error ?? "Unable to reset password.");
+      }
+
+      setLoginUserId(userId.trim().toLowerCase());
+      setPasswordResetForm(createEmptyPasswordResetForm());
+      setPasswordResetNotice({ message: "Password reset. Sign in with the new password.", status: "success" });
+    } catch (error) {
+      setPasswordResetNotice({
+        message: error instanceof Error ? error.message : "Unable to reset password.",
+        status: "error"
+      });
+    } finally {
+      setResettingPassword(false);
+    }
+  }
+
   async function logout() {
     if (!confirmDiscardUnsavedChanges("sign out")) {
       return;
@@ -1497,6 +1624,10 @@ export function TimeAllocationWorkspace() {
     setChangePasswordForm(createEmptyChangePasswordForm());
     setChangePasswordNotice(null);
     setChangingPassword(false);
+    setPasswordResetOpen(false);
+    setPasswordResetForm(createEmptyPasswordResetForm());
+    setPasswordResetNotice(null);
+    setResettingPassword(false);
     setEntries([]);
     setDaySubmissions({});
     setDayEntryNotesByKey({});
@@ -1507,6 +1638,7 @@ export function TimeAllocationWorkspace() {
     setDownloadingDailyReportPdf(false);
     setUploadingDailyReport(false);
     setMyJobsByUser({});
+    setProjectArchiveById({});
     setProjectBlacklistById({});
     setCrewDirectory([]);
     setCrewMembersByProject({});
@@ -1671,6 +1803,40 @@ export function TimeAllocationWorkspace() {
       setAdminUsersNotice(`${formatUserName(user)} ${active ? "reactivated" : "deactivated"}.`);
     } catch (error) {
       setAdminUsersNotice(error instanceof Error ? error.message : "Unable to update user.");
+    } finally {
+      setSavingAdminUser(false);
+    }
+  }
+
+  async function createAdminPasswordResetToken(user: ManagedAppUser) {
+    if (currentUser?.role !== "admin") {
+      return;
+    }
+
+    setSavingAdminUser(true);
+    setAdminUsersNotice("");
+    setAdminPasswordResetToken(null);
+
+    try {
+      const response = await fetch("/api/admin/users/reset-token", {
+        body: JSON.stringify({
+          userId: user.id
+        }),
+        headers: {
+          "Content-Type": "application/json"
+        },
+        method: "POST"
+      });
+      const data = (await response.json()) as PasswordResetResponse;
+
+      if (!response.ok || data.ok === false || !data.token) {
+        throw new Error(data.error ?? "Unable to create reset code.");
+      }
+
+      setAdminPasswordResetToken(data);
+      setAdminUsersNotice(`Reset code created for ${formatUserName(user)}. It expires in 24 hours.`);
+    } catch (error) {
+      setAdminUsersNotice(error instanceof Error ? error.message : "Unable to create reset code.");
     } finally {
       setSavingAdminUser(false);
     }
@@ -1937,6 +2103,34 @@ export function TimeAllocationWorkspace() {
     });
     void saveDatabaseProjectBlacklist(projectId, blacklisted).catch((error) => {
       setProjectLoadError(error instanceof Error ? error.message : "Project blacklist saved locally, but did not sync.");
+    });
+  }
+
+  function toggleProjectArchive(projectId: string, archived: boolean) {
+    setProjectArchiveById((current) => {
+      if (archived) {
+        return {
+          ...current,
+          [projectId]: true
+        };
+      }
+
+      const nextArchive = { ...current };
+      delete nextArchive[projectId];
+      return nextArchive;
+    });
+
+    if (archived && selectedProjectId === projectId) {
+      const nextProject = projects.find((project) => project.id !== projectId);
+
+      setSelectedProjectId(nextProject?.id ?? "");
+      setMobileSelectedPayItemId("");
+      setEditingEntry(null);
+      setDraftsByPayItem({});
+    }
+
+    void saveDatabaseProjectArchive(projectId, archived).catch((error) => {
+      setProjectLoadError(error instanceof Error ? error.message : "Project archive saved locally, but did not sync.");
     });
   }
 
@@ -2700,6 +2894,17 @@ export function TimeAllocationWorkspace() {
   }
 
   async function uploadQueuedJobImages() {
+    await uploadJobImageItems(
+      jobImageQueue.filter((image) => image.status === "queued" || image.status === "failed"),
+      "Add at least one image before uploading."
+    );
+  }
+
+  async function retryFailedJobImages() {
+    await uploadJobImageItems(failedQueuedJobImages, "No failed images are waiting to retry.");
+  }
+
+  async function uploadJobImageItems(imagesToUpload: JobImageQueueItem[], emptyMessage: string) {
     if (!selectedProject) {
       setJobImageNotice({
         message: "Select a job before uploading images.",
@@ -2708,11 +2913,9 @@ export function TimeAllocationWorkspace() {
       return;
     }
 
-    const imagesToUpload = jobImageQueue.filter((image) => image.status === "queued" || image.status === "failed");
-
     if (imagesToUpload.length === 0) {
       setJobImageNotice({
-        message: "Add at least one image before uploading.",
+        message: emptyMessage,
         status: "error"
       });
       return;
@@ -2890,6 +3093,7 @@ export function TimeAllocationWorkspace() {
       )
     );
     setMyJobsByUser(normalizedState.myJobsByUser);
+    setProjectArchiveById(normalizedState.projectArchiveById);
     setProjectBlacklistById(normalizedState.projectBlacklistById);
   }
 
@@ -3344,7 +3548,7 @@ export function TimeAllocationWorkspace() {
       }
 
       const sortedProjects = sortProjectsByName(data.projects);
-      const visibleSyncedProjects = filterProjectsByBlacklist(sortedProjects, projectBlacklistById);
+      const visibleSyncedProjects = filterActiveProjects(sortedProjects, projectBlacklistById, projectArchiveById);
       setAllProjects(sortedProjects);
       setSelectedProjectId((currentProjectId) =>
         visibleSyncedProjects.some((project) => project.id === currentProjectId)
@@ -3392,7 +3596,7 @@ export function TimeAllocationWorkspace() {
       }
 
       const sortedProjects = sortProjectsByName(data.projects);
-      const visibleSyncedProjects = filterProjectsByBlacklist(sortedProjects, projectBlacklistById);
+      const visibleSyncedProjects = filterActiveProjects(sortedProjects, projectBlacklistById, projectArchiveById);
       setAllProjects(sortedProjects);
       setSelectedProjectId((currentProjectId) =>
         visibleSyncedProjects.some((project) => project.id === currentProjectId)
@@ -3447,7 +3651,7 @@ export function TimeAllocationWorkspace() {
       }
 
       const sortedProjects = sortProjectsByName(data.projects);
-      const visibleSyncedProjects = filterProjectsByBlacklist(sortedProjects, projectBlacklistById);
+      const visibleSyncedProjects = filterActiveProjects(sortedProjects, projectBlacklistById, projectArchiveById);
       const syncedProject = visibleSyncedProjects.find((project) => projectMatchesIdentifier(project, trimmedProjectId));
       setAllProjects(sortedProjects);
       setSelectedProjectId((currentProjectId) => syncedProject?.id ?? currentProjectId);
@@ -3507,6 +3711,18 @@ export function TimeAllocationWorkspace() {
 
     if (crewAllocationError) {
       setEntryNotice(crewAllocationError);
+      return;
+    }
+
+    const overrunWarnings = getDraftQuantityOverrunWarnings(
+      selectedProject.payItems,
+      draftsByPayItem,
+      visibleEntries,
+      remainingQuantitiesByPayItem
+    );
+
+    if (overrunWarnings.length > 0 && !confirmQuantityOverrun(overrunWarnings)) {
+      setEntryNotice("Save cancelled. Adjust quantities or save again to confirm the overrun.");
       return;
     }
 
@@ -3637,6 +3853,21 @@ export function TimeAllocationWorkspace() {
       return;
     }
 
+    const remainingQuantity = selectedProject?.id === entryToEdit.projectId
+      ? remainingQuantitiesByPayItem[entryToEdit.payItemId]
+      : undefined;
+
+    if (
+      remainingQuantity !== undefined &&
+      quantity > remainingQuantity + 0.0001 &&
+      !confirmQuantityOverrun([
+        `${entryToEdit.payItemCode}: ${formatPayItemQuantity(quantity)} entered, ${formatPayItemQuantity(remainingQuantity)} remaining.`
+      ])
+    ) {
+      setEntryNotice("Update cancelled. Adjust the quantity or save again to confirm the overrun.");
+      return;
+    }
+
     let updatedEntry: AllocationEntry | null = null;
     const nextEntries = entries.map((entry) => {
       if (entry.id !== editingEntry.entryId) {
@@ -3740,33 +3971,96 @@ export function TimeAllocationWorkspace() {
   if (!currentUser) {
     return (
       <main className="app-shell centered-shell">
-        <form
-          className="panel auth-panel"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void login();
-          }}
-        >
-          <h1>Crew Time Allocation</h1>
-          <p className="field-note">Sign in to enter daily pay item production.</p>
-          <div className="field-group">
-            <label htmlFor="user-id">User ID</label>
-            <input id="user-id" value={loginUserId} onChange={(event) => setLoginUserId(event.target.value)} />
-          </div>
-          <div className="field-group">
-            <label htmlFor="password">Password</label>
-            <input
-              id="password"
-              type="password"
-              value={loginPassword}
-              onChange={(event) => setLoginPassword(event.target.value)}
-            />
-          </div>
-          {loginError ? <div className="inline-alert">{loginError}</div> : null}
-          <button className="primary-button" type="submit">
-            Sign in
-          </button>
-        </form>
+        {passwordResetOpen ? (
+          <form
+            className="panel auth-panel"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submitPasswordReset();
+            }}
+          >
+            <h1>Reset Password</h1>
+            <p className="field-note">Enter the reset code provided by an admin.</p>
+            <div className="field-group">
+              <label htmlFor="reset-user-id">User ID</label>
+              <input
+                id="reset-user-id"
+                value={passwordResetForm.userId}
+                onChange={(event) => updatePasswordResetForm("userId", event.target.value)}
+              />
+            </div>
+            <div className="field-group">
+              <label htmlFor="reset-token">Reset Code</label>
+              <input
+                id="reset-token"
+                value={passwordResetForm.token}
+                onChange={(event) => updatePasswordResetForm("token", event.target.value)}
+              />
+            </div>
+            <div className="field-group">
+              <label htmlFor="reset-new-password">New Password</label>
+              <input
+                autoComplete="new-password"
+                id="reset-new-password"
+                type="password"
+                value={passwordResetForm.newPassword}
+                onChange={(event) => updatePasswordResetForm("newPassword", event.target.value)}
+              />
+            </div>
+            <div className="field-group">
+              <label htmlFor="reset-confirm-password">Confirm New Password</label>
+              <input
+                autoComplete="new-password"
+                id="reset-confirm-password"
+                type="password"
+                value={passwordResetForm.confirmPassword}
+                onChange={(event) => updatePasswordResetForm("confirmPassword", event.target.value)}
+              />
+            </div>
+            {passwordResetNotice ? (
+              <div className={passwordResetNotice.status === "error" ? "inline-alert" : "success-alert"}>
+                {passwordResetNotice.message}
+              </div>
+            ) : null}
+            <button className="primary-button" disabled={resettingPassword} type="submit">
+              {resettingPassword ? "Resetting..." : "Reset password"}
+            </button>
+            <button className="secondary-button" disabled={resettingPassword} onClick={closePasswordReset} type="button">
+              Back to sign in
+            </button>
+          </form>
+        ) : (
+          <form
+            className="panel auth-panel"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void login();
+            }}
+          >
+            <h1>Crew Time Allocation</h1>
+            <p className="field-note">Sign in to enter daily pay item production.</p>
+            <div className="field-group">
+              <label htmlFor="user-id">User ID</label>
+              <input id="user-id" value={loginUserId} onChange={(event) => setLoginUserId(event.target.value)} />
+            </div>
+            <div className="field-group">
+              <label htmlFor="password">Password</label>
+              <input
+                id="password"
+                type="password"
+                value={loginPassword}
+                onChange={(event) => setLoginPassword(event.target.value)}
+              />
+            </div>
+            {loginError ? <div className="inline-alert">{loginError}</div> : null}
+            <button className="primary-button" type="submit">
+              Sign in
+            </button>
+            <button className="text-button auth-text-button" onClick={openPasswordReset} type="button">
+              Forgot password?
+            </button>
+          </form>
+        )}
       </main>
     );
   }
@@ -3831,6 +4125,15 @@ export function TimeAllocationWorkspace() {
           onSubmit={submitChangePassword}
           onUpdateForm={updateChangePasswordForm}
           saving={changingPassword}
+        />
+      ) : null}
+
+      {mobileInstallPromptVisible ? (
+        <MobileInstallPrompt
+          onDismiss={() => {
+            window.localStorage.setItem(MOBILE_INSTALL_PROMPT_DISMISSED_KEY, "true");
+            setMobileInstallPromptVisible(false);
+          }}
         />
       ) : null}
 
@@ -4328,6 +4631,11 @@ export function TimeAllocationWorkspace() {
                   projectBlacklistById={projectBlacklistById}
                   projects={allProjects}
                 />
+                <ProjectArchivePanel
+                  onToggleProject={toggleProjectArchive}
+                  projectArchiveById={projectArchiveById}
+                  projects={allProjects}
+                />
                 <VendorBlacklistPanel
                   onToggleVendor={toggleVendorBlacklist}
                   vendorBlacklistById={netSuiteVendorBlacklistById}
@@ -4341,11 +4649,13 @@ export function TimeAllocationWorkspace() {
                   netSuiteProjectManagerOptions={netSuiteProjectManagerOptions}
                   notice={adminUsersNotice}
                   onCancelEdit={resetAdminUserForm}
+                  onCreatePasswordResetToken={createAdminPasswordResetToken}
                   onEditUser={startEditingAdminUser}
                   onRefresh={loadAdminUsers}
                   onSaveUser={saveAdminUser}
                   onSetUserActive={setAdminUserActive}
                   onUpdateForm={updateAdminUserForm}
+                  resetToken={adminPasswordResetToken}
                   saving={savingAdminUser}
                   users={adminUsers}
                 />
@@ -4431,9 +4741,14 @@ export function TimeAllocationWorkspace() {
                     const savedEntry = visibleEntries.find((entry) => entry.payItemId === item.id);
                     const rowHasWork = Boolean(savedEntry) || draftHasAnyInput(draft);
                     const remainingQuantity = remainingQuantitiesByPayItem[item.id] ?? item.budgetedQuantity;
+                    const rowHasQuantityOverrun = draftQuantityExceedsRemaining(draft, remainingQuantity);
 
                     return (
-                      <div className={rowHasWork ? "matrix-row worked-row" : "matrix-row"} key={item.id} role="row">
+                      <div
+                        className={`${rowHasWork ? "matrix-row worked-row" : "matrix-row"}${rowHasQuantityOverrun ? " quantity-overrun-row" : ""}`}
+                        key={item.id}
+                        role="row"
+                      >
                         <span className="matrix-code" data-label="Code">{item.code}</span>
                         <span className="matrix-name" data-label="Pay Item">{item.name}</span>
                         <span className="matrix-budget" data-label="Remaining QTY" title="Remaining quantity before this date">
@@ -4564,27 +4879,15 @@ export function TimeAllocationWorkspace() {
                 ) : null}
               </div>
               {dayIsSubmitted ? (
-                <div className="submitted-day-summary">
-                  <div>
-                    <span>Pay Item Rows</span>
-                    <strong>{visibleEntries.length}</strong>
-                  </div>
-                  <div>
-                    <span>Total Hours</span>
-                    <strong>{totalHours.toFixed(2)}</strong>
-                  </div>
-                  <div>
-                    <span>Daily Report</span>
-                    <strong>{currentDailyReport ? "Saved" : "Not created"}</strong>
-                  </div>
-                  <div>
-                    <span>Procore Upload</span>
-                    <DailyReportProcoreStatusValue status={currentDailyReportProcoreStatus} />
-                  </div>
-                </div>
-              ) : null}
-              {dayIsSubmitted && visibleEntries.length > 0 ? (
-                <SubmittedDayEntryTable entries={visibleEntries} />
+                <SubmittedDayReview
+                  crewSummaryRows={crewSummaryRows}
+                  dailyReport={currentDailyReport}
+                  dayEntryNotes={currentDayEntryNotes}
+                  entries={visibleEntries}
+                  procoreStatus={currentDailyReportProcoreStatus}
+                  showPayItemEntries={selectedProjectUsesPayItems}
+                  totalHours={totalHours}
+                />
               ) : (
                 <div className="entry-list">
                   {visibleEntries.length === 0 ? (
@@ -4908,6 +5211,17 @@ export function TimeAllocationWorkspace() {
                   <div className="job-image-section-heading">
                     <h3>Temporary Queue</h3>
                     <div className="job-image-section-actions">
+                      {failedQueuedJobImages.length > 0 ? (
+                        <button
+                          className="secondary-button compact-action"
+                          disabled={uploadingJobImages || jobImageDailyLimitReached}
+                          onClick={() => void retryFailedJobImages()}
+                          type="button"
+                        >
+                          <RotateCcw aria-hidden="true" size={16} />
+                          Retry failed
+                        </button>
+                      ) : null}
                       {jobImageQueue.some((item) => item.status === "uploaded") ? (
                         <button className="text-button" onClick={clearUploadedJobImagesFromQueue} type="button">
                           Clear uploaded
@@ -4958,6 +5272,23 @@ export function TimeAllocationWorkspace() {
                       </div>
                     ))}
                   </div>
+                  {failedQueuedJobImages.length > 0 ? (
+                    <div className="job-image-retry-queue">
+                      <div>
+                        <strong>{failedQueuedJobImages.length} failed image{failedQueuedJobImages.length === 1 ? "" : "s"} ready to retry</strong>
+                        <span>Failed images stay in this temporary queue until you retry them, remove them, or refresh the page.</span>
+                      </div>
+                      <button
+                        className="primary-button"
+                        disabled={uploadingJobImages || jobImageDailyLimitReached}
+                        onClick={() => void retryFailedJobImages()}
+                        type="button"
+                      >
+                        <RotateCcw aria-hidden="true" size={17} />
+                        Retry failed uploads
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               ) : (
                 <div className="empty-state">No images are queued for upload.</div>
@@ -4971,6 +5302,12 @@ export function TimeAllocationWorkspace() {
                       : `${uploadedJobImageCount}/${JOB_IMAGE_DAILY_UPLOAD_LIMIT} uploaded`}
                   </span>
                 </div>
+                {failedJobImageUploads.length > 0 ? (
+                  <div className="field-note">
+                    {failedJobImageUploads.length} failed upload attempt{failedJobImageUploads.length === 1 ? "" : "s"} recorded. If the
+                    image is no longer in the temporary queue, reselect the original photo to retry it.
+                  </div>
+                ) : null}
                 {currentJobImageUploads.length > 0 ? (
                   <div className="job-image-history-list">
                     {currentJobImageUploads.map((upload) => (
@@ -5168,6 +5505,104 @@ function DailyStatusItem({
     <div className={`daily-status-item ${tone}`}>
       <span>{label}</span>
       <strong>{value}</strong>
+    </div>
+  );
+}
+
+function MobileInstallPrompt({ onDismiss }: { onDismiss: () => void }) {
+  return (
+    <div className="mobile-install-prompt">
+      <Smartphone aria-hidden="true" size={18} />
+      <div>
+        <strong>Install Chinchor Daily</strong>
+        <span>On iPhone/iPad: tap Share, then Add to Home Screen for faster field access.</span>
+      </div>
+      <button className="icon-button" aria-label="Dismiss install prompt" onClick={onDismiss} type="button">
+        <X aria-hidden="true" size={16} />
+      </button>
+    </div>
+  );
+}
+
+function SubmittedDayReview({
+  crewSummaryRows,
+  dailyReport,
+  dayEntryNotes,
+  entries,
+  procoreStatus,
+  showPayItemEntries,
+  totalHours
+}: {
+  crewSummaryRows: CrewSummaryRow[];
+  dailyReport: DailyReport | undefined;
+  dayEntryNotes: DayEntryNotes;
+  entries: AllocationEntry[];
+  procoreStatus: DailyReportProcoreStatus;
+  showPayItemEntries: boolean;
+  totalHours: number;
+}) {
+  return (
+    <div className="submitted-day-review">
+      <div className="submitted-day-summary">
+        <div>
+          <span>{showPayItemEntries ? "Pay Item Rows" : "Entry Status"}</span>
+          <strong>{showPayItemEntries ? entries.length : "N/A"}</strong>
+        </div>
+        <div>
+          <span>Total Hours</span>
+          <strong>{totalHours.toFixed(2)}</strong>
+        </div>
+        <div>
+          <span>Daily Report</span>
+          <strong>{dailyReport ? "Saved" : "Not created"}</strong>
+        </div>
+        <div>
+          <span>Procore Upload</span>
+          <DailyReportProcoreStatusValue status={procoreStatus} />
+        </div>
+      </div>
+
+      <div className="submitted-review-grid">
+        <section className="submitted-review-section">
+          <h3>Crew Hours</h3>
+          {crewSummaryRows.length === 0 ? (
+            <div className="field-note">No crew hours are tied to saved pay item entries for this day.</div>
+          ) : (
+            <div className="submitted-crew-list">
+              {crewSummaryRows.map((row) => (
+                <div className="submitted-crew-row" key={row.crewMemberId}>
+                  <span>
+                    <strong>{getCrewDisplayName(row)}</strong>
+                    {formatCrewMemberMeta(row)}
+                  </span>
+                  <strong>{row.hours.toFixed(2)} hrs</strong>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+        <section className="submitted-review-section">
+          <h3>Notes</h3>
+          <div className="submitted-note-block">
+            <span>Notes</span>
+            <p>{dayEntryNotes.notes.trim() || "No notes entered."}</p>
+          </div>
+          <div className="submitted-note-block">
+            <span>Inventory</span>
+            <p>{dayEntryNotes.inventory.trim() || "No inventory notes entered."}</p>
+          </div>
+        </section>
+      </div>
+
+      {showPayItemEntries ? (
+        entries.length > 0 ? (
+          <SubmittedDayEntryTable entries={entries} />
+        ) : (
+          <div className="empty-state">No pay item entries for this job and date.</div>
+        )
+      ) : (
+        <div className="field-note">This job uses daily reports and photos only, so pay item entry status is not applicable.</div>
+      )}
     </div>
   );
 }
@@ -6122,6 +6557,7 @@ function MobilePayItemEntry({
   const draft = draftsByPayItem[selectedPayItem.id];
   const savedEntry = savedEntries.find((entry) => entry.payItemId === selectedPayItem.id);
   const rowHasWork = Boolean(savedEntry) || draftHasAnyInput(draft);
+  const quantityOverrun = draftQuantityExceedsRemaining(draft, remainingQuantity);
 
   return (
     <div className="pay-item-mobile-entry">
@@ -6194,6 +6630,11 @@ function MobilePayItemEntry({
             onChange={(event) => onDraftChange(selectedPayItem.id, "quantity", event.target.value)}
             onWheel={(event) => event.currentTarget.blur()}
           />
+          {quantityOverrun ? (
+            <span className="quantity-overrun-note">
+              Over remaining quantity. Save will ask for confirmation.
+            </span>
+          ) : null}
         </div>
       </div>
       <CrewAllocationEditor
@@ -7702,6 +8143,49 @@ function ProjectBlacklistPanel({
   );
 }
 
+function ProjectArchivePanel({
+  onToggleProject,
+  projectArchiveById,
+  projects
+}: {
+  onToggleProject: (projectId: string, archived: boolean) => void;
+  projectArchiveById: ProjectArchiveById;
+  projects: Project[];
+}) {
+  const sortedProjects = sortProjectsByName(projects);
+  const archivedProjectCount = sortedProjects.filter((project) => projectArchiveById[project.id]).length;
+
+  return (
+    <details className="project-blacklist">
+      <summary>
+        <Archive aria-hidden="true" size={16} />
+        Project Archive ({archivedProjectCount})
+      </summary>
+      {sortedProjects.length === 0 ? (
+        <div className="field-note">No cached projects are available to archive yet.</div>
+      ) : (
+        <>
+          <div className="field-note">
+            Archived projects stay cached and keep their history, but are hidden from normal entry screens and reports.
+          </div>
+          <div className="project-blacklist-list">
+            {sortedProjects.map((project) => (
+              <label className="project-blacklist-row" key={project.id}>
+                <input
+                  checked={Boolean(projectArchiveById[project.id])}
+                  onChange={(event) => onToggleProject(project.id, event.target.checked)}
+                  type="checkbox"
+                />
+                <span>{project.name}</span>
+              </label>
+            ))}
+          </div>
+        </>
+      )}
+    </details>
+  );
+}
+
 function VendorBlacklistPanel({
   onToggleVendor,
   vendorBlacklistById,
@@ -7848,11 +8332,13 @@ function AdminUsersPanel({
   netSuiteProjectManagerOptions,
   notice,
   onCancelEdit,
+  onCreatePasswordResetToken,
   onEditUser,
   onRefresh,
   onSaveUser,
   onSetUserActive,
   onUpdateForm,
+  resetToken,
   saving,
   users
 }: {
@@ -7863,11 +8349,13 @@ function AdminUsersPanel({
   netSuiteProjectManagerOptions: NetSuiteProjectManagerOption[];
   notice: string;
   onCancelEdit: () => void;
+  onCreatePasswordResetToken: (user: ManagedAppUser) => void;
   onEditUser: (user: ManagedAppUser) => void;
   onRefresh: () => void;
   onSaveUser: () => void;
   onSetUserActive: (user: ManagedAppUser, active: boolean) => void;
   onUpdateForm: (field: keyof AdminUserFormState, value: string | boolean) => void;
+  resetToken: PasswordResetResponse | null;
   saving: boolean;
   users: ManagedAppUser[];
 }) {
@@ -7885,6 +8373,13 @@ function AdminUsersPanel({
       </summary>
       <div className="admin-users-body">
         {notice ? <div className={notice.toLowerCase().includes("unable") || notice.toLowerCase().includes("requires") ? "inline-alert" : "success-alert"}>{notice}</div> : null}
+        {resetToken?.token ? (
+          <div className="password-reset-code-panel">
+            <span>One-time reset code for {resetToken.userId}</span>
+            <strong>{resetToken.token}</strong>
+            <small>Give this code to the user. It expires {resetToken.expiresAt ? new Date(resetToken.expiresAt).toLocaleString() : "in 24 hours"}.</small>
+          </div>
+        ) : null}
         <div className="admin-user-form">
           <div className="field-group">
             <label htmlFor="admin-user-id">User ID</label>
@@ -8017,6 +8512,15 @@ function AdminUsersPanel({
                 <div className="admin-user-row-actions">
                   <button className="icon-button" onClick={() => onEditUser(user)} title="Edit user" type="button">
                     <Edit3 aria-hidden="true" size={16} />
+                  </button>
+                  <button
+                    className="icon-button"
+                    disabled={saving || !user.active}
+                    onClick={() => onCreatePasswordResetToken(user)}
+                    title="Create password reset code"
+                    type="button"
+                  >
+                    <KeyRound aria-hidden="true" size={16} />
                   </button>
                   <button
                     className="icon-button"
@@ -8778,8 +9282,12 @@ function sortProjectsByName(projects: Project[]) {
   );
 }
 
-function filterProjectsByBlacklist(projects: Project[], projectBlacklistById: ProjectBlacklistById) {
-  return projects.filter((project) => !projectBlacklistById[project.id]);
+function filterActiveProjects(
+  projects: Project[],
+  projectBlacklistById: ProjectBlacklistById,
+  projectArchiveById: ProjectArchiveById
+) {
+  return projects.filter((project) => !projectBlacklistById[project.id] && !projectArchiveById[project.id]);
 }
 
 function projectMatchesIdentifier(project: Project, identifier: string) {
@@ -8879,6 +9387,7 @@ function buildSharedAppState(state: SharedAppState): SharedAppState {
     daySubmissions: state.daySubmissions,
     entries: state.entries,
     myJobsByUser: state.myJobsByUser,
+    projectArchiveById: state.projectArchiveById,
     projectBlacklistById: state.projectBlacklistById,
     syncLog: state.syncLog
   };
@@ -9212,6 +9721,7 @@ async function loadDatabaseProjectControls() {
 
     return {
       myJobsByUser: data.myJobsByUser ?? {},
+      projectArchiveById: data.projectArchiveById ?? {},
       projectBlacklistById: data.projectBlacklistById ?? {},
       syncLog: data.syncLog ?? []
     };
@@ -9322,6 +9832,25 @@ async function saveDatabaseProjectBlacklist(projectId: string, blacklisted: bool
 
   if (!response.ok || data.ok === false) {
     throw new Error(data.error ?? "Unable to save project blacklist.");
+  }
+}
+
+async function saveDatabaseProjectArchive(projectId: string, archived: boolean) {
+  const response = await fetch("/api/project-controls", {
+    body: JSON.stringify({
+      action: "set_archive",
+      archived,
+      projectId
+    }),
+    headers: {
+      "Content-Type": "application/json"
+    },
+    method: "PATCH"
+  });
+  const data = (await response.json()) as { error?: string; ok?: boolean };
+
+  if (!response.ok || data.ok === false) {
+    throw new Error(data.error ?? "Unable to save project archive.");
   }
 }
 
@@ -9551,6 +10080,7 @@ function normalizeSharedAppState(state: Partial<SharedAppState> | null | undefin
     daySubmissions: state?.daySubmissions ?? {},
     entries: state?.entries ?? [],
     myJobsByUser: state?.myJobsByUser ?? {},
+    projectArchiveById: state?.projectArchiveById ?? {},
     projectBlacklistById: state?.projectBlacklistById ?? {},
     syncLog: state?.syncLog ?? []
   });
@@ -9572,6 +10102,7 @@ function readLocalSharedAppState(): SharedAppState {
     daySubmissions: readLocalJson<DaySubmissionsByKey>("day-submissions", {}),
     entries: readLocalJson<AllocationEntry[]>("allocation-entries", []),
     myJobsByUser: readLocalJson<MyJobsByUser>("my-jobs-by-user", {}),
+    projectArchiveById: readLocalJson<ProjectArchiveById>("project-archive", {}),
     projectBlacklistById: readLocalJson<ProjectBlacklistById>("project-blacklist", {}),
     syncLog: readLocalJson<SyncLogEntry[]>("procore-sync-log", [])
   });
@@ -9586,6 +10117,7 @@ function writeLocalSharedAppState(state: SharedAppState) {
   window.localStorage.setItem("crew-member-directory", JSON.stringify(state.crewDirectory));
   window.localStorage.setItem("project-crew-members", JSON.stringify(state.crewMembersByProject));
   window.localStorage.setItem("my-jobs-by-user", JSON.stringify(state.myJobsByUser));
+  window.localStorage.setItem("project-archive", JSON.stringify(state.projectArchiveById));
   window.localStorage.setItem("project-blacklist", JSON.stringify(state.projectBlacklistById));
   window.localStorage.setItem("procore-sync-log", JSON.stringify(state.syncLog));
 }
@@ -10205,6 +10737,66 @@ function draftIsSaveable(draft: PayItemDraft | undefined) {
   return hours >= 0 && quantity >= 0 && Number.isFinite(hours) && Number.isFinite(quantity);
 }
 
+function getDraftQuantityOverrunWarnings(
+  payItems: PayItem[],
+  draftsByPayItem: DraftsByPayItem,
+  visibleEntries: AllocationEntry[],
+  remainingQuantitiesByPayItem: Record<string, number>
+) {
+  const warnings: string[] = [];
+
+  for (const payItem of payItems) {
+    const draft = draftsByPayItem[payItem.id];
+
+    if (!draftIsSaveable(draft)) {
+      continue;
+    }
+
+    const existingEntry = visibleEntries.find((entry) => entry.payItemId === payItem.id);
+    const quantity = draft?.quantity ? Number(draft.quantity) : existingEntry?.quantityCompleted ?? 0;
+    const remainingQuantity = remainingQuantitiesByPayItem[payItem.id] ?? payItem.budgetedQuantity;
+
+    if (Number.isFinite(quantity) && quantity > remainingQuantity + 0.0001) {
+      warnings.push(
+        `${payItem.code}: ${formatPayItemQuantity(quantity)} entered, ${formatPayItemQuantity(remainingQuantity)} remaining.`
+      );
+    }
+  }
+
+  return warnings;
+}
+
+function draftQuantityExceedsRemaining(draft: PayItemDraft | undefined, remainingQuantity: number) {
+  if (!draft?.quantity) {
+    return false;
+  }
+
+  const quantity = Number(draft.quantity);
+
+  return Number.isFinite(quantity) && quantity > remainingQuantity + 0.0001;
+}
+
+function confirmQuantityOverrun(warnings: string[]) {
+  const visibleWarnings = warnings.slice(0, 6);
+  const hiddenWarningCount = warnings.length - visibleWarnings.length;
+  const hiddenText = hiddenWarningCount > 0 ? `\n${hiddenWarningCount} more overrun${hiddenWarningCount === 1 ? "" : "s"} not shown.` : "";
+
+  return window.confirm(
+    [
+      "Quantity overrun warning",
+      "",
+      "One or more quantities exceed the remaining quantity for this job. This is allowed, but should be intentional.",
+      "",
+      ...visibleWarnings,
+      hiddenText,
+      "",
+      "Save anyway?"
+    ]
+      .filter(Boolean)
+      .join("\n")
+  );
+}
+
 function draftIsIncomplete(draft: PayItemDraft | undefined) {
   const hasHoursInput = draft?.hours !== undefined && draft.hours !== "";
   const hasQuantityInput = draft?.quantity !== undefined && draft.quantity !== "";
@@ -10475,6 +11067,15 @@ function createEmptyChangePasswordForm(): ChangePasswordFormState {
     confirmPassword: "",
     currentPassword: "",
     newPassword: ""
+  };
+}
+
+function createEmptyPasswordResetForm(): PasswordResetFormState {
+  return {
+    confirmPassword: "",
+    newPassword: "",
+    token: "",
+    userId: ""
   };
 }
 

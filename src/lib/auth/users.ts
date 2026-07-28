@@ -45,6 +45,13 @@ export type ChangePasswordResult =
   | "invalid_new_password"
   | "invalid_user";
 
+export type PasswordResetResult =
+  | "database_not_configured"
+  | "invalid_new_password"
+  | "invalid_token"
+  | "invalid_user"
+  | "reset";
+
 const bootstrapUsers: BootstrapUser[] = [
   {
     id: "caleb",
@@ -376,6 +383,143 @@ export async function changeCurrentUserPassword(userId: string, currentPassword:
   return "changed" satisfies ChangePasswordResult;
 }
 
+export async function createPasswordResetToken(userId: string) {
+  const normalizedUserId = normalizeUserId(userId);
+  const sql = getSql();
+
+  if (!sql) {
+    return null;
+  }
+
+  await ensureAuthUsersTable();
+  await seedBootstrapUsersIfEmpty();
+
+  if (!normalizedUserId) {
+    return false;
+  }
+
+  const users = (await sql`
+    select user_id
+    from app_users
+    where user_id = ${normalizedUserId}
+      and active = true
+    limit 1
+  `) as Array<{ user_id: string }>;
+
+  if (!users[0]) {
+    return false;
+  }
+
+  const token = crypto.randomUUID().replaceAll("-", "").slice(0, 16).toUpperCase();
+  const tokenHash = await hashPassword(token);
+  const tokenId = crypto.randomUUID();
+
+  await sql.transaction([
+    sql`
+      update app_password_reset_tokens
+      set used_at = now()
+      where user_id = ${normalizedUserId}
+        and used_at is null
+    `,
+    sql`
+      insert into app_password_reset_tokens (
+        id,
+        user_id,
+        token_hash,
+        expires_at,
+        created_at
+      )
+      values (
+        ${tokenId},
+        ${normalizedUserId},
+        ${tokenHash},
+        now() + interval '24 hours',
+        now()
+      )
+    `
+  ]);
+
+  return {
+    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    token,
+    userId: normalizedUserId
+  };
+}
+
+export async function resetPasswordWithToken(userId: string, token: string, newPassword: string) {
+  const normalizedUserId = normalizeUserId(userId);
+  const normalizedToken = token.trim().toUpperCase();
+  const normalizedNewPassword = normalizePassword(newPassword);
+
+  if (!normalizedUserId || !normalizedToken) {
+    return "invalid_user" satisfies PasswordResetResult;
+  }
+
+  if (!normalizedNewPassword || normalizedNewPassword.length < 8) {
+    return "invalid_new_password" satisfies PasswordResetResult;
+  }
+
+  const sql = getSql();
+
+  if (!sql) {
+    return "database_not_configured" satisfies PasswordResetResult;
+  }
+
+  await ensureAuthUsersTable();
+
+  const users = (await sql`
+    select user_id
+    from app_users
+    where user_id = ${normalizedUserId}
+      and active = true
+    limit 1
+  `) as Array<{ user_id: string }>;
+
+  if (!users[0]) {
+    return "invalid_user" satisfies PasswordResetResult;
+  }
+
+  const tokenRows = (await sql`
+    select id, token_hash
+    from app_password_reset_tokens
+    where user_id = ${normalizedUserId}
+      and used_at is null
+      and expires_at > now()
+    order by created_at desc
+    limit 5
+  `) as Array<{ id: string; token_hash: string }>;
+  let matchingTokenId = "";
+
+  for (const tokenRow of tokenRows) {
+    if (await verifyPassword(normalizedToken, tokenRow.token_hash)) {
+      matchingTokenId = tokenRow.id;
+      break;
+    }
+  }
+
+  if (!matchingTokenId) {
+    return "invalid_token" satisfies PasswordResetResult;
+  }
+
+  const passwordHash = await hashPassword(normalizedNewPassword);
+
+  await sql.transaction([
+    sql`
+      update app_users
+      set password_hash = ${passwordHash},
+          updated_at = now()
+      where user_id = ${normalizedUserId}
+    `,
+    sql`
+      update app_password_reset_tokens
+      set used_at = now()
+      where id = ${matchingTokenId}
+    `
+  ]);
+
+  return "reset" satisfies PasswordResetResult;
+}
+
 async function ensureAuthUsersTable() {
   const sql = getSql();
 
@@ -400,8 +544,21 @@ async function ensureAuthUsersTable() {
 
   await sql`alter table app_users add column if not exists netsuite_project_manager_id text`;
   await sql`alter table app_users add column if not exists netsuite_project_manager_name text`;
+
+  await sql`
+    create table if not exists app_password_reset_tokens (
+      id text primary key,
+      user_id text not null references app_users(user_id) on delete cascade,
+      token_hash text not null,
+      expires_at timestamptz not null,
+      used_at timestamptz,
+      created_at timestamptz not null default now()
+    )
+  `;
+
   await sql`create index if not exists app_users_active_idx on app_users (active)`;
   await sql`create index if not exists app_users_netsuite_project_manager_idx on app_users (netsuite_project_manager_id)`;
+  await sql`create index if not exists app_password_reset_tokens_user_idx on app_password_reset_tokens (user_id, expires_at)`;
 
   authUsersTableReady = true;
 }

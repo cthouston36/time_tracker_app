@@ -48,6 +48,7 @@ export async function POST(request: NextRequest) {
         "procore_projects",
         "procore_pay_items",
         "procore_sync_state",
+        "project_archive",
         "project_blacklist",
         "my_jobs",
         "audit_log"

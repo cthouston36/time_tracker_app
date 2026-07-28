@@ -1,6 +1,7 @@
 import { getSql } from "@/lib/db";
 
 export type StoredMyJobsByUser = Record<string, string[]>;
+export type StoredProjectArchiveById = Record<string, true>;
 export type StoredProjectBlacklistById = Record<string, true>;
 export type StoredSyncLogEntry = {
   id: string;
@@ -17,6 +18,10 @@ type MyJobRow = {
 };
 
 type ProjectBlacklistRow = {
+  project_id: string;
+};
+
+type ProjectArchiveRow = {
   project_id: string;
 };
 
@@ -53,6 +58,12 @@ export async function readProjectControls() {
     order by project_id
   `) as ProjectBlacklistRow[];
 
+  const projectArchiveRows = (await sql`
+    select project_id
+    from project_archive
+    order by project_id
+  `) as ProjectArchiveRow[];
+
   const syncLogRows = (await sql`
     select
       id,
@@ -69,6 +80,7 @@ export async function readProjectControls() {
 
   const myJobsByUser: StoredMyJobsByUser = {};
   const projectBlacklistById: StoredProjectBlacklistById = {};
+  const projectArchiveById: StoredProjectArchiveById = {};
 
   for (const row of myJobRows) {
     myJobsByUser[row.user_id] = myJobsByUser[row.user_id] ?? [];
@@ -79,8 +91,13 @@ export async function readProjectControls() {
     projectBlacklistById[row.project_id] = true;
   }
 
+  for (const row of projectArchiveRows) {
+    projectArchiveById[row.project_id] = true;
+  }
+
   return {
     myJobsByUser,
+    projectArchiveById,
     projectBlacklistById,
     syncLog: syncLogRows.map(normalizeSyncLogRow).filter((entry) => entry !== null)
   };
@@ -88,6 +105,7 @@ export async function readProjectControls() {
 
 export async function replaceProjectControls(
   myJobsByUser: StoredMyJobsByUser,
+  projectArchiveById: StoredProjectArchiveById,
   projectBlacklistById: StoredProjectBlacklistById,
   syncLog: StoredSyncLogEntry[]
 ) {
@@ -100,9 +118,15 @@ export async function replaceProjectControls(
   await ensureProjectControlTables();
 
   const normalizedMyJobs = normalizeMyJobsByUser(myJobsByUser);
+  const normalizedProjectArchive = normalizeProjectArchive(projectArchiveById);
   const normalizedProjectBlacklist = normalizeProjectBlacklist(projectBlacklistById);
   const normalizedSyncLog = normalizeSyncLog(syncLog);
-  const queries = [sql`delete from my_jobs`, sql`delete from project_blacklist`, sql`delete from sync_log_entries`];
+  const queries = [
+    sql`delete from my_jobs`,
+    sql`delete from project_archive`,
+    sql`delete from project_blacklist`,
+    sql`delete from sync_log_entries`
+  ];
 
   for (const myJob of normalizedMyJobs) {
     queries.push(sql`
@@ -114,6 +138,13 @@ export async function replaceProjectControls(
   for (const projectId of normalizedProjectBlacklist) {
     queries.push(sql`
       insert into project_blacklist (project_id, blacklisted_at)
+      values (${projectId}, now())
+    `);
+  }
+
+  for (const projectId of normalizedProjectArchive) {
+    queries.push(sql`
+      insert into project_archive (project_id, archived_at)
       values (${projectId}, now())
     `);
   }
@@ -147,6 +178,7 @@ export async function replaceProjectControls(
 
   return {
     myJobs: normalizedMyJobs.length,
+    projectArchive: normalizedProjectArchive.length,
     projectBlacklist: normalizedProjectBlacklist.length,
     syncLog: normalizedSyncLog.length
   };
@@ -208,6 +240,37 @@ export async function setProjectBlacklist(projectId: string, blacklisted: boolea
   } else {
     await sql`
       delete from project_blacklist
+      where project_id = ${normalizedProjectId}
+    `;
+  }
+
+  return true;
+}
+
+export async function setProjectArchive(projectId: string, archived: boolean) {
+  const sql = getSql();
+
+  if (!sql) {
+    return null;
+  }
+
+  await ensureProjectControlTables();
+
+  const normalizedProjectId = readString(projectId);
+
+  if (!normalizedProjectId) {
+    return false;
+  }
+
+  if (archived) {
+    await sql`
+      insert into project_archive (project_id, archived_at)
+      values (${normalizedProjectId}, now())
+      on conflict (project_id) do nothing
+    `;
+  } else {
+    await sql`
+      delete from project_archive
       where project_id = ${normalizedProjectId}
     `;
   }
@@ -303,6 +366,13 @@ async function ensureProjectControlTables() {
   `;
 
   await sql`
+    create table if not exists project_archive (
+      project_id text primary key,
+      archived_at timestamptz not null default now()
+    )
+  `;
+
+  await sql`
     create table if not exists sync_log_entries (
       id text primary key,
       action text not null,
@@ -339,6 +409,12 @@ function normalizeMyJobsByUser(myJobsByUser: StoredMyJobsByUser) {
 function normalizeProjectBlacklist(projectBlacklistById: StoredProjectBlacklistById) {
   return Object.entries(projectBlacklistById)
     .filter(([projectId, blacklisted]) => Boolean(projectId) && Boolean(blacklisted))
+    .map(([projectId]) => projectId);
+}
+
+function normalizeProjectArchive(projectArchiveById: StoredProjectArchiveById) {
+  return Object.entries(projectArchiveById)
+    .filter(([projectId, archived]) => Boolean(projectId) && Boolean(archived))
     .map(([projectId]) => projectId);
 }
 

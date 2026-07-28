@@ -1,0 +1,17 @@
+{
+  "name": "Chinchor Daily",
+  "short_name": "Daily",
+  "description": "Crew time allocation and daily field reports.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b1117",
+  "theme_color": "#0e1720",
+  "icons": [
+    {
+      "src": "/chinchor-logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

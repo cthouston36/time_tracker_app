@@ -40,6 +40,7 @@ export async function mirrorSharedAppStateToTables(state: unknown): Promise<AppS
   await mirrorDailyReports(appState);
   await mirrorDailyReportUploads(appState);
   await mirrorMyJobs(appState);
+  await mirrorProjectArchive(appState);
   await mirrorProjectBlacklist(appState);
   await mirrorSyncLog(appState);
 
@@ -190,6 +191,13 @@ async function ensureNormalizedAppStateTables() {
   `;
 
   await sql`
+    create table if not exists project_archive (
+      project_id text primary key,
+      archived_at timestamptz not null default now()
+    )
+  `;
+
+  await sql`
     create table if not exists sync_log_entries (
       id text primary key,
       action text not null,
@@ -234,6 +242,7 @@ async function clearNormalizedAppStateTables() {
   await sql`delete from project_crew_members`;
   await sql`delete from crew_members`;
   await sql`delete from my_jobs`;
+  await sql`delete from project_archive`;
   await sql`delete from project_blacklist`;
   await sql`delete from sync_log_entries`;
 }
@@ -658,6 +667,28 @@ async function mirrorProjectBlacklist(appState: SharedAppStateRecord) {
 
     await sql`
       insert into project_blacklist (project_id, blacklisted_at)
+      values (${projectId}, now())
+      on conflict (project_id) do nothing
+    `;
+  }
+}
+
+async function mirrorProjectArchive(appState: SharedAppStateRecord) {
+  const sql = getSql();
+
+  if (!sql) {
+    return;
+  }
+
+  const projectArchiveById = asRecord(appState.projectArchiveById);
+
+  for (const [projectId, isArchived] of Object.entries(projectArchiveById)) {
+    if (!projectId || !isArchived) {
+      continue;
+    }
+
+    await sql`
+      insert into project_archive (project_id, archived_at)
       values (${projectId}, now())
       on conflict (project_id) do nothing
     `;

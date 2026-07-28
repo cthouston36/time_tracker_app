@@ -178,6 +178,33 @@ button {
   white-space: nowrap;
 }
 
+.mobile-install-prompt {
+  align-items: center;
+  background: #102735;
+  border-bottom: 1px solid #2f6f78;
+  color: var(--foreground);
+  display: none;
+  gap: 10px;
+  padding: 10px clamp(16px, 4vw, 40px);
+}
+
+.mobile-install-prompt > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mobile-install-prompt strong,
+.mobile-install-prompt span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.mobile-install-prompt span {
+  color: #b7cad6;
+  font-size: 0.82rem;
+}
+
 .workspace {
   display: grid;
   gap: 20px;
@@ -1208,6 +1235,35 @@ a.daily-report-procore-status:hover {
   margin-top: 3px;
 }
 
+.job-image-retry-queue {
+  align-items: center;
+  background: var(--warning-bg);
+  border: 1px solid var(--warning-line);
+  border-radius: 8px;
+  color: var(--warning-text);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 10px 12px;
+}
+
+.job-image-retry-queue > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.job-image-retry-queue strong,
+.job-image-retry-queue span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.job-image-retry-queue span {
+  color: #f0c391;
+  font-size: 0.8rem;
+}
+
 .number-entry {
   appearance: textfield;
   -moz-appearance: textfield;
@@ -1242,11 +1298,15 @@ a.daily-report-procore-status:hover {
   overflow-wrap: anywhere;
 }
 
+.submitted-day-review {
+  display: grid;
+  gap: 12px;
+}
+
 .submitted-day-summary {
   display: grid;
   gap: 10px;
   grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
-  margin-bottom: 12px;
 }
 
 .submitted-day-summary div {
@@ -1263,6 +1323,81 @@ a.daily-report-procore-status:hover {
   font-size: 0.72rem;
   font-weight: 700;
   text-transform: uppercase;
+}
+
+.submitted-day-summary strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.submitted-review-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(240px, 0.85fr) minmax(0, 1.15fr);
+}
+
+.submitted-review-section {
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.submitted-review-section h3 {
+  font-size: 0.94rem;
+  margin: 0;
+}
+
+.submitted-crew-list {
+  display: grid;
+  gap: 8px;
+}
+
+.submitted-crew-row {
+  align-items: center;
+  background: var(--panel-soft);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 8px 10px;
+}
+
+.submitted-crew-row span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.submitted-crew-row span,
+.submitted-crew-row strong {
+  overflow-wrap: anywhere;
+}
+
+.submitted-note-block {
+  display: grid;
+  gap: 4px;
+}
+
+.submitted-note-block span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.submitted-note-block p {
+  background: var(--panel-soft);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: #dce7ef;
+  margin: 0;
+  min-height: 40px;
+  overflow-wrap: anywhere;
+  padding: 8px 10px;
 }
 
 .submitted-entry-table {
@@ -1371,6 +1506,16 @@ a.daily-report-procore-status:hover {
   color: var(--muted);
   cursor: not-allowed;
   opacity: 0.65;
+}
+
+.auth-text-button {
+  justify-self: center;
+}
+
+.compact-action {
+  font-size: 0.82rem;
+  min-height: 34px;
+  padding: 6px 9px;
 }
 
 .allocation-grid {
@@ -1811,6 +1956,30 @@ a.daily-report-procore-status:hover {
   width: 100%;
 }
 
+.password-reset-code-panel {
+  background: #102735;
+  border: 1px solid #2f6f78;
+  border-radius: 8px;
+  display: grid;
+  gap: 5px;
+  padding: 10px;
+}
+
+.password-reset-code-panel span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.password-reset-code-panel strong {
+  color: #d7fbff;
+  font-size: 1.25rem;
+  letter-spacing: 0.08em;
+}
+
+.password-reset-code-panel small {
+  color: #b7cad6;
+}
+
 .admin-user-list {
   display: grid;
   gap: 8px;
@@ -1908,6 +2077,11 @@ a.daily-report-procore-status:hover {
   box-shadow: inset 3px 0 0 #2bb8c5;
 }
 
+.matrix-row.quantity-overrun-row {
+  background: #241d14;
+  box-shadow: inset 3px 0 0 #f0b35a;
+}
+
 .matrix-row:last-child {
   border-bottom: 0;
 }
@@ -1921,6 +2095,11 @@ a.daily-report-procore-status:hover {
 
 .matrix-row.worked-row .matrix-code {
   background: #122633;
+}
+
+.matrix-row.quantity-overrun-row .matrix-code {
+  background: #241d14;
+  color: #ffd89e;
 }
 
 .matrix-name,
@@ -2397,6 +2576,13 @@ a.daily-report-procore-status:hover {
 
 .mobile-pay-item-inputs .field-group {
   margin-bottom: 0;
+}
+
+.quantity-overrun-note {
+  color: var(--warning-text);
+  display: block;
+  font-size: 0.78rem;
+  margin-top: 5px;
 }
 
 .matrix-footer {
@@ -3101,6 +3287,10 @@ a.daily-report-procore-status:hover {
     width: 100%;
   }
 
+  .mobile-install-prompt {
+    display: flex;
+  }
+
   .tab-button {
     overflow: hidden;
   }
@@ -3423,7 +3613,8 @@ a.daily-report-procore-status:hover {
   .job-image-section-heading,
   .job-image-section-actions,
   .job-image-card,
-  .job-image-history-row {
+  .job-image-history-row,
+  .job-image-retry-queue {
     align-items: stretch;
     grid-template-columns: 1fr;
   }
@@ -3436,7 +3627,12 @@ a.daily-report-procore-status:hover {
     justify-content: stretch;
   }
 
+  .job-image-retry-queue {
+    flex-direction: column;
+  }
+
   .job-image-section-actions .text-button,
+  .job-image-retry-queue .primary-button,
   .job-image-history-row .secondary-button {
     width: 100%;
   }
@@ -3580,6 +3776,15 @@ a.daily-report-procore-status:hover {
 
   .submitted-day-summary {
     grid-template-columns: 1fr;
+  }
+
+  .submitted-review-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .submitted-crew-row {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .submitted-entry-table {
