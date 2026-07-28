@@ -1,6 +1,7 @@
 import { getProcoreConfig } from "@/lib/procore/config";
 import { getProcoreIntegrationAccessToken } from "@/lib/procore/session";
 import { buildDailyReportPdf, buildDailyReportPdfFileName } from "@/lib/daily-report-pdf";
+import { getSql } from "@/lib/db";
 import type { Project } from "@/lib/procore/types";
 
 const DEFAULT_FOLDERS_PATH = "/rest/v1.0/folders";
@@ -8,6 +9,8 @@ const DEFAULT_PROCORE_WEB_BASE_URL = "https://us02.procore.com";
 const DEFAULT_PROCORE_RATE_LIMIT_MAX_RETRIES = 2;
 const DEFAULT_PROCORE_RATE_LIMIT_MAX_WAIT_MS = 8_000;
 const DEFAULT_PROCORE_JOB_IMAGE_UPLOAD_DELAY_MS = 1_250;
+
+let procoreDocumentFolderCacheReady = false;
 
 type DailyReportUploadPayload = {
   project: Project;
@@ -89,6 +92,12 @@ type ProcoreDirectUpload = {
   fields: Record<string, string>;
 };
 
+type ProcoreDocumentFolderCacheRow = {
+  folder_id: string;
+  folder_name: string;
+  parent_folder_id: string | null;
+};
+
 type UploadDailyReportResult = {
   companyId: string;
   fileName: string;
@@ -144,7 +153,7 @@ export async function uploadDailyReportToProcore(payload: DailyReportUploadPaylo
     throw new Error("The selected project does not have a Procore project ID for document upload.");
   }
 
-  const folder = await findOrCreateProjectFolderPath({
+  let folder = await findOrCreateProjectFolderPath({
     accessToken,
     baseUrl: config.baseUrl,
     companyId: config.companyId,
@@ -158,16 +167,48 @@ export async function uploadDailyReportToProcore(payload: DailyReportUploadPaylo
 
   const fileName = buildDailyReportPdfFileName(payload.project.name, payload.date);
   const pdf = await buildDailyReportPdf(payload);
-  const uploadResult = await uploadProjectFileWithDirectUpload({
-    accessToken,
-    baseUrl: config.baseUrl,
-    companyId: config.companyId,
-    projectId: procoreProjectId,
-    folderId: folder.id,
-    fileName,
-    file: pdf,
-    contentType: "application/pdf"
-  });
+  let uploadResult: Awaited<ReturnType<typeof uploadProjectFileWithDirectUpload>>;
+
+  try {
+    uploadResult = await uploadProjectFileWithDirectUpload({
+      accessToken,
+      baseUrl: config.baseUrl,
+      companyId: config.companyId,
+      projectId: procoreProjectId,
+      folderId: folder.id,
+      fileName,
+      file: pdf,
+      contentType: "application/pdf"
+    });
+  } catch (error) {
+    if (!isPossiblyStaleCachedFolderError(error)) {
+      throw error;
+    }
+
+    await clearCachedProjectDocumentFolders(config.companyId, procoreProjectId);
+    folder = await findOrCreateProjectFolderPath({
+      accessToken,
+      baseUrl: config.baseUrl,
+      companyId: config.companyId,
+      folderPath,
+      projectId: procoreProjectId
+    });
+
+    if (!folder.id) {
+      throw new Error("Unable to resolve the Procore Daily Reports folder after refreshing the folder cache.");
+    }
+
+    uploadResult = await uploadProjectFileWithDirectUpload({
+      accessToken,
+      baseUrl: config.baseUrl,
+      companyId: config.companyId,
+      projectId: procoreProjectId,
+      folderId: folder.id,
+      fileName,
+      file: pdf,
+      contentType: "application/pdf"
+    });
+  }
 
   return {
     companyId: config.companyId,
@@ -206,7 +247,7 @@ export async function uploadJobImagesToProcore({
     throw new Error("The selected project does not have a Procore project ID for image upload.");
   }
 
-  const folder = await findOrCreateProjectFolderPath({
+  let folder = await findOrCreateProjectFolderPath({
     accessToken,
     baseUrl: config.baseUrl,
     companyId: config.companyId,
@@ -218,7 +259,7 @@ export async function uploadJobImagesToProcore({
     throw new Error("Unable to resolve the Procore Job Images folder.");
   }
 
-  const folderUrl = buildProjectDocumentsFolderUrl(config.companyId, procoreProjectId, folder.id);
+  let folderUrl = buildProjectDocumentsFolderUrl(config.companyId, procoreProjectId, folder.id);
   const uploads: JobImageUploadResult[] = [];
   const uploadDelayMs = readPositiveIntegerEnv("PROCORE_JOB_IMAGE_UPLOAD_DELAY_MS", DEFAULT_PROCORE_JOB_IMAGE_UPLOAD_DELAY_MS);
 
@@ -236,16 +277,49 @@ export async function uploadJobImagesToProcore({
     });
 
     try {
-      const uploadResult = await uploadProjectFileWithDirectUpload({
-        accessToken,
-        baseUrl: config.baseUrl,
-        companyId: config.companyId,
-        contentType: image.contentType,
-        file: image.file,
-        fileName,
-        folderId: folder.id,
-        projectId: procoreProjectId
-      });
+      let uploadResult: Awaited<ReturnType<typeof uploadProjectFileWithDirectUpload>>;
+
+      try {
+        uploadResult = await uploadProjectFileWithDirectUpload({
+          accessToken,
+          baseUrl: config.baseUrl,
+          companyId: config.companyId,
+          contentType: image.contentType,
+          file: image.file,
+          fileName,
+          folderId: folder.id,
+          projectId: procoreProjectId
+        });
+      } catch (error) {
+        if (!isPossiblyStaleCachedFolderError(error)) {
+          throw error;
+        }
+
+        await clearCachedProjectDocumentFolders(config.companyId, procoreProjectId);
+        folder = await findOrCreateProjectFolderPath({
+          accessToken,
+          baseUrl: config.baseUrl,
+          companyId: config.companyId,
+          folderPath,
+          projectId: procoreProjectId
+        });
+
+        if (!folder.id) {
+          throw new Error("Unable to resolve the Procore Job Images folder after refreshing the folder cache.");
+        }
+
+        folderUrl = buildProjectDocumentsFolderUrl(config.companyId, procoreProjectId, folder.id);
+        uploadResult = await uploadProjectFileWithDirectUpload({
+          accessToken,
+          baseUrl: config.baseUrl,
+          companyId: config.companyId,
+          contentType: image.contentType,
+          file: image.file,
+          fileName,
+          folderId: folder.id,
+          projectId: procoreProjectId
+        });
+      }
 
       uploads.push({
         caption: image.caption,
@@ -317,13 +391,43 @@ async function findOrCreateProjectFolderPath({
 }) {
   let parentFolderId: string | undefined;
   let folder: ProcoreFolder | null = null;
+  const resolvedPath: string[] = [];
 
   for (const folderName of folderPath) {
+    const normalizedFolderName = normalizeFolderName(folderName);
+
+    if (!normalizedFolderName) {
+      continue;
+    }
+
+    resolvedPath.push(normalizedFolderName);
+    const folderPathText = buildFolderPathText(resolvedPath);
+    const cachedFolder = await readCachedProjectDocumentFolder({
+      companyId,
+      folderPath: folderPathText,
+      parentFolderId,
+      projectId
+    });
+
+    if (cachedFolder) {
+      folder = cachedFolder;
+      parentFolderId = folder.id;
+      continue;
+    }
+
     folder = await findOrCreateProjectFolder({
       accessToken,
       baseUrl,
       companyId,
-      folderName,
+      folderName: normalizedFolderName,
+      parentFolderId,
+      projectId
+    });
+
+    await writeCachedProjectDocumentFolder({
+      companyId,
+      folder,
+      folderPath: folderPathText,
       parentFolderId,
       projectId
     });
@@ -336,6 +440,168 @@ async function findOrCreateProjectFolderPath({
       name: ""
     }
   );
+}
+
+async function readCachedProjectDocumentFolder({
+  companyId,
+  folderPath,
+  parentFolderId,
+  projectId
+}: {
+  companyId: string;
+  folderPath: string;
+  parentFolderId?: string;
+  projectId: string;
+}) {
+  const sql = getSql();
+
+  if (!sql) {
+    return null;
+  }
+
+  await ensureProcoreDocumentFolderCacheTable();
+
+  const rows = (await sql`
+    select folder_id, folder_name, parent_folder_id
+    from procore_document_folder_cache
+    where company_id = ${companyId}
+      and project_id = ${projectId}
+      and folder_path = ${folderPath}
+    limit 1
+  `) as ProcoreDocumentFolderCacheRow[];
+  const row = rows[0];
+
+  if (!row?.folder_id || !row.folder_name) {
+    return null;
+  }
+
+  const expectedParentFolderId = parentFolderId ?? null;
+
+  if ((row.parent_folder_id ?? null) !== expectedParentFolderId) {
+    await deleteCachedProjectDocumentFolder(companyId, projectId, folderPath);
+    return null;
+  }
+
+  return {
+    id: row.folder_id,
+    name: row.folder_name,
+    parentId: row.parent_folder_id
+  } satisfies ProcoreFolder;
+}
+
+async function writeCachedProjectDocumentFolder({
+  companyId,
+  folder,
+  folderPath,
+  parentFolderId,
+  projectId
+}: {
+  companyId: string;
+  folder: ProcoreFolder;
+  folderPath: string;
+  parentFolderId?: string;
+  projectId: string;
+}) {
+  const sql = getSql();
+
+  if (!sql || !folder.id || !folder.name) {
+    return false;
+  }
+
+  await ensureProcoreDocumentFolderCacheTable();
+
+  await sql`
+    insert into procore_document_folder_cache (
+      company_id,
+      project_id,
+      folder_path,
+      folder_id,
+      folder_name,
+      parent_folder_id,
+      updated_at
+    )
+    values (
+      ${companyId},
+      ${projectId},
+      ${folderPath},
+      ${folder.id},
+      ${folder.name},
+      ${parentFolderId ?? null},
+      now()
+    )
+    on conflict (company_id, project_id, folder_path) do update
+    set folder_id = excluded.folder_id,
+        folder_name = excluded.folder_name,
+        parent_folder_id = excluded.parent_folder_id,
+        updated_at = now()
+  `;
+
+  return true;
+}
+
+async function deleteCachedProjectDocumentFolder(companyId: string, projectId: string, folderPath: string) {
+  const sql = getSql();
+
+  if (!sql) {
+    return false;
+  }
+
+  await ensureProcoreDocumentFolderCacheTable();
+
+  await sql`
+    delete from procore_document_folder_cache
+    where company_id = ${companyId}
+      and project_id = ${projectId}
+      and folder_path = ${folderPath}
+  `;
+
+  return true;
+}
+
+async function clearCachedProjectDocumentFolders(companyId: string, projectId: string) {
+  const sql = getSql();
+
+  if (!sql) {
+    return false;
+  }
+
+  await ensureProcoreDocumentFolderCacheTable();
+
+  await sql`
+    delete from procore_document_folder_cache
+    where company_id = ${companyId}
+      and project_id = ${projectId}
+  `;
+
+  return true;
+}
+
+async function ensureProcoreDocumentFolderCacheTable() {
+  const sql = getSql();
+
+  if (!sql || procoreDocumentFolderCacheReady) {
+    return;
+  }
+
+  await sql`
+    create table if not exists procore_document_folder_cache (
+      company_id text not null,
+      project_id text not null,
+      folder_path text not null,
+      folder_id text not null,
+      folder_name text not null,
+      parent_folder_id text,
+      updated_at timestamptz not null default now(),
+      primary key (company_id, project_id, folder_path)
+    )
+  `;
+
+  await sql`
+    create index if not exists procore_document_folder_cache_project_idx
+    on procore_document_folder_cache (company_id, project_id)
+  `;
+
+  procoreDocumentFolderCacheReady = true;
 }
 
 async function findOrCreateProjectFolder({
@@ -970,6 +1236,14 @@ function sanitizeFileName(value: string) {
   return value.replace(/[<>:"/\\|?*\u0000-\u001F]/g, "_");
 }
 
+function normalizeFolderName(value: string) {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+function buildFolderPathText(folderPath: string[]) {
+  return folderPath.map(normalizeFolderName).filter(Boolean).join("/");
+}
+
 function firstString(...values: unknown[]) {
   for (const value of values) {
     if (typeof value === "string" && value.trim()) {
@@ -1005,6 +1279,14 @@ function isRecoverableProcoreShapeError(error: unknown) {
 
 function isDuplicateNameError(error: unknown) {
   return error instanceof ProcoreDocumentsError && error.message.toLowerCase().includes("has already been taken");
+}
+
+function isPossiblyStaleCachedFolderError(error: unknown) {
+  return (
+    error instanceof ProcoreDocumentsError &&
+    [400, 404, 422].includes(error.status) &&
+    error.stage?.includes("create project file")
+  );
 }
 
 function formatRetryAfter(value: string) {
