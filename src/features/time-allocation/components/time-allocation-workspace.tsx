@@ -29,6 +29,7 @@ import {
   UploadCloud,
   UserPlus,
   Users,
+  type LucideIcon,
   X
 } from "lucide-react";
 import { IconLabel } from "@/components/icon-label";
@@ -4083,6 +4084,34 @@ export function TimeAllocationWorkspace() {
             <h1>Crew Time Allocation</h1>
           </div>
         </div>
+        <nav className="primary-nav" aria-label="Primary navigation">
+          <button
+            className={viewMode === "entry" ? "tab-button active" : "tab-button"}
+            onClick={() => changeViewMode("entry")}
+            type="button"
+          >
+            <Edit3 aria-hidden="true" size={16} />
+            Entry
+          </button>
+          <button
+            className={viewMode === "calendar" ? "tab-button active" : "tab-button"}
+            onClick={() => changeViewMode("calendar")}
+            type="button"
+          >
+            <CalendarDays aria-hidden="true" size={16} />
+            Calendar
+          </button>
+          {currentUser.role === "project_manager" || currentUser.role === "admin" ? (
+            <button
+              className={viewMode === "reports" ? "tab-button active" : "tab-button"}
+              onClick={() => changeViewMode("reports")}
+              type="button"
+            >
+              <BarChart3 aria-hidden="true" size={16} />
+              Reports
+            </button>
+          ) : null}
+        </nav>
         <div className="header-actions">
           <span className="user-chip">
             {formatUserName(currentUser)} - {formatRole(currentUser.role)}
@@ -4221,33 +4250,6 @@ export function TimeAllocationWorkspace() {
 
       <div className="workspace">
         <aside className="panel">
-          <div className="view-tabs" aria-label="View">
-            <button
-              className={viewMode === "entry" ? "tab-button active" : "tab-button"}
-              onClick={() => changeViewMode("entry")}
-              type="button"
-            >
-              Entry
-            </button>
-            <button
-              className={viewMode === "calendar" ? "tab-button active" : "tab-button"}
-              onClick={() => changeViewMode("calendar")}
-              type="button"
-            >
-              <CalendarDays aria-hidden="true" size={16} />
-              Calendar
-            </button>
-            {currentUser.role === "project_manager" || currentUser.role === "admin" ? (
-              <button
-                className={viewMode === "reports" ? "tab-button active" : "tab-button"}
-                onClick={() => changeViewMode("reports")}
-                type="button"
-              >
-                <BarChart3 aria-hidden="true" size={16} />
-                Reports
-              </button>
-            ) : null}
-          </div>
           <h2>Job Setup</h2>
           <div className="field-group">
             <label htmlFor="project">Job</label>
@@ -4759,6 +4761,16 @@ export function TimeAllocationWorkspace() {
 
         {viewMode === "entry" ? (
           <section className="allocation-grid entry-allocation-grid">
+            <PageHeader
+              icon={Edit3}
+              kicker="Entry"
+              meta={[
+                selectedProject?.name ?? "No job selected",
+                formatDate(workDate),
+                selectedProjectUsesPayItems ? "Pay items" : "Daily report only"
+              ]}
+              title={selectedProjectUsesPayItems ? "Production Entry" : "Field Daily"}
+            />
             <div className="summary-strip">
               <div className="metric">
                 <span>Selected Job</span>
@@ -5398,9 +5410,15 @@ export function TimeAllocationWorkspace() {
           </section>
         ) : viewMode === "calendar" ? (
           <section className="allocation-grid">
+            <PageHeader
+              icon={CalendarDays}
+              kicker="Calendar"
+              meta={[calendarUseMyProjects ? "My Projects" : "Selected jobs", `Week of ${formatDate(calendarWeekStart)}`]}
+              title="Project Calendar"
+            />
             <div className="panel">
               <div className="panel-heading">
-                <h2>Weekly Status Calendar</h2>
+                <h2>Weekly Status</h2>
               </div>
               <WeeklyStatusReport
                 dailyReportUploadsByKey={dailyReportUploadsByKey}
@@ -5514,6 +5532,35 @@ function DailyStatusStrip({
         tone={uploadedImageCount > 0 ? "success" : "neutral"}
         value={uploadedImageCount > 0 ? `${uploadedImageCount} uploaded` : "None"}
       />
+    </div>
+  );
+}
+
+function PageHeader({
+  icon: Icon,
+  kicker,
+  meta,
+  title
+}: {
+  icon: LucideIcon;
+  kicker: string;
+  meta: string[];
+  title: string;
+}) {
+  return (
+    <div className="page-header">
+      <div className="page-title-group">
+        <div className="page-title-kicker">
+          <Icon aria-hidden="true" size={17} />
+          <span>{kicker}</span>
+        </div>
+        <h2>{title}</h2>
+      </div>
+      <div className="page-header-meta">
+        {meta.map((item, index) => (
+          <span key={`${item}-${index}`}>{item}</span>
+        ))}
+      </div>
     </div>
   );
 }
@@ -6976,6 +7023,11 @@ function ReportsView({
       label: project.name
     }))
   ];
+  const selectedReportJobLabel = reportJobPickerOptions.find((option) => option.value === reportProjectId)?.label ?? "All Jobs";
+  const reportDateRangeLabel =
+    reportStartDate || reportEndDate
+      ? `${reportStartDate ? formatDate(reportStartDate) : "Any start"} - ${reportEndDate ? formatDate(reportEndDate) : "Any end"}`
+      : "All dates";
   const filteredEntries = useMemo(
     () =>
       entries.filter((entry) => {
@@ -7174,7 +7226,13 @@ function ReportsView({
   }
 
   return (
-    <section className="allocation-grid">
+    <section className="allocation-grid reports-page">
+      <PageHeader
+        icon={BarChart3}
+        kicker="Reports"
+        meta={[getReportTitle(reportMode), selectedReportJobLabel, reportDateRangeLabel]}
+        title="Performance Reports"
+      />
       <div className="panel">
         <div className="panel-heading">
           <h2>{getReportTitle(reportMode)}</h2>

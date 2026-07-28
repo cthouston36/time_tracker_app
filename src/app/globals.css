@@ -96,8 +96,9 @@ button {
   align-items: center;
   background: #0e1720;
   border-bottom: 1px solid var(--line);
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(280px, auto) minmax(260px, 1fr);
   min-height: 64px;
   padding: 14px clamp(16px, 4vw, 40px);
 }
@@ -154,7 +155,28 @@ button {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+  justify-content: flex-end;
   min-width: 0;
+}
+
+.primary-nav {
+  align-items: center;
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  display: grid;
+  gap: 4px;
+  grid-auto-flow: column;
+  justify-self: center;
+  padding: 4px;
+}
+
+.primary-nav .tab-button {
+  border-radius: 999px;
+  min-height: 36px;
+  min-width: 104px;
+  padding: 7px 14px;
+  white-space: nowrap;
 }
 
 .training-link {
@@ -1559,6 +1581,62 @@ a.daily-report-procore-status:hover {
 .allocation-grid {
   display: grid;
   gap: 16px;
+}
+
+.page-header {
+  align-items: center;
+  background: linear-gradient(135deg, rgba(34, 166, 179, 0.12), rgba(21, 32, 43, 0.76));
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 14px 16px;
+}
+
+.page-title-group {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.page-title-kicker {
+  align-items: center;
+  color: #b8e7ec;
+  display: inline-flex;
+  font-size: 0.72rem;
+  font-weight: 800;
+  gap: 6px;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.page-title-group h2 {
+  font-size: 1.22rem;
+  line-height: 1.2;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.page-header-meta {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.page-header-meta span {
+  background: rgba(14, 23, 32, 0.72);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: #c8d4df;
+  font-size: 0.78rem;
+  min-width: 0;
+  padding: 6px 9px;
+  overflow-wrap: anywhere;
 }
 
 .panel-heading {
@@ -3251,8 +3329,8 @@ a.daily-report-procore-status:hover {
 
 @media (max-width: 860px) {
   .top-bar {
-    align-items: flex-start;
-    flex-direction: column;
+    align-items: stretch;
+    grid-template-columns: 1fr;
     gap: 10px;
     padding: 14px 12px;
     width: 100%;
@@ -3266,8 +3344,8 @@ a.daily-report-procore-status:hover {
   }
 
   .brand-block {
-    align-items: flex-start;
-    flex-direction: column;
+    align-items: center;
+    flex-direction: row;
     gap: 8px;
   }
 
@@ -3280,6 +3358,19 @@ a.daily-report-procore-status:hover {
     align-items: stretch;
     flex-direction: column;
     width: 100%;
+  }
+
+  .primary-nav {
+    border-radius: 8px;
+    grid-auto-flow: row;
+    grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+    justify-self: stretch;
+    width: 100%;
+  }
+
+  .primary-nav .tab-button {
+    border-radius: 6px;
+    min-width: 0;
   }
 
   .header-actions > *,
@@ -3318,6 +3409,17 @@ a.daily-report-procore-status:hover {
     min-width: 0;
     overflow: hidden;
     padding: 12px;
+    width: 100%;
+  }
+
+  .page-header {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 12px;
+  }
+
+  .page-header-meta {
+    justify-content: flex-start;
     width: 100%;
   }
 
