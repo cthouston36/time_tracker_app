@@ -4403,17 +4403,6 @@ export function TimeAllocationWorkspace() {
             </div>
           </div>
 
-          <div className={dayIsSubmitted ? "status-card submitted" : "status-card"}>
-            <strong>{dayIsSubmitted ? "Submitted" : "Draft"}</strong>
-            {dayIsSubmitted && currentDaySubmission.submittedByName && currentDaySubmission.submittedAt ? (
-              <span>
-                Submitted by {currentDaySubmission.submittedByName} on {formatDate(currentDaySubmission.submittedAt)}
-              </span>
-            ) : (
-              <span>Entries can be edited until the day is submitted.</span>
-            )}
-          </div>
-
           <div className="crew-setup">
             <button
               aria-controls="crew-setup-body"

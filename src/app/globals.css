@@ -1849,30 +1849,6 @@ a.daily-report-procore-status:hover {
   color: #ffc7d1;
 }
 
-.status-card {
-  background: var(--field);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  display: grid;
-  gap: 4px;
-  margin-top: 14px;
-  padding: 12px;
-}
-
-.status-card strong {
-  color: var(--foreground);
-}
-
-.status-card span {
-  color: var(--muted);
-  font-size: 0.84rem;
-}
-
-.status-card.submitted {
-  background: #0f2c22;
-  border-color: #245f45;
-}
-
 .sync-summary {
   background: #0f2c22;
   border: 1px solid #245f45;
