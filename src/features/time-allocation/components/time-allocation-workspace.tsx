@@ -772,6 +772,16 @@ export function TimeAllocationWorkspace() {
         .sort((a, b) => b.date.localeCompare(a.date) || a.project.name.localeCompare(b.project.name)),
     [dailyReportUploadsByKey, dailyReportsByKey, projects]
   );
+  const showDailyReportDetails = Boolean(
+    currentDailyReport ||
+      dailyReportUploadNotice ||
+      uploadingDailyReport ||
+      downloadingDailyReportPdf ||
+      dailyReportUploadRetryQueue.length > 0
+  );
+  const showJobImageDetails = Boolean(
+    jobImageQueue.length > 0 || currentJobImageUploads.length > 0 || jobImageNotice || uploadingJobImages
+  );
   const dayIsSubmitted = currentDaySubmission.status === "submitted";
   const currentUserAutoMyJobIds = useMemo(
     () => (currentUser ? getDefaultMyJobIdsForUser(currentUser, projects) : []),
@@ -5108,6 +5118,42 @@ export function TimeAllocationWorkspace() {
               </div>
             ) : null}
 
+            <input
+              ref={jobImageInputRef}
+              accept="image/*"
+              className="job-image-file-input"
+              multiple
+              type="file"
+              onChange={(event) => void addJobImages(event.target.files)}
+            />
+            {!showDailyReportDetails || !showJobImageDetails ? (
+              <div className="wrap-up-action-strip" aria-label="Daily wrap-up actions">
+                {!showDailyReportDetails ? (
+                  <button
+                    className="primary-button prominent-action"
+                    disabled={!selectedProject}
+                    onClick={openDailyReportModal}
+                    type="button"
+                  >
+                    <Edit3 aria-hidden="true" size={18} />
+                    Create Daily Report
+                  </button>
+                ) : null}
+                {!showJobImageDetails ? (
+                  <button
+                    className="secondary-button"
+                    disabled={!selectedProject || uploadingJobImages || jobImageDailyLimitReached}
+                    onClick={() => jobImageInputRef.current?.click()}
+                    type="button"
+                  >
+                    <UploadCloud aria-hidden="true" size={18} />
+                    Add Images
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+
+            {showDailyReportDetails ? (
             <div className="panel">
               <div className="panel-heading">
                 <h2>Daily Report</h2>
@@ -5177,11 +5223,7 @@ export function TimeAllocationWorkspace() {
                     </>
                   )}
                 </div>
-              ) : (
-                <EmptyState title="No daily report saved">
-                  Create a daily report before downloading a PDF or uploading to Procore.
-                </EmptyState>
-              )}
+              ) : null}
               {currentDailyReport ? (
                 <div className="daily-report-upload-status">
                   {dailyReportUploadNotice ? (
@@ -5243,19 +5285,13 @@ export function TimeAllocationWorkspace() {
                 </div>
               ) : null}
             </div>
+            ) : null}
 
+            {showJobImageDetails ? (
             <div className="panel job-images-panel">
               <div className="panel-heading">
                 <h2>Job Images</h2>
                 <div className="panel-heading-actions">
-                  <input
-                    ref={jobImageInputRef}
-                    accept="image/*"
-                    className="job-image-file-input"
-                    multiple
-                    type="file"
-                    onChange={(event) => void addJobImages(event.target.files)}
-                  />
                   <button
                     className="secondary-button"
                     disabled={!selectedProject || uploadingJobImages || jobImageDailyLimitReached}
@@ -5369,9 +5405,7 @@ export function TimeAllocationWorkspace() {
                     </div>
                   ) : null}
                 </div>
-              ) : (
-                <EmptyState title="No images queued">Added photos will stay here until they are uploaded to Procore.</EmptyState>
-              )}
+              ) : null}
               <div className={jobImageHistoryExpanded ? "job-image-history expanded" : "job-image-history"}>
                 <button
                   aria-expanded={jobImageHistoryExpanded}
@@ -5431,6 +5465,7 @@ export function TimeAllocationWorkspace() {
                 ) : null}
               </div>
             </div>
+            ) : null}
 
             <div className="mobile-sticky-action-bar" aria-label="Entry actions">
               {selectedProjectUsesPayItems ? (

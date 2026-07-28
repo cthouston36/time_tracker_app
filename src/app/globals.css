@@ -1193,6 +1193,18 @@ a.daily-report-procore-status:hover {
   width: 1px;
 }
 
+.wrap-up-action-strip {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.wrap-up-action-strip button {
+  min-width: 190px;
+}
+
 .job-images-panel {
   display: grid;
   gap: 12px;
@@ -3499,6 +3511,17 @@ a.daily-report-procore-status:hover {
 }
 
 @media (max-width: 860px) {
+  .wrap-up-action-strip {
+    align-items: stretch;
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .wrap-up-action-strip button {
+    min-width: 0;
+    width: 100%;
+  }
+
   .top-bar {
     align-items: stretch;
     grid-template-columns: 1fr;
@@ -4830,8 +4853,8 @@ input[type="date"] {
 }
 
 .page-header {
-  background: linear-gradient(135deg, #ddf4ff 0%, #ffffff 72%);
-  border-color: #80ccff;
+  background: #ffffff;
+  border-color: #8c959f;
 }
 
 .page-header-meta span,
