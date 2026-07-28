@@ -18,6 +18,7 @@ import {
   KeyRound,
   ListChecks,
   LogOut,
+  Maximize2,
   PlugZap,
   RefreshCw,
   RotateCcw,
@@ -569,6 +570,7 @@ export function TimeAllocationWorkspace() {
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [showOnlyMyProjects, setShowOnlyMyProjects] = useState(false);
   const [showWorkedPayItemsOnly, setShowWorkedPayItemsOnly] = useState(false);
+  const [matrixFullscreenOpen, setMatrixFullscreenOpen] = useState(false);
   const [myProjectsEditorOpen, setMyProjectsEditorOpen] = useState(false);
   const [crewSetupExpanded, setCrewSetupExpanded] = useState(false);
   const [mobileSelectedPayItemId, setMobileSelectedPayItemId] = useState("");
@@ -4137,6 +4139,86 @@ export function TimeAllocationWorkspace() {
         />
       ) : null}
 
+      {matrixFullscreenOpen && selectedProject && selectedProjectUsesPayItems ? (
+        <div className="modal-backdrop matrix-fullscreen-backdrop" role="presentation">
+          <div aria-modal="true" className="modal-panel matrix-fullscreen-panel" role="dialog">
+            <div className="modal-heading matrix-fullscreen-heading">
+              <div>
+                <h2>Pay Item Entry</h2>
+                <span>
+                  {selectedProject.name} - {formatDate(workDate)}
+                </span>
+              </div>
+              <button
+                aria-label="Close expanded pay item matrix"
+                className="icon-button"
+                onClick={() => setMatrixFullscreenOpen(false)}
+                type="button"
+              >
+                <X aria-hidden="true" size={18} />
+              </button>
+            </div>
+            <div className="matrix-fullscreen-toolbar">
+              <label className="entry-filter-toggle">
+                <input
+                  checked={showWorkedPayItemsOnly}
+                  disabled={!selectedProject.payItems.length}
+                  onChange={(event) => setShowWorkedPayItemsOnly(event.target.checked)}
+                  type="checkbox"
+                />
+                <span>Worked items only</span>
+                <small>
+                  {workedPayItemCount}/{selectedProject.payItems.length}
+                </small>
+              </label>
+              <span className="field-note">
+                {draftEntryCount} row{draftEntryCount === 1 ? "" : "s"} ready to save
+              </span>
+            </div>
+            <div className="matrix-fullscreen-body">
+              {displayedPayItems.length > 0 ? (
+                <PayItemMatrix
+                  ariaLabel="Expanded pay item entry matrix"
+                  crewMembers={selectedProjectCrewMembers}
+                  dayIsSubmitted={dayIsSubmitted}
+                  draftsByPayItem={draftsByPayItem}
+                  payItems={displayedPayItems}
+                  remainingQuantitiesByPayItem={remainingQuantitiesByPayItem}
+                  savedEntries={visibleEntries}
+                  variant="fullscreen"
+                  onCrewHoursChange={updateDraftCrewHours}
+                  onCrewToggle={toggleDraftCrewMember}
+                  onDraftChange={updateDraft}
+                  onSplitEvenly={splitDraftCrewHoursEvenly}
+                />
+              ) : (
+                <div className="empty-state">No worked pay items for this job and date yet.</div>
+              )}
+            </div>
+            <div className="matrix-fullscreen-actions">
+              <button
+                className="secondary-button"
+                disabled={Object.keys(draftsByPayItem).length === 0 || dayIsSubmitted}
+                onClick={clearDraftInputs}
+                type="button"
+              >
+                Clear draft inputs
+              </button>
+              <button
+                className="primary-button prominent-action"
+                disabled={draftEntryCount === 0 || dayIsSubmitted}
+                onClick={saveAllocationEntries}
+                type="button"
+              >
+                <Save aria-hidden="true" size={18} />
+                Save entries
+              </button>
+            </div>
+            {entryNotice ? <div className={entryNoticeIsError(entryNotice) ? "inline-alert" : "success-alert"}>{entryNotice}</div> : null}
+          </div>
+        </div>
+      ) : null}
+
       <div className="workspace">
         <aside className="panel">
           <div className="view-tabs" aria-label="View">
@@ -4718,6 +4800,15 @@ export function TimeAllocationWorkspace() {
                       {workedPayItemCount}/{selectedProject?.payItems.length ?? 0}
                     </small>
                   </label>
+                  <button
+                    className="secondary-button matrix-expand-button"
+                    disabled={!selectedProject?.payItems.length || displayedPayItems.length === 0}
+                    onClick={() => setMatrixFullscreenOpen(true)}
+                    type="button"
+                  >
+                    <Maximize2 aria-hidden="true" size={18} />
+                    Expand Matrix
+                  </button>
                 </div>
               </div>
               {!selectedProject?.payItems.length ? <div className="empty-state">No pay items returned for this job.</div> : null}
@@ -4725,79 +4816,19 @@ export function TimeAllocationWorkspace() {
                 <div className="empty-state">No worked pay items for this job and date yet.</div>
               ) : null}
               {selectedProject?.payItems.length && displayedPayItems.length > 0 ? (
-                <div className="pay-item-matrix" role="table" aria-label="Pay item entry matrix">
-                  <div className="matrix-header" role="row">
-                    <span>Code</span>
-                    <span>Pay Item</span>
-                    <span className="matrix-quantity-header">Remaining QTY</span>
-                    <span className="matrix-quantity-header">Saved Hrs</span>
-                    <span className="matrix-quantity-header">Saved Qty</span>
-                    <span>Crew</span>
-                    <span>Hours</span>
-                    <span>Quantity</span>
-                  </div>
-                  {displayedPayItems.map((item) => {
-                    const draft = draftsByPayItem[item.id];
-                    const savedEntry = visibleEntries.find((entry) => entry.payItemId === item.id);
-                    const rowHasWork = Boolean(savedEntry) || draftHasAnyInput(draft);
-                    const remainingQuantity = remainingQuantitiesByPayItem[item.id] ?? item.budgetedQuantity;
-                    const rowHasQuantityOverrun = draftQuantityExceedsRemaining(draft, remainingQuantity);
-
-                    return (
-                      <div
-                        className={`${rowHasWork ? "matrix-row worked-row" : "matrix-row"}${rowHasQuantityOverrun ? " quantity-overrun-row" : ""}`}
-                        key={item.id}
-                        role="row"
-                      >
-                        <span className="matrix-code" data-label="Code">{item.code}</span>
-                        <span className="matrix-name" data-label="Pay Item">{item.name}</span>
-                        <span className="matrix-budget" data-label="Remaining QTY" title="Remaining quantity before this date">
-                          {formatPayItemQuantity(remainingQuantity)} {item.unitOfMeasure.toUpperCase()}
-                        </span>
-                        <span className="matrix-saved" data-label="Saved Hrs">{savedEntry ? savedEntry.hours.toFixed(2) : "-"}</span>
-                        <span className="matrix-saved" data-label="Saved Qty">{savedEntry ? savedEntry.quantityCompleted.toFixed(2) : "-"}</span>
-                        <CrewAllocationEditor
-                          crewMembers={selectedProjectCrewMembers}
-                          dayIsSubmitted={dayIsSubmitted}
-                          draft={draft}
-                          payItemId={item.id}
-                          savedEntry={savedEntry}
-                          onCrewHoursChange={updateDraftCrewHours}
-                          onCrewToggle={toggleDraftCrewMember}
-                          onSplitEvenly={splitDraftCrewHoursEvenly}
-                        />
-                        <input
-                          aria-label={`Hours for ${item.code}`}
-                          className="number-entry"
-                          data-label="Hours"
-                          disabled={dayIsSubmitted}
-                          inputMode="decimal"
-                          min="0"
-                          placeholder="Hours"
-                          step="0.25"
-                          type="number"
-                          value={draft?.hours ?? ""}
-                          onChange={(event) => updateDraft(item.id, "hours", event.target.value)}
-                          onWheel={(event) => event.currentTarget.blur()}
-                        />
-                        <input
-                          aria-label={`Quantity for ${item.code}`}
-                          className="number-entry"
-                          data-label="Quantity"
-                          disabled={dayIsSubmitted}
-                          inputMode="decimal"
-                          min="0"
-                          placeholder="Quantity"
-                          step="0.01"
-                          type="number"
-                          value={draft?.quantity ?? ""}
-                          onChange={(event) => updateDraft(item.id, "quantity", event.target.value)}
-                          onWheel={(event) => event.currentTarget.blur()}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
+                <PayItemMatrix
+                  ariaLabel="Pay item entry matrix"
+                  crewMembers={selectedProjectCrewMembers}
+                  dayIsSubmitted={dayIsSubmitted}
+                  draftsByPayItem={draftsByPayItem}
+                  payItems={displayedPayItems}
+                  remainingQuantitiesByPayItem={remainingQuantitiesByPayItem}
+                  savedEntries={visibleEntries}
+                  onCrewHoursChange={updateDraftCrewHours}
+                  onCrewToggle={toggleDraftCrewMember}
+                  onDraftChange={updateDraft}
+                  onSplitEvenly={splitDraftCrewHoursEvenly}
+                />
               ) : null}
               {displayedPayItems.length && mobileSelectedPayItem ? (
                 <MobilePayItemEntry
@@ -6408,6 +6439,114 @@ function MobileOptionPicker({
           </div>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function PayItemMatrix({
+  ariaLabel,
+  crewMembers,
+  dayIsSubmitted,
+  draftsByPayItem,
+  payItems,
+  remainingQuantitiesByPayItem,
+  savedEntries,
+  variant,
+  onCrewHoursChange,
+  onCrewToggle,
+  onDraftChange,
+  onSplitEvenly
+}: {
+  ariaLabel: string;
+  crewMembers: CrewMember[];
+  dayIsSubmitted: boolean;
+  draftsByPayItem: DraftsByPayItem;
+  payItems: Project["payItems"];
+  remainingQuantitiesByPayItem: Record<string, number>;
+  savedEntries: AllocationEntry[];
+  variant?: "fullscreen";
+  onCrewHoursChange: (payItemId: string, crewMemberId: string, value: string) => void;
+  onCrewToggle: (payItemId: string, crewMemberId: string, checked: boolean) => void;
+  onDraftChange: (payItemId: string, field: "hours" | "quantity", value: string) => void;
+  onSplitEvenly: (payItemId: string) => void;
+}) {
+  return (
+    <div
+      aria-label={ariaLabel}
+      className={variant === "fullscreen" ? "pay-item-matrix pay-item-matrix-fullscreen" : "pay-item-matrix"}
+      role="table"
+    >
+      <div className="matrix-header" role="row">
+        <span>Code</span>
+        <span>Pay Item</span>
+        <span className="matrix-quantity-header">Remaining QTY</span>
+        <span className="matrix-quantity-header">Saved Hrs</span>
+        <span className="matrix-quantity-header">Saved Qty</span>
+        <span>Crew</span>
+        <span>Hours</span>
+        <span>Quantity</span>
+      </div>
+      {payItems.map((item) => {
+        const draft = draftsByPayItem[item.id];
+        const savedEntry = savedEntries.find((entry) => entry.payItemId === item.id);
+        const rowHasWork = Boolean(savedEntry) || draftHasAnyInput(draft);
+        const remainingQuantity = remainingQuantitiesByPayItem[item.id] ?? item.budgetedQuantity;
+        const rowHasQuantityOverrun = draftQuantityExceedsRemaining(draft, remainingQuantity);
+
+        return (
+          <div
+            className={`${rowHasWork ? "matrix-row worked-row" : "matrix-row"}${rowHasQuantityOverrun ? " quantity-overrun-row" : ""}`}
+            key={item.id}
+            role="row"
+          >
+            <span className="matrix-code" data-label="Code">{item.code}</span>
+            <span className="matrix-name" data-label="Pay Item">{item.name}</span>
+            <span className="matrix-budget" data-label="Remaining QTY" title="Remaining quantity before this date">
+              {formatPayItemQuantity(remainingQuantity)} {item.unitOfMeasure.toUpperCase()}
+            </span>
+            <span className="matrix-saved" data-label="Saved Hrs">{savedEntry ? savedEntry.hours.toFixed(2) : "-"}</span>
+            <span className="matrix-saved" data-label="Saved Qty">{savedEntry ? savedEntry.quantityCompleted.toFixed(2) : "-"}</span>
+            <CrewAllocationEditor
+              crewMembers={crewMembers}
+              dayIsSubmitted={dayIsSubmitted}
+              draft={draft}
+              payItemId={item.id}
+              savedEntry={savedEntry}
+              onCrewHoursChange={onCrewHoursChange}
+              onCrewToggle={onCrewToggle}
+              onSplitEvenly={onSplitEvenly}
+            />
+            <input
+              aria-label={`Hours for ${item.code}`}
+              className="number-entry"
+              data-label="Hours"
+              disabled={dayIsSubmitted}
+              inputMode="decimal"
+              min="0"
+              placeholder="Hours"
+              step="0.25"
+              type="number"
+              value={draft?.hours ?? ""}
+              onChange={(event) => onDraftChange(item.id, "hours", event.target.value)}
+              onWheel={(event) => event.currentTarget.blur()}
+            />
+            <input
+              aria-label={`Quantity for ${item.code}`}
+              className="number-entry"
+              data-label="Quantity"
+              disabled={dayIsSubmitted}
+              inputMode="decimal"
+              min="0"
+              placeholder="Quantity"
+              step="0.01"
+              type="number"
+              value={draft?.quantity ?? ""}
+              onChange={(event) => onDraftChange(item.id, "quantity", event.target.value)}
+              onWheel={(event) => event.currentTarget.blur()}
+            />
+          </div>
+        );
+      })}
     </div>
   );
 }

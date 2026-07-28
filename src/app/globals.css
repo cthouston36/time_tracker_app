@@ -596,6 +596,44 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   padding-top: 12px;
 }
 
+.matrix-fullscreen-backdrop {
+  padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+}
+
+.matrix-fullscreen-panel {
+  gap: 12px;
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  height: calc(100dvh - 20px);
+  max-height: none;
+  max-width: none;
+  overflow: hidden;
+  width: min(1500px, calc(100vw - 20px));
+}
+
+.matrix-fullscreen-heading {
+  align-items: center;
+}
+
+.matrix-fullscreen-toolbar,
+.matrix-fullscreen-actions {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.matrix-fullscreen-body {
+  display: grid;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.matrix-fullscreen-actions {
+  border-top: 1px solid var(--line);
+  justify-content: flex-end;
+  padding-top: 12px;
+}
+
 .password-modal {
   max-width: 460px;
 }
@@ -2033,6 +2071,11 @@ a.daily-report-procore-status:hover {
   position: relative;
 }
 
+.pay-item-matrix-fullscreen {
+  height: 100%;
+  max-height: none;
+}
+
 .matrix-header,
 .matrix-row {
   align-items: center;
@@ -2111,6 +2154,10 @@ a.daily-report-procore-status:hover {
 .matrix-row.quantity-overrun-row .matrix-code {
   background: #241d14;
   color: #ffd89e;
+}
+
+.pay-item-matrix-fullscreen .crew-allocator-body {
+  z-index: 20;
 }
 
 .matrix-name,
@@ -3326,6 +3373,10 @@ a.daily-report-procore-status:hover {
 
   .mobile-picker {
     display: grid;
+  }
+
+  .matrix-expand-button {
+    display: none;
   }
 
   .pay-item-matrix {
