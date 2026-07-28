@@ -572,7 +572,6 @@ export function TimeAllocationWorkspace() {
   const [projectBlacklistById, setProjectBlacklistById] = useState<ProjectBlacklistById>({});
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [showOnlyMyProjects, setShowOnlyMyProjects] = useState(false);
-  const [showWorkedPayItemsOnly, setShowWorkedPayItemsOnly] = useState(false);
   const [matrixFullscreenOpen, setMatrixFullscreenOpen] = useState(false);
   const [jobSetupExpanded, setJobSetupExpanded] = useState(false);
   const [myProjectsEditorOpen, setMyProjectsEditorOpen] = useState(false);
@@ -687,20 +686,7 @@ export function TimeAllocationWorkspace() {
         : {},
     [selectedProject, selectedProjectEntries, workDate]
   );
-  const workedPayItemCount = selectedProject
-    ? selectedProject.payItems.filter((payItem) => payItemHasWork(payItem.id, draftsByPayItem, visibleEntries)).length
-    : 0;
-  const displayedPayItems = useMemo(() => {
-    if (!selectedProject) {
-      return [];
-    }
-
-    if (!showWorkedPayItemsOnly) {
-      return selectedProject.payItems;
-    }
-
-    return selectedProject.payItems.filter((payItem) => payItemHasWork(payItem.id, draftsByPayItem, visibleEntries));
-  }, [draftsByPayItem, selectedProject, showWorkedPayItemsOnly, visibleEntries]);
+  const displayedPayItems = useMemo(() => selectedProject?.payItems ?? [], [selectedProject?.payItems]);
   const mobileSelectedPayItem = useMemo(
     () =>
       displayedPayItems.find((payItem) => payItem.id === mobileSelectedPayItemId) ??
@@ -4249,18 +4235,6 @@ export function TimeAllocationWorkspace() {
               </button>
             </div>
             <div className="matrix-fullscreen-toolbar">
-              <label className="entry-filter-toggle">
-                <input
-                  checked={showWorkedPayItemsOnly}
-                  disabled={!selectedProject.payItems.length}
-                  onChange={(event) => setShowWorkedPayItemsOnly(event.target.checked)}
-                  type="checkbox"
-                />
-                <span>Worked items only</span>
-                <small>
-                  {workedPayItemCount}/{selectedProject.payItems.length}
-                </small>
-              </label>
               <span className="field-note">
                 {draftEntryCount} row{draftEntryCount === 1 ? "" : "s"} ready to save
               </span>
@@ -4281,9 +4255,7 @@ export function TimeAllocationWorkspace() {
                   onDraftChange={updateDraft}
                   onSplitEvenly={splitDraftCrewHoursEvenly}
                 />
-              ) : (
-                <EmptyState title="No worked pay items">Saved or drafted pay item rows will show here.</EmptyState>
-              )}
+              ) : null}
             </div>
             <div className="matrix-fullscreen-actions">
               <button
@@ -4871,18 +4843,6 @@ export function TimeAllocationWorkspace() {
                   Pay Item Entry
                 </h2>
                 <div className="panel-heading-actions">
-                  <label className="entry-filter-toggle">
-                    <input
-                      checked={showWorkedPayItemsOnly}
-                      disabled={!selectedProject?.payItems.length}
-                      onChange={(event) => setShowWorkedPayItemsOnly(event.target.checked)}
-                      type="checkbox"
-                    />
-                    <span>Worked items only</span>
-                    <small>
-                      {workedPayItemCount}/{selectedProject?.payItems.length ?? 0}
-                    </small>
-                  </label>
                   <button
                     className="secondary-button matrix-expand-button"
                     disabled={!selectedProject?.payItems.length || displayedPayItems.length === 0}
@@ -4896,9 +4856,6 @@ export function TimeAllocationWorkspace() {
               </div>
               {!selectedProject?.payItems.length ? (
                 <EmptyState title="No pay items returned">This job can still use daily reports and image uploads.</EmptyState>
-              ) : null}
-              {selectedProject?.payItems.length && displayedPayItems.length === 0 ? (
-                <EmptyState title="No worked items yet">Turn off the worked-items filter to view all pay items.</EmptyState>
               ) : null}
               {selectedProject?.payItems.length && displayedPayItems.length > 0 ? (
                 <PayItemMatrix
@@ -11453,10 +11410,6 @@ function draftHasAnyInput(draft: PayItemDraft | undefined) {
     draft.crewMemberIds.length > 0 ||
     Object.values(draft.crewHours).some((value) => value !== "")
   );
-}
-
-function payItemHasWork(payItemId: string, draftsByPayItem: DraftsByPayItem, visibleEntries: AllocationEntry[]) {
-  return visibleEntries.some((entry) => entry.payItemId === payItemId) || draftHasAnyInput(draftsByPayItem[payItemId]);
 }
 
 function buildRemainingQuantitiesByPayItem(

@@ -2718,32 +2718,6 @@ a.daily-report-procore-status:hover {
   font-size: 0.82rem;
 }
 
-.entry-filter-toggle {
-  align-items: center;
-  background: var(--field);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  color: var(--foreground);
-  display: flex;
-  gap: 8px;
-  min-height: 38px;
-  padding: 7px 10px;
-}
-
-.entry-filter-toggle input {
-  accent-color: var(--accent);
-}
-
-.entry-filter-toggle span {
-  font-size: 0.86rem;
-  font-weight: 700;
-}
-
-.entry-filter-toggle small {
-  color: var(--muted);
-  font-size: 0.76rem;
-}
-
 .crew-summary-list {
   display: grid;
   gap: 8px;
@@ -4649,7 +4623,6 @@ a.daily-report-procore-status:hover {
 .mobile-picker-trigger,
 .mobile-picker-search,
 .compact-check-row,
-.entry-filter-toggle,
 .report-toggle-row,
 .report-labor-filter,
 .secondary-button,
