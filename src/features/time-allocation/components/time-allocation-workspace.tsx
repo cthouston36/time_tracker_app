@@ -4378,15 +4378,13 @@ export function TimeAllocationWorkspace() {
             </EmptyState>
           ) : null}
           {projectLoadError ? <div className="inline-alert">{projectLoadError}</div> : null}
-          {syncedAt ? (
-            <div className="field-note">Last synced {new Date(syncedAt).toLocaleString()}</div>
-          ) : (
-            <div className="field-note">
-              {currentUser.role === "admin"
-                ? "Use Admin Tools to load uncached NetSuite jobs and pay items."
-                : "Projects load after an admin syncs NetSuite data."}
-            </div>
-          )}
+          {currentUser.role === "admin" ? (
+            syncedAt ? (
+              <div className="field-note">Last synced {new Date(syncedAt).toLocaleString()}</div>
+            ) : (
+              <div className="field-note">Use Admin Tools to load uncached NetSuite jobs and pay items.</div>
+            )
+          ) : null}
 
           <div className="field-group">
             <label htmlFor="work-date">Date</label>
