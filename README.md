@@ -62,3 +62,9 @@ AUTH_SESSION_SECRET=your_long_random_session_secret
 `PROCORE_TOKEN_ENCRYPTION_KEY` should be set in production. If it is omitted, the app falls back to `PROCORE_CLIENT_SECRET` for token encryption so existing deployments continue to work.
 
 User accounts are stored in Neon in the `app_users` table with hashed passwords. The `LOCAL_*_PASSWORD` variables are used only to bootstrap the first accounts when the table is empty, or as a local fallback when `DATABASE_URL` is not configured.
+
+## Scheduled NetSuite Sync
+
+Vercel runs `/api/cron/netsuite-sync` every day at `09:00 UTC` from `vercel.json`. The cron refreshes cached NetSuite projects/pay items and NetSuite vendors, then writes a "Nightly NetSuite Sync" entry to the admin sync log.
+
+Set `CRON_SECRET` in Vercel Environment Variables. Vercel sends it to the cron route as a bearer token, and the route rejects production requests when the secret is missing or incorrect.
