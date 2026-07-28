@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getAuditRequestMetadata, recordAuditLog } from "@/lib/audit-log";
 import { syncAllProjectsFromNetSuite } from "@/lib/netsuite/projects";
+import { readProjectControls } from "@/lib/project-controls-store";
 import { readProcoreCache } from "@/lib/procore/cache";
 
 export const runtime = "nodejs";
@@ -16,6 +17,7 @@ export async function POST(request: Request) {
   try {
     const result = await syncAllProjectsFromNetSuite();
     const cache = await readProcoreCache();
+    const projectControls = await readProjectControls();
 
     await recordAuditLog({
       action: "netsuite.sync_all_completed",
@@ -29,6 +31,7 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json({
+      projectArchiveById: projectControls?.projectArchiveById ?? {},
       projects: result.projects,
       summary: result.summary,
       syncedAt: cache?.syncedAt ?? null

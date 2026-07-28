@@ -131,7 +131,12 @@ function buildNightlySyncMessage(summary: NightlySyncSummary, failures: NightlyS
   const parts: string[] = [];
 
   if (summary.projects) {
-    parts.push(`projects ${summary.projects.synced} synced, ${summary.projects.failed} failed`);
+    const archivedText =
+      (summary.projects.autoArchivedProjects ?? 0) > 0
+        ? `, ${summary.projects.autoArchivedProjects} archived inactive`
+        : "";
+
+    parts.push(`projects ${summary.projects.synced} synced, ${summary.projects.failed} failed${archivedText}`);
   }
 
   if (summary.vendors) {

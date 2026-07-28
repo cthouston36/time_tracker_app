@@ -2,6 +2,7 @@ import { readProcoreCache, updateProcoreCache, writeProcoreCache } from "@/lib/p
 import { projectNameStartsWithTwo } from "@/lib/daily-report-templates";
 import type { PayItem, Project } from "@/lib/procore/types";
 import { runSuiteQL, runSuiteQLAll } from "@/lib/netsuite/client";
+import { setProjectArchiveForProjects } from "@/lib/project-controls-store";
 
 const NETSUITE_PROJECT_TABLE = "job";
 const NETSUITE_BUDGET_LINE_TABLE = "customrecord_hrc_pci_budgetviewdetailrow";
@@ -20,6 +21,8 @@ export type NetSuiteSyncSummary = {
   failedProjects: string[];
   dailyReportOnlyProjects?: number;
   eligibleProjects?: number;
+  inactiveNetSuiteProjects?: number;
+  autoArchivedProjects?: number;
   payItemProjects?: number;
   remainingNewProjects?: number;
   skippedMissingProcoreProjectId?: number;
@@ -34,6 +37,7 @@ export type NetSuiteSyncResult = {
 
 type NetSuiteProjectRow = Record<string, unknown> & {
   entity_id?: unknown;
+  is_inactive?: unknown;
   netsuite_project_id?: unknown;
   project_manager_id?: unknown;
   project_manager_name?: unknown;
@@ -56,6 +60,8 @@ type MappedNetSuiteProject = Project & {
 type EligibleNetSuiteProjectsResult = {
   dailyReportOnlyProjects: number;
   failedProjects: string[];
+  inactiveNetSuiteProjectIds: string[];
+  inactiveNetSuiteProjects: number;
   payItemProjects: number;
   projects: MappedNetSuiteProject[];
   skippedMissingProcoreProjectId: number;
@@ -65,6 +71,7 @@ type EligibleNetSuiteProjectsResult = {
 
 export async function syncProjectsFromNetSuite(): Promise<NetSuiteSyncResult> {
   const sourceProjects = await fetchEligibleNetSuiteProjects();
+  const autoArchivedProjects = (await archiveInactiveNetSuiteProjects(sourceProjects.inactiveNetSuiteProjectIds)) ?? 0;
   const cachedProjects = await readProcoreCache();
   const cachedProjectIds = new Set((cachedProjects?.projects ?? []).map((project) => project.id));
   const newProjects = sourceProjects.projects.filter((project) => !cachedProjectIds.has(project.id));
@@ -74,10 +81,12 @@ export async function syncProjectsFromNetSuite(): Promise<NetSuiteSyncResult> {
     projects: cache.projects,
     summary: {
       attempted: newProjects.length,
+      autoArchivedProjects,
       dailyReportOnlyProjects: sourceProjects.dailyReportOnlyProjects,
       eligibleProjects: sourceProjects.projects.length,
       failed: sourceProjects.failedProjects.length,
       failedProjects: sourceProjects.failedProjects,
+      inactiveNetSuiteProjects: sourceProjects.inactiveNetSuiteProjects,
       payItemProjects: sourceProjects.payItemProjects,
       skippedExisting: sourceProjects.projects.length - newProjects.length,
       skippedMissingProcoreProjectId: sourceProjects.skippedMissingProcoreProjectId,
@@ -90,16 +99,25 @@ export async function syncProjectsFromNetSuite(): Promise<NetSuiteSyncResult> {
 
 export async function syncAllProjectsFromNetSuite(): Promise<NetSuiteSyncResult> {
   const sourceProjects = await fetchEligibleNetSuiteProjects();
-  const cache = await writeProcoreCache(sourceProjects.projects);
+  const autoArchivedProjects = (await archiveInactiveNetSuiteProjects(sourceProjects.inactiveNetSuiteProjectIds)) ?? 0;
+  const existingCache = await readProcoreCache();
+  const activeProjectIds = new Set(sourceProjects.projects.map((project) => project.id));
+  const inactiveProjectIds = new Set(sourceProjects.inactiveNetSuiteProjectIds);
+  const archivedInactiveProjects = (existingCache?.projects ?? []).filter(
+    (project) => inactiveProjectIds.has(project.id) && !activeProjectIds.has(project.id)
+  );
+  const cache = await writeProcoreCache([...sourceProjects.projects, ...archivedInactiveProjects]);
 
   return {
     projects: cache.projects,
     summary: {
       attempted: sourceProjects.projects.length,
+      autoArchivedProjects,
       dailyReportOnlyProjects: sourceProjects.dailyReportOnlyProjects,
       eligibleProjects: sourceProjects.projects.length,
       failed: sourceProjects.failedProjects.length,
       failedProjects: sourceProjects.failedProjects,
+      inactiveNetSuiteProjects: sourceProjects.inactiveNetSuiteProjects,
       payItemProjects: sourceProjects.payItemProjects,
       skippedExisting: 0,
       skippedMissingProcoreProjectId: sourceProjects.skippedMissingProcoreProjectId,
@@ -122,6 +140,16 @@ export async function addOrUpdateProjectFromNetSuite(projectIdentifier: string) 
 
   if (!projectRow) {
     throw new Error("No NetSuite project matched that NetSuite or Procore project ID.");
+  }
+
+  if (projectIsInactive(projectRow)) {
+    const procoreProjectId = readString(rowValue(projectRow, "procore_project_id"));
+
+    if (procoreProjectId) {
+      await archiveInactiveNetSuiteProjects([procoreProjectId]);
+    }
+
+    throw new Error("The matching NetSuite project is inactive. It was archived in the app if it had already been cached.");
   }
 
   const projectName = readProjectTitle(projectRow);
@@ -166,6 +194,7 @@ export async function getNetSuiteConnectionTest() {
     budgetLineTotalResults: budgetLineResponse.totalResults ?? budgetLineResponse.count ?? 0,
     projectSample: (projectResponse.items ?? []).map((row) => ({
       entityId: readString(rowValue(row, "entity_id")),
+      inactive: projectIsInactive(row),
       netSuiteProjectId: readString(rowValue(row, "netsuite_project_id", "id")),
       projectManagerId: readString(rowValue(row, "project_manager_id")),
       projectManagerName: readString(rowValue(row, "project_manager_name")),
@@ -183,6 +212,8 @@ async function fetchEligibleNetSuiteProjects(): Promise<EligibleNetSuiteProjects
   const failedProjects: string[] = [];
   let dailyReportOnlyProjects = 0;
   let payItemProjects = 0;
+  let inactiveNetSuiteProjects = 0;
+  const inactiveNetSuiteProjectIds: string[] = [];
   let skippedMissingProcoreProjectId = 0;
   let skippedNoPayItems = 0;
 
@@ -192,6 +223,16 @@ async function fetchEligibleNetSuiteProjects(): Promise<EligibleNetSuiteProjects
     const netSuiteProjectId = readString(rowValue(projectRow, "netsuite_project_id", "id"));
     const isTwoSeriesProject = projectStartsWithTwo(projectName);
     const procoreProjectId = readString(rowValue(projectRow, "procore_project_id"));
+
+    if (projectIsInactive(projectRow)) {
+      inactiveNetSuiteProjects += 1;
+
+      if (procoreProjectId) {
+        inactiveNetSuiteProjectIds.push(procoreProjectId);
+      }
+
+      continue;
+    }
 
     if (!procoreProjectId) {
       skippedMissingProcoreProjectId += 1;
@@ -225,6 +266,8 @@ async function fetchEligibleNetSuiteProjects(): Promise<EligibleNetSuiteProjects
   return {
     dailyReportOnlyProjects,
     failedProjects,
+    inactiveNetSuiteProjectIds: Array.from(new Set(inactiveNetSuiteProjectIds)),
+    inactiveNetSuiteProjects,
     payItemProjects,
     projects,
     skippedMissingProcoreProjectId,
@@ -254,14 +297,18 @@ function buildProjectQuery() {
     select
       id as netsuite_project_id,
       entityid as entity_id,
+      isinactive as is_inactive,
       ${PROJECT_TITLE_FIELD} as project_title,
       ${PROJECT_MANAGER_FIELD} as project_manager_id,
       BUILTIN.DF(${PROJECT_MANAGER_FIELD}) as project_manager_name,
       ${PROCORE_PROJECT_ID_FIELD} as procore_project_id
     from ${NETSUITE_PROJECT_TABLE}
-    where isinactive = 'F'
     order by lower(${PROJECT_TITLE_FIELD}), lower(entityid), id
   `;
+}
+
+async function archiveInactiveNetSuiteProjects(projectIds: string[]) {
+  return setProjectArchiveForProjects(projectIds, true);
 }
 
 function buildBudgetLineQuery() {
@@ -401,6 +448,10 @@ function projectStartsWithTwo(projectName: string) {
   return projectNameStartsWithTwo(projectName);
 }
 
+function projectIsInactive(projectRow: NetSuiteProjectRow) {
+  return readBoolean(rowValue(projectRow, "is_inactive", "isinactive"));
+}
+
 function rowValue(row: Record<string, unknown>, ...keys: string[]) {
   for (const key of keys) {
     if (key in row) {
@@ -443,4 +494,22 @@ function readNumber(value: unknown) {
   }
 
   return 0;
+}
+
+function readBoolean(value: unknown) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value === 1;
+  }
+
+  if (typeof value === "string") {
+    const normalizedValue = value.trim().toLowerCase();
+
+    return normalizedValue === "t" || normalizedValue === "true" || normalizedValue === "yes" || normalizedValue === "y";
+  }
+
+  return false;
 }

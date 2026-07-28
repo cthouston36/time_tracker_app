@@ -319,6 +319,38 @@ button {
   font-size: 0.82rem;
 }
 
+.network-status-banner {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 10px;
+  padding: 10px clamp(16px, 4vw, 40px);
+}
+
+.network-status-banner.offline {
+  background: #fff1f2;
+  color: #991b1b;
+}
+
+.network-status-banner.weak {
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.network-status-banner div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.network-status-banner strong {
+  font-size: 0.86rem;
+}
+
+.network-status-banner span {
+  font-size: 0.82rem;
+}
+
 .workspace {
   display: grid;
   gap: 20px;
@@ -2159,10 +2191,96 @@ a.daily-report-procore-status:hover {
 
 .admin-tools-body .sync-summary,
 .admin-tools-body .sync-log,
+.admin-tools-body .data-quality-panel,
 .admin-tools-body .project-blacklist,
 .admin-tools-body .admin-users,
 .admin-tools-body .admin-maintenance {
   margin-top: 0;
+}
+
+.data-quality-panel {
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin-top: 12px;
+  padding: 10px 12px;
+}
+
+.data-quality-panel > summary {
+  align-items: center;
+  color: var(--foreground);
+  cursor: pointer;
+  display: flex;
+  font-size: 0.86rem;
+  font-weight: 700;
+  gap: 8px;
+}
+
+.data-quality-body {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.data-quality-metrics {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.data-quality-metrics div {
+  background: var(--background);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  display: grid;
+  gap: 3px;
+  padding: 8px;
+}
+
+.data-quality-metrics span,
+.data-quality-issue span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.data-quality-metrics strong {
+  color: var(--foreground);
+  font-size: 1rem;
+}
+
+.data-quality-list {
+  display: grid;
+  gap: 8px;
+}
+
+.data-quality-issue {
+  border-left: 3px solid var(--muted);
+  display: grid;
+  gap: 3px;
+  padding: 6px 0 6px 10px;
+}
+
+.data-quality-issue.error {
+  border-left-color: var(--danger);
+}
+
+.data-quality-issue.warning {
+  border-left-color: var(--warning-text);
+}
+
+.data-quality-issue.info {
+  border-left-color: var(--accent);
+}
+
+.data-quality-issue strong {
+  color: var(--foreground);
+  font-size: 0.84rem;
+}
+
+@media (max-width: 700px) {
+  .data-quality-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .compact-search-input {

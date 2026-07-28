@@ -278,6 +278,37 @@ export async function setProjectArchive(projectId: string, archived: boolean) {
   return true;
 }
 
+export async function setProjectArchiveForProjects(projectIds: string[], archived: boolean) {
+  const sql = getSql();
+
+  if (!sql) {
+    return null;
+  }
+
+  await ensureProjectControlTables();
+
+  const normalizedProjectIds = normalizeProjectIds(projectIds);
+
+  if (normalizedProjectIds.length === 0) {
+    return 0;
+  }
+
+  const queries = archived
+    ? normalizedProjectIds.map((projectId) => sql`
+        insert into project_archive (project_id, archived_at)
+        values (${projectId}, now())
+        on conflict (project_id) do nothing
+      `)
+    : normalizedProjectIds.map((projectId) => sql`
+        delete from project_archive
+        where project_id = ${projectId}
+      `);
+
+  await sql.transaction(queries);
+
+  return normalizedProjectIds.length;
+}
+
 export async function insertSyncLogEntry(entry: StoredSyncLogEntry) {
   const sql = getSql();
 

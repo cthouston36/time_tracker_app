@@ -3,6 +3,7 @@
 import NextImage from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
+  AlertTriangle,
   Archive,
   BarChart3,
   CalendarDays,
@@ -31,6 +32,7 @@ import {
   UploadCloud,
   UserPlus,
   Users,
+  WifiOff,
   type LucideIcon,
   X
 } from "lucide-react";
@@ -66,6 +68,7 @@ const DEFAULT_CREW_LABOR_TYPE: CrewLaborType = "chinchor_employee";
 const ALL_CREW_LABOR_TYPES = CREW_LABOR_TYPE_OPTIONS.map((option) => option.value);
 
 type ProjectsResponse = {
+  projectArchiveById?: ProjectArchiveById;
   projects: Project[];
   syncedAt?: string | null;
   summary?: ProcoreSyncSummary;
@@ -93,8 +96,10 @@ type ProcoreSyncSummary = {
   failed: number;
   skippedExisting: number;
   failedProjects: string[];
+  autoArchivedProjects?: number;
   dailyReportOnlyProjects?: number;
   eligibleProjects?: number;
+  inactiveNetSuiteProjects?: number;
   payItemProjects?: number;
   remainingNewProjects?: number;
   skippedMissingProcoreProjectId?: number;
@@ -508,6 +513,42 @@ type ProjectBlacklistById = Record<string, true>;
 type ProjectArchiveById = Record<string, true>;
 type VendorBlacklistById = Record<string, true>;
 
+type NetworkStatus = {
+  checked: boolean;
+  downlink?: number;
+  effectiveType?: string;
+  online: boolean;
+  saveData?: boolean;
+};
+
+type NetworkNotice = {
+  icon: LucideIcon;
+  message: string;
+  tone: "offline" | "weak";
+  title: string;
+};
+
+type NetworkInformationLike = EventTarget & {
+  downlink?: number;
+  effectiveType?: string;
+  saveData?: boolean;
+};
+
+type NavigatorWithConnection = Navigator & {
+  connection?: NetworkInformationLike;
+  mozConnection?: NetworkInformationLike;
+  webkitConnection?: NetworkInformationLike;
+};
+
+type DataQualityIssueSeverity = "error" | "warning" | "info";
+
+type DataQualityIssue = {
+  detail: string;
+  id: string;
+  severity: DataQualityIssueSeverity;
+  title: string;
+};
+
 type EditingEntry = {
   entryId: string;
   hours: string;
@@ -642,6 +683,10 @@ export function TimeAllocationWorkspace() {
   const [syncing, setSyncing] = useState(false);
   const [syncingAll, setSyncingAll] = useState(false);
   const [updatingProject, setUpdatingProject] = useState(false);
+  const [networkStatus, setNetworkStatus] = useState<NetworkStatus>(() => ({
+    checked: false,
+    online: true
+  }));
   const [appStateHydrated, setAppStateHydrated] = useState(false);
   const dateInputRef = useRef<HTMLInputElement>(null);
   const jobImageInputRef = useRef<HTMLInputElement>(null);
@@ -807,6 +852,16 @@ export function TimeAllocationWorkspace() {
     Boolean(editingCrewMember) ||
     dailyReportModalOpen ||
     queuedJobImages.length > 0;
+  const userIsOffline = networkStatus.checked && !networkStatus.online;
+
+  function shouldBlockOfflineAction(setNotice: (message: string) => void) {
+    if (!userIsOffline) {
+      return false;
+    }
+
+    setNotice("You appear to be offline. Reconnect before saving, syncing, or uploading.");
+    return true;
+  }
 
   function confirmDiscardUnsavedChanges(actionDescription: string) {
     if (!hasUnsavedChanges) {
@@ -987,6 +1042,33 @@ export function TimeAllocationWorkspace() {
     setEntryNotice("This daily report was changed by another user. Review the latest saved version before saving again.");
     return false;
   }
+
+  useEffect(() => {
+    function refreshNetworkStatus() {
+      const connection = getBrowserConnection();
+
+      setNetworkStatus({
+        checked: true,
+        downlink: connection?.downlink,
+        effectiveType: connection?.effectiveType,
+        online: navigator.onLine,
+        saveData: connection?.saveData
+      });
+    }
+
+    const connection = getBrowserConnection();
+
+    refreshNetworkStatus();
+    window.addEventListener("online", refreshNetworkStatus);
+    window.addEventListener("offline", refreshNetworkStatus);
+    connection?.addEventListener("change", refreshNetworkStatus);
+
+    return () => {
+      window.removeEventListener("online", refreshNetworkStatus);
+      window.removeEventListener("offline", refreshNetworkStatus);
+      connection?.removeEventListener("change", refreshNetworkStatus);
+    };
+  }, []);
 
   useEffect(() => {
     async function loadCurrentUser() {
@@ -1855,6 +1937,12 @@ export function TimeAllocationWorkspace() {
       return;
     }
 
+    if (shouldBlockOfflineAction((message) => {
+      setAdminMaintenanceNotice({ message, status: "error" });
+    })) {
+      return;
+    }
+
     setSyncingNetSuiteVendors(true);
     setAdminMaintenanceNotice(null);
 
@@ -1890,6 +1978,12 @@ export function TimeAllocationWorkspace() {
 
   async function clearStagingOperationalData() {
     if (currentUser?.role !== "admin") {
+      return;
+    }
+
+    if (shouldBlockOfflineAction((message) => {
+      setAdminMaintenanceNotice({ message, status: "error" });
+    })) {
       return;
     }
 
@@ -1958,6 +2052,12 @@ export function TimeAllocationWorkspace() {
 
   async function clearCachedProjectData() {
     if (currentUser?.role !== "admin") {
+      return;
+    }
+
+    if (shouldBlockOfflineAction((message) => {
+      setAdminMaintenanceNotice({ message, status: "error" });
+    })) {
       return;
     }
 
@@ -2484,6 +2584,14 @@ export function TimeAllocationWorkspace() {
       return;
     }
 
+    if (userIsOffline) {
+      setDailyReportUploadNotice({
+        message: "You appear to be offline. Reconnect before downloading the daily report PDF.",
+        status: "error"
+      });
+      return;
+    }
+
     const validation = validateDailyReportAnswers(currentDailyReport, selectedProject.payItems, {
       template: getDailyReportTemplateForProject(selectedProject)
     });
@@ -2552,6 +2660,14 @@ export function TimeAllocationWorkspace() {
       return;
     }
 
+    if (userIsOffline) {
+      setDailyReportUploadNotice({
+        message: "You appear to be offline. Reconnect before uploading the daily report to Procore.",
+        status: "error"
+      });
+      return;
+    }
+
     const validation = validateDailyReportAnswers(currentDailyReport, selectedProject.payItems, {
       template: getDailyReportTemplateForProject(selectedProject)
     });
@@ -2600,6 +2716,10 @@ export function TimeAllocationWorkspace() {
 
     if (!project || !report) {
       setEntryNotice("Unable to retry upload because the report or project is no longer available.");
+      return;
+    }
+
+    if (shouldBlockOfflineAction(setEntryNotice)) {
       return;
     }
 
@@ -2882,6 +3002,14 @@ export function TimeAllocationWorkspace() {
       return;
     }
 
+    if (userIsOffline) {
+      setJobImageNotice({
+        message: "You appear to be offline. Reconnect before uploading images to Procore.",
+        status: "error"
+      });
+      return;
+    }
+
     if (imagesToUpload.length === 0) {
       setJobImageNotice({
         message: emptyMessage,
@@ -3028,6 +3156,10 @@ export function TimeAllocationWorkspace() {
   }
 
   function connectProcore(intent: PendingProcoreReturn["intent"] = "connect") {
+    if (shouldBlockOfflineAction(setProjectLoadError)) {
+      return;
+    }
+
     if (!confirmDiscardUnsavedChanges("connect to Procore")) {
       return;
     }
@@ -3502,6 +3634,10 @@ export function TimeAllocationWorkspace() {
   }
 
   async function syncProcoreData() {
+    if (shouldBlockOfflineAction(setProjectLoadError)) {
+      return;
+    }
+
     setSyncing(true);
     setProjectLoadError("");
     setSyncSummary(null);
@@ -3517,8 +3653,10 @@ export function TimeAllocationWorkspace() {
       }
 
       const sortedProjects = sortProjectsByName(data.projects);
-      const visibleSyncedProjects = filterActiveProjects(sortedProjects, projectBlacklistById, projectArchiveById);
+      const nextProjectArchiveById = data.projectArchiveById ?? projectArchiveById;
+      const visibleSyncedProjects = filterActiveProjects(sortedProjects, projectBlacklistById, nextProjectArchiveById);
       setAllProjects(sortedProjects);
+      setProjectArchiveById(nextProjectArchiveById);
       setSelectedProjectId((currentProjectId) =>
         visibleSyncedProjects.some((project) => project.id === currentProjectId)
           ? currentProjectId
@@ -3550,6 +3688,10 @@ export function TimeAllocationWorkspace() {
   }
 
   async function syncAllProcoreData() {
+    if (shouldBlockOfflineAction(setProjectLoadError)) {
+      return;
+    }
+
     setSyncingAll(true);
     setProjectLoadError("");
     setSyncSummary(null);
@@ -3565,8 +3707,10 @@ export function TimeAllocationWorkspace() {
       }
 
       const sortedProjects = sortProjectsByName(data.projects);
-      const visibleSyncedProjects = filterActiveProjects(sortedProjects, projectBlacklistById, projectArchiveById);
+      const nextProjectArchiveById = data.projectArchiveById ?? projectArchiveById;
+      const visibleSyncedProjects = filterActiveProjects(sortedProjects, projectBlacklistById, nextProjectArchiveById);
       setAllProjects(sortedProjects);
+      setProjectArchiveById(nextProjectArchiveById);
       setSelectedProjectId((currentProjectId) =>
         visibleSyncedProjects.some((project) => project.id === currentProjectId)
           ? currentProjectId
@@ -3598,6 +3742,10 @@ export function TimeAllocationWorkspace() {
   }
 
   async function addOrUpdateProject() {
+    if (shouldBlockOfflineAction(setProjectLoadError)) {
+      return;
+    }
+
     const projectId = window.prompt("Enter the NetSuite project ID or Procore project ID to add or update.", selectedProjectId);
     const trimmedProjectId = projectId?.trim();
 
@@ -3620,9 +3768,11 @@ export function TimeAllocationWorkspace() {
       }
 
       const sortedProjects = sortProjectsByName(data.projects);
-      const visibleSyncedProjects = filterActiveProjects(sortedProjects, projectBlacklistById, projectArchiveById);
+      const nextProjectArchiveById = data.projectArchiveById ?? projectArchiveById;
+      const visibleSyncedProjects = filterActiveProjects(sortedProjects, projectBlacklistById, nextProjectArchiveById);
       const syncedProject = visibleSyncedProjects.find((project) => projectMatchesIdentifier(project, trimmedProjectId));
       setAllProjects(sortedProjects);
+      setProjectArchiveById(nextProjectArchiveById);
       setSelectedProjectId((currentProjectId) => syncedProject?.id ?? currentProjectId);
       setSyncedAt(data.syncedAt ?? null);
       setConnectionStatus("Project added or updated");
@@ -3658,6 +3808,10 @@ export function TimeAllocationWorkspace() {
 
   async function saveAllocationEntries() {
     if (!selectedProject || !currentUser || dayIsSubmitted || savingEntries) {
+      return;
+    }
+
+    if (shouldBlockOfflineAction(setEntryNotice)) {
       return;
     }
 
@@ -4223,6 +4377,8 @@ export function TimeAllocationWorkspace() {
         />
       ) : null}
 
+      <NetworkStatusBanner status={networkStatus} />
+
       {matrixFullscreenOpen && selectedProject && selectedProjectUsesPayItems ? (
         <div className="modal-backdrop matrix-fullscreen-backdrop" role="presentation">
           <div aria-modal="true" className="modal-panel matrix-fullscreen-panel" role="dialog">
@@ -4758,6 +4914,16 @@ export function TimeAllocationWorkspace() {
                 </div>
                 {syncSummary ? <SyncSummaryCard summary={syncSummary} /> : null}
                 <SyncLogPanel entries={syncLog} />
+                <AdminDataQualityPanel
+                  crewDirectory={crewDirectory}
+                  crewMembersByProject={crewMembersByProject}
+                  projectArchiveById={projectArchiveById}
+                  projectBlacklistById={projectBlacklistById}
+                  projects={allProjects}
+                  users={adminUsers}
+                  vendorBlacklistById={netSuiteVendorBlacklistById}
+                  vendors={allNetSuiteVendors}
+                />
                 <ProjectBlacklistPanel
                   onToggleProject={toggleProjectBlacklist}
                   projectBlacklistById={projectBlacklistById}
@@ -5722,6 +5888,26 @@ function MobileInstallPrompt({ onDismiss }: { onDismiss: () => void }) {
       <button className="icon-button" aria-label="Dismiss install prompt" onClick={onDismiss} type="button">
         <X aria-hidden="true" size={16} />
       </button>
+    </div>
+  );
+}
+
+function NetworkStatusBanner({ status }: { status: NetworkStatus }) {
+  const notice = getNetworkNotice(status);
+
+  if (!notice) {
+    return null;
+  }
+
+  const NoticeIcon = notice.icon;
+
+  return (
+    <div className={`network-status-banner ${notice.tone}`}>
+      <NoticeIcon aria-hidden="true" size={18} />
+      <div>
+        <strong>{notice.title}</strong>
+        <span>{notice.message}</span>
+      </div>
     </div>
   );
 }
@@ -8491,9 +8677,88 @@ function ReportPaginationControls({
   );
 }
 
+function AdminDataQualityPanel({
+  crewDirectory,
+  crewMembersByProject,
+  projectArchiveById,
+  projectBlacklistById,
+  projects,
+  users,
+  vendorBlacklistById,
+  vendors
+}: {
+  crewDirectory: CrewMember[];
+  crewMembersByProject: CrewMembersByProject;
+  projectArchiveById: ProjectArchiveById;
+  projectBlacklistById: ProjectBlacklistById;
+  projects: Project[];
+  users: ManagedAppUser[];
+  vendorBlacklistById: VendorBlacklistById;
+  vendors: NetSuiteVendor[];
+}) {
+  const issues = buildDataQualityIssues({
+    crewDirectory,
+    crewMembersByProject,
+    projectArchiveById,
+    projectBlacklistById,
+    projects,
+    users,
+    vendorBlacklistById,
+    vendors
+  });
+  const archivedProjectCount = projects.filter((project) => projectArchiveById[project.id]).length;
+  const blacklistedProjectCount = projects.filter((project) => projectBlacklistById[project.id]).length;
+  const visibleProjectCount = projects.length - archivedProjectCount - blacklistedProjectCount;
+  const warningCount = issues.filter((issue) => issue.severity === "warning").length;
+  const errorCount = issues.filter((issue) => issue.severity === "error").length;
+
+  return (
+    <details className="data-quality-panel" open>
+      <summary>
+        <ListChecks aria-hidden="true" size={16} />
+        Data Quality ({errorCount} critical, {warningCount} review)
+      </summary>
+      <div className="data-quality-body">
+        <div className="data-quality-metrics">
+          <div>
+            <span>Visible jobs</span>
+            <strong>{visibleProjectCount}</strong>
+          </div>
+          <div>
+            <span>Archived</span>
+            <strong>{archivedProjectCount}</strong>
+          </div>
+          <div>
+            <span>Blacklisted</span>
+            <strong>{blacklistedProjectCount}</strong>
+          </div>
+          <div>
+            <span>Crew records</span>
+            <strong>{crewDirectory.length}</strong>
+          </div>
+        </div>
+        {issues.length === 0 ? (
+          <div className="success-alert">No data quality issues found in the cached app data.</div>
+        ) : (
+          <div className="data-quality-list">
+            {issues.map((issue) => (
+              <div className={`data-quality-issue ${issue.severity}`} key={issue.id}>
+                <strong>{issue.title}</strong>
+                <span>{issue.detail}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </details>
+  );
+}
+
 function SyncSummaryCard({ summary }: { summary: ProcoreSyncSummary }) {
   const dailyReportOnlyProjects = summary.dailyReportOnlyProjects ?? 0;
   const eligibleProjects = summary.eligibleProjects ?? summary.attempted + summary.skippedExisting;
+  const inactiveNetSuiteProjects = summary.inactiveNetSuiteProjects ?? 0;
+  const autoArchivedProjects = summary.autoArchivedProjects ?? 0;
   const payItemProjects = summary.payItemProjects ?? 0;
   const remainingNewProjects = summary.remainingNewProjects ?? 0;
   const skippedMissingProcoreProjectId = summary.skippedMissingProcoreProjectId ?? 0;
@@ -8514,6 +8779,12 @@ function SyncSummaryCard({ summary }: { summary: ProcoreSyncSummary }) {
         <span>
           Eligible mix: {payItemProjects} pay-item project{payItemProjects === 1 ? "" : "s"},{" "}
           {dailyReportOnlyProjects} daily-report-only 2-series project{dailyReportOnlyProjects === 1 ? "" : "s"}.
+        </span>
+      ) : null}
+      {summary.inactiveNetSuiteProjects !== undefined || summary.autoArchivedProjects !== undefined ? (
+        <span>
+          Inactive NetSuite jobs: {inactiveNetSuiteProjects}. Auto-archived {autoArchivedProjects} cached project
+          {autoArchivedProjects === 1 ? "" : "s"}.
         </span>
       ) : null}
       <span>{summary.skippedExisting} existing project{summary.skippedExisting === 1 ? "" : "s"} skipped.</span>
@@ -12270,6 +12541,201 @@ function parseDayKey(dayKey: string) {
   };
 }
 
+function buildDataQualityIssues({
+  crewDirectory,
+  projectArchiveById,
+  projectBlacklistById,
+  projects,
+  users
+}: {
+  crewDirectory: CrewMember[];
+  crewMembersByProject: CrewMembersByProject;
+  projectArchiveById: ProjectArchiveById;
+  projectBlacklistById: ProjectBlacklistById;
+  projects: Project[];
+  users: ManagedAppUser[];
+  vendorBlacklistById: VendorBlacklistById;
+  vendors: NetSuiteVendor[];
+}) {
+  const issues: DataQualityIssue[] = [];
+  const visibleProjects = projects.filter((project) => !projectArchiveById[project.id] && !projectBlacklistById[project.id]);
+  const duplicateProjectNames = findDuplicateValues(visibleProjects.map((project) => project.name));
+  const noPayItemProjects = visibleProjects.filter((project) => !isTwoSeriesProject(project) && project.payItems.length === 0);
+  const missingProjectManagerProjects = visibleProjects.filter((project) => !project.netSuiteProjectManagerId);
+  const zeroQuantityPayItems = visibleProjects.flatMap((project) =>
+    project.payItems
+      .filter((payItem) => payItem.budgetedQuantity <= 0)
+      .map((payItem) => `${project.name}: ${payItem.code}`)
+  );
+  const duplicatePayItemProjects = visibleProjects.flatMap((project) => {
+    const duplicateCodes = findDuplicateValues(project.payItems.map((payItem) => payItem.code));
+
+    return duplicateCodes.map((code) => `${project.name}: ${code}`);
+  });
+  const duplicateCrewNames = findDuplicateValues(
+    crewDirectory.map((member) =>
+      member.laborType === "subcontractor" ? `Subcontractor: ${getCrewDisplayName(member)}` : member.name
+    )
+  );
+  const subcontractorsMissingVendor = crewDirectory.filter(
+    (member) => member.laborType === "subcontractor" && !member.netSuiteVendorId
+  );
+  const pmUsersWithoutMapping = users.filter(
+    (user) => user.role === "project_manager" && user.active !== false && !user.netSuiteProjectManagerId
+  );
+
+  if (noPayItemProjects.length > 0) {
+    issues.push({
+      detail: `${noPayItemProjects.length} non-2-series project${noPayItemProjects.length === 1 ? "" : "s"} have no pay items. Examples: ${formatDataQualitySamples(noPayItemProjects.map((project) => project.name))}.`,
+      id: "projects-without-pay-items",
+      severity: "error",
+      title: "Projects without pay items"
+    });
+  }
+
+  if (duplicateProjectNames.length > 0) {
+    issues.push({
+      detail: `Duplicate visible project names can make reporting hard to interpret. Examples: ${formatDataQualitySamples(duplicateProjectNames)}.`,
+      id: "duplicate-project-names",
+      severity: "warning",
+      title: "Duplicate project names"
+    });
+  }
+
+  if (missingProjectManagerProjects.length > 0) {
+    issues.push({
+      detail: `${missingProjectManagerProjects.length} visible project${missingProjectManagerProjects.length === 1 ? "" : "s"} are missing a NetSuite Project Manager value. Examples: ${formatDataQualitySamples(missingProjectManagerProjects.map((project) => project.name))}.`,
+      id: "missing-project-manager",
+      severity: "warning",
+      title: "Missing PM mapping on projects"
+    });
+  }
+
+  if (duplicatePayItemProjects.length > 0) {
+    issues.push({
+      detail: `Duplicate pay item codes were found after sync. Examples: ${formatDataQualitySamples(duplicatePayItemProjects)}.`,
+      id: "duplicate-pay-items",
+      severity: "warning",
+      title: "Duplicate pay item codes"
+    });
+  }
+
+  if (zeroQuantityPayItems.length > 0) {
+    issues.push({
+      detail: `${zeroQuantityPayItems.length} pay item${zeroQuantityPayItems.length === 1 ? "" : "s"} have zero or negative remaining budget quantity. Examples: ${formatDataQualitySamples(zeroQuantityPayItems)}.`,
+      id: "zero-quantity-pay-items",
+      severity: "warning",
+      title: "Pay items with no quantity"
+    });
+  }
+
+  if (duplicateCrewNames.length > 0) {
+    issues.push({
+      detail: `Duplicate crew/subcontractor names can split reporting. Examples: ${formatDataQualitySamples(duplicateCrewNames)}.`,
+      id: "duplicate-crew-names",
+      severity: "warning",
+      title: "Possible duplicate crew records"
+    });
+  }
+
+  if (subcontractorsMissingVendor.length > 0) {
+    issues.push({
+      detail: `${subcontractorsMissingVendor.length} subcontractor record${subcontractorsMissingVendor.length === 1 ? "" : "s"} were not tied to a NetSuite vendor. Examples: ${formatDataQualitySamples(subcontractorsMissingVendor.map(getCrewDisplayName))}.`,
+      id: "subcontractors-missing-vendor",
+      severity: "warning",
+      title: "Subcontractors not tied to NetSuite vendors"
+    });
+  }
+
+  if (pmUsersWithoutMapping.length > 0) {
+    issues.push({
+      detail: `${pmUsersWithoutMapping.length} active PM user${pmUsersWithoutMapping.length === 1 ? "" : "s"} do not have a NetSuite Project Manager connection. Examples: ${formatDataQualitySamples(pmUsersWithoutMapping.map(formatUserName))}.`,
+      id: "pm-users-without-mapping",
+      severity: "warning",
+      title: "PM users missing NetSuite PM connection"
+    });
+  }
+
+  if (projects.length === 0) {
+    issues.push({
+      detail: "No cached projects are available. Run Sync New Projects, Sync All Projects, or Add/Update Project.",
+      id: "no-cached-projects",
+      severity: "info",
+      title: "No cached projects"
+    });
+  }
+
+  return issues;
+}
+
+function findDuplicateValues(values: string[]) {
+  const counts = new Map<string, { count: number; label: string }>();
+
+  for (const value of values) {
+    const label = value.trim();
+    const key = normalizeCrewName(label);
+
+    if (!key) {
+      continue;
+    }
+
+    const current = counts.get(key);
+
+    counts.set(key, {
+      count: (current?.count ?? 0) + 1,
+      label: current?.label ?? label
+    });
+  }
+
+  return Array.from(counts.values())
+    .filter((entry) => entry.count > 1)
+    .map((entry) => entry.label)
+    .sort((left, right) => left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" }));
+}
+
+function formatDataQualitySamples(values: string[], maxItems = 4) {
+  const samples = values.slice(0, maxItems);
+  const remainingCount = values.length - samples.length;
+
+  return `${samples.join(", ")}${remainingCount > 0 ? `, +${remainingCount} more` : ""}`;
+}
+
+function getBrowserConnection() {
+  const browserNavigator = navigator as NavigatorWithConnection;
+
+  return browserNavigator.connection ?? browserNavigator.mozConnection ?? browserNavigator.webkitConnection;
+}
+
+function getNetworkNotice(status: NetworkStatus): NetworkNotice | null {
+  if (!status.checked) {
+    return null;
+  }
+
+  if (!status.online) {
+    return {
+      icon: WifiOff,
+      message: "Reconnect before saving, syncing, or uploading. Unsaved form input should stay on screen until you leave the page.",
+      title: "Offline",
+      tone: "offline"
+    };
+  }
+
+  const effectiveType = status.effectiveType?.toLowerCase() ?? "";
+  const weakEffectiveType = effectiveType === "slow-2g" || effectiveType === "2g";
+  const weakDownlink = typeof status.downlink === "number" && status.downlink > 0 && status.downlink < 0.75;
+
+  if (status.saveData || weakEffectiveType || weakDownlink) {
+    return {
+      icon: AlertTriangle,
+      message: "Connection looks weak. Large Procore uploads may take longer; keep this page open until confirmation appears.",
+      title: "Weak signal",
+      tone: "weak"
+    };
+  }
+
+  return null;
+}
+
 function formatUserName(user: AuthUser) {
   return `${user.firstName} ${user.lastName}`;
 }
@@ -12295,18 +12761,27 @@ function buildSyncStatus(prefix: string, summary: ProcoreSyncSummary | undefined
     summary.dailyReportOnlyProjects !== undefined ? `, ${summary.dailyReportOnlyProjects} daily-report-only` : "";
   const remainingNewProjects = summary.remainingNewProjects ?? 0;
   const queuedText = remainingNewProjects > 0 ? `, ${remainingNewProjects} queued` : "";
+  const autoArchivedProjects = summary.autoArchivedProjects ?? 0;
+  const archivedText = autoArchivedProjects > 0 ? `, ${autoArchivedProjects} archived inactive` : "";
 
-  return `${prefix}: ${summary.synced} synced, ${summary.failed} failed${dailyReportOnlyText}${queuedText}`;
+  return `${prefix}: ${summary.synced} synced, ${summary.failed} failed${dailyReportOnlyText}${queuedText}${archivedText}`;
 }
 
 function hasSyncWarnings(summary: ProcoreSyncSummary | undefined) {
-  return Boolean(summary && (summary.failed > 0 || (summary.remainingNewProjects ?? 0) > 0));
+  return Boolean(
+    summary &&
+      (summary.failed > 0 || (summary.remainingNewProjects ?? 0) > 0 || (summary.autoArchivedProjects ?? 0) > 0)
+  );
 }
 
 function formatSyncSummaryLine(summary: ProcoreSyncSummary) {
   const eligibleText = summary.eligibleProjects !== undefined ? `, ${summary.eligibleProjects} eligible` : "";
   const remainingNewProjects = summary.remainingNewProjects ?? 0;
   const queuedText = remainingNewProjects > 0 ? `, ${remainingNewProjects} queued` : "";
+  const inactiveText =
+    summary.inactiveNetSuiteProjects !== undefined
+      ? `, ${summary.inactiveNetSuiteProjects} inactive, ${summary.autoArchivedProjects ?? 0} archived`
+      : "";
   const skippedDetails =
     summary.skippedMissingProcoreProjectId !== undefined || summary.skippedNoPayItems !== undefined
       ? `, ${summary.skippedMissingProcoreProjectId ?? 0} missing Procore ID, ${summary.skippedNoPayItems ?? 0} no pay items`
@@ -12316,7 +12791,7 @@ function formatSyncSummaryLine(summary: ProcoreSyncSummary) {
       ? `, ${summary.payItemProjects ?? 0} pay-item, ${summary.dailyReportOnlyProjects ?? 0} 2-series`
       : "";
 
-  return `${summary.synced} synced, ${summary.skippedExisting} existing skipped, ${summary.failed} failed${eligibleText}${sourceDetails}${skippedDetails}${queuedText}`;
+  return `${summary.synced} synced, ${summary.skippedExisting} existing skipped, ${summary.failed} failed${eligibleText}${sourceDetails}${skippedDetails}${inactiveText}${queuedText}`;
 }
 
 async function postProjectsWithTimeout(path: string, timeoutMessage: string) {
