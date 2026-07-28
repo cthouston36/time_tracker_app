@@ -1813,13 +1813,27 @@ a.daily-report-procore-status:hover {
   align-items: center;
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 999px;
   display: flex;
   gap: 8px;
   justify-content: space-between;
-  min-height: 34px;
+  min-height: 32px;
   min-width: 0;
-  padding: 6px 8px;
+  overflow: hidden;
+  padding: 5px 10px 5px 22px;
+  position: relative;
+}
+
+.daily-status-item::before {
+  background: var(--muted);
+  border-radius: 999px;
+  content: "";
+  height: 7px;
+  left: 9px;
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 7px;
 }
 
 .daily-status-item span {
@@ -3810,7 +3824,7 @@ a.daily-report-procore-status:hover {
 
   .daily-status-item {
     min-height: 32px;
-    padding: 5px 7px;
+    padding: 5px 7px 5px 20px;
   }
 
   .daily-status-item span {
@@ -4786,6 +4800,68 @@ input[type="date"] {
 .admin-clear-button:hover {
   border-color: #cf222e;
   color: #a40e26;
+}
+
+.daily-status-strip {
+  gap: 6px;
+}
+
+.daily-status-item {
+  background: #ffffff;
+  border-color: #c9d1d9;
+  box-shadow: 0 1px 2px rgb(31 35 40 / 0.06);
+  color: #24292f;
+}
+
+.daily-status-item::before {
+  background: #8c959f;
+}
+
+.daily-status-item span {
+  color: #57606a;
+}
+
+.daily-status-item strong {
+  color: #24292f;
+}
+
+.daily-status-item.success {
+  background: #f0fff4;
+  border-color: #aceebb;
+}
+
+.daily-status-item.success::before {
+  background: #1a7f37;
+}
+
+.daily-status-item.success strong {
+  color: #116329;
+}
+
+.daily-status-item.warning {
+  background: #fff8c5;
+  border-color: #eac54f;
+}
+
+.daily-status-item.warning::before {
+  background: #bf8700;
+}
+
+.daily-status-item.warning strong {
+  color: #9a6700;
+}
+
+.daily-status-item.error {
+  background: #ffebe9;
+  border-color: #ff8182;
+}
+
+.daily-status-item.error::before {
+  background: #cf222e;
+}
+
+.daily-status-item.error strong {
+  color: #cf222e;
 }
 
 .matrix-header,
