@@ -1197,7 +1197,7 @@ a.daily-report-procore-status:hover {
   align-items: center;
   display: flex;
   gap: 12px;
-  justify-content: flex-end;
+  justify-content: center;
   min-width: 0;
 }
 
@@ -4853,11 +4853,16 @@ input[type="date"] {
 }
 
 .page-header {
-  background: #ffffff;
-  border-color: #8c959f;
+  background: linear-gradient(135deg, #ddf4ff 0%, #ffffff 72%);
+  border-color: #80ccff;
 }
 
-.page-header-meta span,
+.page-header-meta span {
+  background: #334155;
+  border-color: #475569;
+  color: #f8fafc;
+}
+
 .mobile-sticky-action-bar {
   background: #f6f8fa;
 }
