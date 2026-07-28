@@ -726,7 +726,8 @@ export function TimeAllocationWorkspace() {
   const currentDailyReportProcoreStatus = getDailyReportProcoreStatus(
     currentDailyReport,
     currentDailyReportUpload,
-    selectedProject?.id
+    selectedProject?.id,
+    currentUser?.role ?? "standard"
   );
   const dailyReportNeedsUpload = Boolean(currentDailyReport && currentDailyReportProcoreStatus.className !== "uploaded");
   const currentJobImageUploads = selectedProject ? jobImageUploadsByDay[currentDayKey] ?? [] : [];
@@ -2693,7 +2694,7 @@ export function TimeAllocationWorkspace() {
         return;
       }
       showDailyReportUploadMessage(
-        `Uploaded ${data.fileName ?? "daily report"} to ${data.folderPath ?? "Procore Documents"}.`,
+        getDailyReportProcoreStatus(report, dailyReportUpload, project.id, currentUser?.role ?? "standard").message,
         "success",
         showCurrentDayNotice
       );
@@ -7872,7 +7873,8 @@ function getDailyReportCalendarStatus(dailyReport: DailyReport | undefined, uplo
 function getDailyReportProcoreStatus(
   dailyReport: DailyReport | undefined,
   upload: DailyReportUpload | undefined,
-  projectId: string | undefined
+  projectId: string | undefined,
+  userRole: AuthUser["role"]
 ) {
   if (!dailyReport) {
     return {
@@ -7883,7 +7885,7 @@ function getDailyReportProcoreStatus(
   }
 
   if (isUploadedDailyReportUpload(upload)) {
-    const uploadedAt = upload?.uploadedAt ? ` on ${new Date(upload.uploadedAt).toLocaleString()}` : "";
+    const uploadedAt = upload?.uploadedAt ? ` on ${formatStatusDateTime(upload.uploadedAt)}` : "";
     const fileName = upload?.fileName ? ` File: ${upload.fileName}.` : "";
     const folderPath = upload?.folderPath ? ` Folder: ${upload.folderPath}.` : "";
     const folderUrl = normalizeProcoreDocumentsFolderUrl(upload?.folderUrl, upload?.companyId, projectId, upload?.folderId);
@@ -7892,7 +7894,7 @@ function getDailyReportProcoreStatus(
       className: "uploaded",
       href: folderUrl,
       label: "Uploaded",
-      message: `Uploaded to Procore${uploadedAt}.${fileName}${folderPath}`
+      message: userRole === "admin" ? `Uploaded to Procore${uploadedAt}.${fileName}${folderPath}` : `Uploaded${uploadedAt}.`
     };
   }
 
@@ -12003,6 +12005,16 @@ function isAbortError(error: unknown) {
 
 function formatDate(value: string) {
   return new Date(value).toLocaleDateString();
+}
+
+function formatStatusDateTime(value: string) {
+  return new Date(value).toLocaleString(undefined, {
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    month: "numeric",
+    year: "numeric"
+  });
 }
 
 function getWeekStart(value: string) {
