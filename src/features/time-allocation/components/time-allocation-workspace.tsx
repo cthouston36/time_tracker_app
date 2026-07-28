@@ -4812,7 +4812,8 @@ export function TimeAllocationWorkspace() {
                 formatDate(workDate),
                 selectedProjectUsesPayItems ? "Pay items" : "Daily report only"
               ]}
-              title={selectedProjectUsesPayItems ? "Production Entry" : "Field Daily"}
+              title="Daily Entry"
+              titleOnly
             />
             <div className="summary-strip">
               <div className="metric">
@@ -5651,21 +5652,32 @@ function PageHeader({
   icon: Icon,
   kicker,
   meta,
-  title
+  title,
+  titleOnly = false
 }: {
   icon: LucideIcon;
   kicker: string;
   meta: string[];
   title: string;
+  titleOnly?: boolean;
 }) {
   return (
     <div className="page-header">
       <div className="page-title-group">
-        <div className="page-title-kicker">
-          <Icon aria-hidden="true" size={17} />
-          <span>{kicker}</span>
-        </div>
-        <h2>{title}</h2>
+        {titleOnly ? (
+          <h2 className="page-title-inline">
+            <Icon aria-hidden="true" size={19} />
+            <span>{title}</span>
+          </h2>
+        ) : (
+          <>
+            <div className="page-title-kicker">
+              <Icon aria-hidden="true" size={17} />
+              <span>{kicker}</span>
+            </div>
+            <h2>{title}</h2>
+          </>
+        )}
       </div>
       <div className="page-header-meta">
         {meta.map((item, index) => (

@@ -1716,6 +1716,17 @@ a.daily-report-procore-status:hover {
   overflow-wrap: anywhere;
 }
 
+.page-title-inline {
+  align-items: center;
+  display: inline-flex;
+  gap: 8px;
+}
+
+.page-title-inline svg {
+  color: #0969da;
+  flex: 0 0 auto;
+}
+
 .page-header-meta {
   align-items: center;
   display: flex;
