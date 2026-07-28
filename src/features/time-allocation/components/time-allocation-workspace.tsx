@@ -595,6 +595,7 @@ export function TimeAllocationWorkspace() {
   const [jobImageNotice, setJobImageNotice] = useState<{ message: string; status: "success" | "error" } | null>(null);
   const [loadingJobImageUploads, setLoadingJobImageUploads] = useState(false);
   const [uploadingJobImages, setUploadingJobImages] = useState(false);
+  const [jobImageHistoryExpanded, setJobImageHistoryExpanded] = useState(false);
   const [mobileInstallPromptVisible, setMobileInstallPromptVisible] = useState(false);
   const [myJobsByUser, setMyJobsByUser] = useState<MyJobsByUser>({});
   const [crewDirectory, setCrewDirectory] = useState<CrewMember[]>([]);
@@ -1093,6 +1094,15 @@ export function TimeAllocationWorkspace() {
     const isMobileWidth = window.matchMedia("(max-width: 820px)").matches;
 
     setMobileInstallPromptVisible(isMobileWidth && !dismissed && !isStandalone);
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (!currentUser || typeof window === "undefined") {
+      setJobImageHistoryExpanded(false);
+      return;
+    }
+
+    setJobImageHistoryExpanded(window.matchMedia("(min-width: 861px)").matches);
   }, [currentUser]);
 
   useEffect(() => {
@@ -5187,30 +5197,30 @@ export function TimeAllocationWorkspace() {
               </div>
               {currentDailyReport ? (
                 <div className="daily-report-summary">
-                  <div>
+                  <div className="daily-report-summary-card">
                     <span>Status</span>
                     <strong>Saved</strong>
                   </div>
-                  <div>
+                  <div className="daily-report-summary-card">
                     <span>Procore Upload</span>
                     <DailyReportProcoreStatusValue status={currentDailyReportProcoreStatus} />
                   </div>
-                  <div>
+                  <div className="daily-report-summary-card">
                     <span>Updated</span>
                     <strong>{new Date(currentDailyReport.updatedAt).toLocaleString()}</strong>
                   </div>
                   {selectedProjectUsesTwoSeriesDailyReport ? (
-                    <div>
+                    <div className="daily-report-summary-card daily-report-summary-secondary">
                       <span>Template</span>
                       <strong>Field Report</strong>
                     </div>
                   ) : (
                     <>
-                      <div>
+                      <div className="daily-report-summary-card daily-report-summary-secondary">
                         <span>Inspector Quantities</span>
                         <strong>{formatYesNoAnswer(currentDailyReport.quantitiesTurnedIn)}</strong>
                       </div>
-                      <div>
+                      <div className="daily-report-summary-card daily-report-summary-secondary">
                         <span>Incidents</span>
                         <strong>{formatYesNoAnswer(currentDailyReport.incidentOccurred)}</strong>
                       </div>
@@ -5316,7 +5326,7 @@ export function TimeAllocationWorkspace() {
                   </button>
                 </div>
               </div>
-              <div className="field-note">
+              <div className="field-note job-image-help-text">
                 {uploadedJobImageCount} of {JOB_IMAGE_DAILY_UPLOAD_LIMIT} images uploaded for this job/day. Selected images stay in a
                 temporary queue until they are uploaded to Procore.
               </div>
@@ -5412,53 +5422,63 @@ export function TimeAllocationWorkspace() {
               ) : (
                 <EmptyState title="No images queued">Added photos will stay here until they are uploaded to Procore.</EmptyState>
               )}
-              <div className="job-image-history">
-                <div className="job-image-section-heading">
-                  <h3>Uploaded Image History</h3>
+              <div className={jobImageHistoryExpanded ? "job-image-history expanded" : "job-image-history"}>
+                <button
+                  aria-expanded={jobImageHistoryExpanded}
+                  className="job-image-section-heading job-image-history-toggle"
+                  onClick={() => setJobImageHistoryExpanded((current) => !current)}
+                  type="button"
+                >
+                  <h3>Uploaded Images</h3>
                   <span>
                     {loadingJobImageUploads
                       ? "Loading..."
                       : `${uploadedJobImageCount}/${JOB_IMAGE_DAILY_UPLOAD_LIMIT} uploaded`}
                   </span>
-                </div>
-                {failedJobImageUploads.length > 0 ? (
-                  <div className="field-note">
-                    {failedJobImageUploads.length} failed upload attempt{failedJobImageUploads.length === 1 ? "" : "s"} recorded. If the
-                    image is no longer in the temporary queue, reselect the original photo to retry it.
-                  </div>
-                ) : null}
-                {currentJobImageUploads.length > 0 ? (
-                  <div className="job-image-history-list">
-                    {currentJobImageUploads.map((upload) => (
-                      <div className={`job-image-history-row ${upload.status}`} key={upload.id}>
-                        <div>
-                          <strong>{upload.fileName}</strong>
-                          <span>
-                            {upload.status === "uploaded" ? "Uploaded" : "Failed"}
-                            {upload.uploadedAt || upload.attemptedAt
-                              ? ` ${new Date(upload.uploadedAt ?? upload.attemptedAt ?? "").toLocaleString()}`
-                              : ""}
-                            {upload.uploadedByName ? ` by ${upload.uploadedByName}` : ""}
-                            {upload.fileSizeBytes ? ` - ${formatFileSize(upload.fileSizeBytes)}` : ""}
-                          </span>
-                          {upload.originalFileName ? <span>Original: {upload.originalFileName}</span> : null}
-                          {upload.caption ? <span>Caption: {upload.caption}</span> : null}
-                          {upload.error ? <p>{upload.error}</p> : null}
-                        </div>
-                        {upload.folderUrl ? (
-                          <a className="secondary-button" href={upload.folderUrl} rel="noreferrer" target="_blank">
-                            <ExternalLink aria-hidden="true" size={17} />
-                            Open Folder
-                          </a>
-                        ) : null}
+                  <ChevronDown aria-hidden="true" className="job-image-history-chevron" size={18} />
+                </button>
+                {jobImageHistoryExpanded ? (
+                  <>
+                    {failedJobImageUploads.length > 0 ? (
+                      <div className="field-note">
+                        {failedJobImageUploads.length} failed upload attempt{failedJobImageUploads.length === 1 ? "" : "s"} recorded. If the
+                        image is no longer in the temporary queue, reselect the original photo to retry it.
                       </div>
-                    ))}
-                  </div>
-                ) : (
-                  <EmptyState title="No image upload history">
-                    Uploaded or failed image attempts for this job and date will appear here.
-                  </EmptyState>
-                )}
+                    ) : null}
+                    {currentJobImageUploads.length > 0 ? (
+                      <div className="job-image-history-list">
+                        {currentJobImageUploads.map((upload) => (
+                          <div className={`job-image-history-row ${upload.status}`} key={upload.id}>
+                            <div>
+                              <strong>{upload.fileName}</strong>
+                              <span>
+                                {upload.status === "uploaded" ? "Uploaded" : "Failed"}
+                                {upload.uploadedAt || upload.attemptedAt
+                                  ? ` ${new Date(upload.uploadedAt ?? upload.attemptedAt ?? "").toLocaleString()}`
+                                  : ""}
+                                {upload.uploadedByName ? ` by ${upload.uploadedByName}` : ""}
+                                {upload.fileSizeBytes ? ` - ${formatFileSize(upload.fileSizeBytes)}` : ""}
+                              </span>
+                              {upload.originalFileName ? <span>Original: {upload.originalFileName}</span> : null}
+                              {upload.caption ? <span>Caption: {upload.caption}</span> : null}
+                              {upload.error ? <p>{upload.error}</p> : null}
+                            </div>
+                            {upload.folderUrl ? (
+                              <a className="secondary-button" href={upload.folderUrl} rel="noreferrer" target="_blank">
+                                <ExternalLink aria-hidden="true" size={17} />
+                                Open Folder
+                              </a>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <EmptyState title="No image upload history">
+                        Uploaded or failed image attempts for this job and date will appear here.
+                      </EmptyState>
+                    )}
+                  </>
+                ) : null}
               </div>
             </div>
 

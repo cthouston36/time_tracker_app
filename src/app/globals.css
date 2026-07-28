@@ -1196,6 +1196,27 @@ a.daily-report-procore-status:hover {
   justify-content: space-between;
 }
 
+.job-image-history-toggle {
+  background: transparent;
+  border: 0;
+  color: var(--foreground);
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+  text-align: left;
+  width: 100%;
+}
+
+.job-image-history-chevron {
+  color: var(--muted);
+  flex: 0 0 auto;
+  transition: transform 0.16s ease;
+}
+
+.job-image-history.expanded .job-image-history-chevron {
+  transform: rotate(180deg);
+}
+
 .job-image-section-heading h3 {
   font-size: 0.94rem;
   margin: 0;
@@ -3830,9 +3851,42 @@ a.daily-report-procore-status:hover {
   }
 
   .daily-report-grid.two,
-  .daily-report-grid.four,
-  .daily-report-summary {
+  .daily-report-grid.four {
     grid-template-columns: 1fr;
+  }
+
+  .daily-report-summary {
+    gap: 6px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .daily-report-summary-card {
+    padding: 8px;
+  }
+
+  .daily-report-summary-card:nth-child(3) {
+    grid-column: 1 / -1;
+  }
+
+  .daily-report-summary-secondary {
+    display: none;
+  }
+
+  .daily-report-summary span {
+    font-size: 0.64rem;
+  }
+
+  .daily-report-summary strong,
+  .daily-report-procore-status {
+    font-size: 0.9rem;
+  }
+
+  .daily-report-upload-status .success-alert,
+  .daily-report-upload-status .inline-alert,
+  .job-image-notice {
+    font-size: 0.76rem;
+    line-height: 1.25;
+    padding: 8px;
   }
 
   .daily-report-form section {
@@ -3931,6 +3985,54 @@ a.daily-report-procore-status:hover {
     flex-direction: column;
   }
 
+  .job-images-panel {
+    gap: 8px;
+  }
+
+  .job-images-panel .panel-heading {
+    margin-bottom: 4px;
+  }
+
+  .job-image-help-text {
+    display: none;
+  }
+
+  .job-images-panel .enhanced-empty-state {
+    min-height: 74px;
+    padding: 12px;
+  }
+
+  .job-images-panel .empty-state-icon {
+    display: none;
+  }
+
+  .job-images-panel .enhanced-empty-state p {
+    font-size: 0.82rem;
+  }
+
+  .job-image-queue,
+  .job-image-history {
+    gap: 8px;
+    padding-top: 10px;
+  }
+
+  .job-image-history-toggle {
+    align-items: center;
+    background: var(--field);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    flex-direction: row;
+    padding: 10px;
+  }
+
+  .job-image-history-toggle h3 {
+    font-size: 0.9rem;
+  }
+
+  .job-image-history-toggle span {
+    margin-left: auto;
+  }
+
   .job-image-section-actions {
     justify-content: stretch;
   }
@@ -3947,6 +4049,19 @@ a.daily-report-procore-status:hover {
 
   .job-image-preview {
     aspect-ratio: 16 / 9;
+  }
+
+  .job-image-history-row {
+    gap: 8px;
+    padding: 9px;
+  }
+
+  .job-image-history-row span:nth-of-type(n + 2) {
+    display: none;
+  }
+
+  .job-image-history-row .secondary-button {
+    min-height: 38px;
   }
 
   .report-mode-tabs {
@@ -4176,13 +4291,7 @@ a.daily-report-procore-status:hover {
   }
 
   .page-header-meta {
-    gap: 6px;
-  }
-
-  .page-header-meta span {
-    border-radius: 6px;
-    font-size: 0.74rem;
-    padding: 5px 7px;
+    display: none;
   }
 
   .skeleton-button {
