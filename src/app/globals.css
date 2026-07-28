@@ -1480,7 +1480,7 @@ a.daily-report-procore-status:hover {
 .submitted-review-grid {
   display: grid;
   gap: 12px;
-  grid-template-columns: minmax(240px, 0.85fr) minmax(0, 1.15fr);
+  grid-template-columns: 1fr;
 }
 
 .submitted-review-section {
@@ -1522,29 +1522,6 @@ a.daily-report-procore-status:hover {
 .submitted-crew-row span,
 .submitted-crew-row strong {
   overflow-wrap: anywhere;
-}
-
-.submitted-note-block {
-  display: grid;
-  gap: 4px;
-}
-
-.submitted-note-block span {
-  color: var(--muted);
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-transform: uppercase;
-}
-
-.submitted-note-block p {
-  background: var(--panel-soft);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  color: #dce7ef;
-  margin: 0;
-  min-height: 40px;
-  overflow-wrap: anywhere;
-  padding: 8px 10px;
 }
 
 .submitted-entry-table {
@@ -3017,12 +2994,6 @@ a.daily-report-procore-status:hover {
   gap: 14px;
 }
 
-.day-note-grid {
-  display: grid;
-  gap: 12px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
 .weekly-status-controls {
   align-items: flex-start;
   display: flex;
@@ -3812,10 +3783,6 @@ a.daily-report-procore-status:hover {
   .compact-input,
   .mobile-picker-search {
     font-size: 16px;
-  }
-
-  .day-note-grid {
-    grid-template-columns: 1fr;
   }
 
   .modal-backdrop {

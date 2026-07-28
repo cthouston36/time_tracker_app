@@ -647,7 +647,6 @@ export function TimeAllocationWorkspace() {
   const jobImageInputRef = useRef<HTMLInputElement>(null);
   const jobImagePreviewUrlsRef = useRef<Set<string>>(new Set());
   const myProjectsFilterInitializedRef = useRef(false);
-  const dayNotesSaveTimeoutsRef = useRef<Record<string, number>>({});
   const dailyReportDraftAutosaveTimeoutRef = useRef<number | null>(null);
 
   const projects = useMemo(
@@ -1509,16 +1508,6 @@ export function TimeAllocationWorkspace() {
     window.localStorage.setItem("procore-sync-log", JSON.stringify(syncLog));
   }, [currentUser, syncLog]);
 
-  useEffect(
-    () => () => {
-      for (const timeoutId of Object.values(dayNotesSaveTimeoutsRef.current)) {
-        window.clearTimeout(timeoutId);
-      }
-      dayNotesSaveTimeoutsRef.current = {};
-    },
-    []
-  );
-
   async function login() {
     setLoginError("");
 
@@ -1926,10 +1915,6 @@ export function TimeAllocationWorkspace() {
     try {
       const data = await clearDatabaseStagingOperationalData();
 
-      for (const timeoutId of Object.values(dayNotesSaveTimeoutsRef.current)) {
-        window.clearTimeout(timeoutId);
-      }
-      dayNotesSaveTimeoutsRef.current = {};
       clearPendingDailyReportAutosaveTimeout(dailyReportDraftAutosaveTimeoutRef);
       clearAllDailyReportAutosaveDrafts();
 
@@ -2204,41 +2189,6 @@ export function TimeAllocationWorkspace() {
   function selectSubcontractorVendor(vendor: NetSuiteVendor) {
     setSelectedSubcontractorVendorId(vendor.id);
     setSubcontractorVendorSearch(formatNetSuiteVendorOption(vendor));
-  }
-
-  function updateDayEntryNotes(field: keyof DayEntryNotes, value: string) {
-    if (!selectedProject || dayIsSubmitted) {
-      return;
-    }
-
-    const dayKey = getDayKey(selectedProject.id, workDate);
-    const nextNotes = {
-      notes: currentDayEntryNotes.notes,
-      inventory: currentDayEntryNotes.inventory,
-      [field]: value
-    };
-
-    setDayEntryNotesByKey((current) => ({
-      ...current,
-      [dayKey]: nextNotes
-    }));
-    scheduleDatabaseDayNotesSave(selectedProject.id, workDate, nextNotes);
-  }
-
-  function scheduleDatabaseDayNotesSave(projectId: string, date: string, dayEntryNotes: DayEntryNotes) {
-    const dayKey = getDayKey(projectId, date);
-    const existingTimeout = dayNotesSaveTimeoutsRef.current[dayKey];
-
-    if (existingTimeout) {
-      window.clearTimeout(existingTimeout);
-    }
-
-    dayNotesSaveTimeoutsRef.current[dayKey] = window.setTimeout(() => {
-      delete dayNotesSaveTimeoutsRef.current[dayKey];
-      void saveDatabaseDayNotes(projectId, date, dayEntryNotes).catch((error) => {
-        setEntryNotice(error instanceof Error ? error.message : "Notes saved locally, but did not sync.");
-      });
-    }, 500);
   }
 
   function openDailyEntry(projectId: string, date: string) {
@@ -5009,7 +4959,6 @@ export function TimeAllocationWorkspace() {
                 <SubmittedDayReview
                   crewSummaryRows={crewSummaryRows}
                   dailyReport={currentDailyReport}
-                  dayEntryNotes={currentDayEntryNotes}
                   entries={visibleEntries}
                   procoreStatus={currentDailyReportProcoreStatus}
                   showPayItemEntries={selectedProjectUsesPayItems}
@@ -5126,37 +5075,6 @@ export function TimeAllocationWorkspace() {
               )}
               </div>
             ) : null}
-
-            <div className="panel">
-              <div className="panel-heading">
-                <h2>Job Notes</h2>
-              </div>
-              <div className="day-note-grid">
-                <div className="field-group">
-                  <label htmlFor="day-notes">Notes</label>
-                  <textarea
-                    disabled={dayIsSubmitted || !selectedProject}
-                    id="day-notes"
-                    placeholder="Enter job-specific notes for this day."
-                    value={currentDayEntryNotes.notes}
-                    onChange={(event) => updateDayEntryNotes("notes", event.target.value)}
-                  />
-                </div>
-                <div className="field-group">
-                  <label htmlFor="day-inventory">Inventory</label>
-                  <textarea
-                    disabled={dayIsSubmitted || !selectedProject}
-                    id="day-inventory"
-                    placeholder="Enter inventory notes, material usage, or deliveries."
-                    value={currentDayEntryNotes.inventory}
-                    onChange={(event) => updateDayEntryNotes("inventory", event.target.value)}
-                  />
-                </div>
-              </div>
-              <div className="field-note">
-                Notes and inventory are saved to the selected job and date.
-              </div>
-            </div>
 
             <div className="panel">
               <div className="panel-heading">
@@ -5762,7 +5680,6 @@ function MobileInstallPrompt({ onDismiss }: { onDismiss: () => void }) {
 function SubmittedDayReview({
   crewSummaryRows,
   dailyReport,
-  dayEntryNotes,
   entries,
   procoreStatus,
   showPayItemEntries,
@@ -5770,7 +5687,6 @@ function SubmittedDayReview({
 }: {
   crewSummaryRows: CrewSummaryRow[];
   dailyReport: DailyReport | undefined;
-  dayEntryNotes: DayEntryNotes;
   entries: AllocationEntry[];
   procoreStatus: DailyReportProcoreStatus;
   showPayItemEntries: boolean;
@@ -5815,17 +5731,6 @@ function SubmittedDayReview({
               ))}
             </div>
           )}
-        </section>
-        <section className="submitted-review-section">
-          <h3>Notes</h3>
-          <div className="submitted-note-block">
-            <span>Notes</span>
-            <p>{dayEntryNotes.notes.trim() || "No notes entered."}</p>
-          </div>
-          <div className="submitted-note-block">
-            <span>Inventory</span>
-            <p>{dayEntryNotes.inventory.trim() || "No inventory notes entered."}</p>
-          </div>
         </section>
       </div>
 
@@ -10008,26 +9913,6 @@ async function loadDatabaseDayRecords() {
     };
   } catch {
     return null;
-  }
-}
-
-async function saveDatabaseDayNotes(projectId: string, date: string, dayEntryNotes: DayEntryNotes) {
-  const response = await fetch("/api/day-records", {
-    body: JSON.stringify({
-      action: "save_notes",
-      date,
-      dayEntryNotes,
-      projectId
-    }),
-    headers: {
-      "Content-Type": "application/json"
-    },
-    method: "PATCH"
-  });
-  const data = (await response.json()) as { error?: string; ok?: boolean };
-
-  if (!response.ok || data.ok === false) {
-    throw new Error(data.error ?? "Unable to save notes.");
   }
 }
 
