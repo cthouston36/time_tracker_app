@@ -1,7 +1,7 @@
 "use client";
 
 import NextImage from "next/image";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Archive,
   BarChart3,
@@ -15,7 +15,9 @@ import {
   Edit3,
   ExternalLink,
   Info,
+  Inbox,
   KeyRound,
+  LoaderCircle,
   ListChecks,
   LogOut,
   Maximize2,
@@ -613,6 +615,12 @@ export function TimeAllocationWorkspace() {
   const [mergeTargetCrewMemberId, setMergeTargetCrewMemberId] = useState("");
   const [draftsByPayItem, setDraftsByPayItem] = useState<DraftsByPayItem>({});
   const [editingEntry, setEditingEntry] = useState<EditingEntry | null>(null);
+  const [savingEntries, setSavingEntries] = useState(false);
+  const [savingEditedEntry, setSavingEditedEntry] = useState(false);
+  const [submittingDay, setSubmittingDay] = useState(false);
+  const [reopeningDay, setReopeningDay] = useState(false);
+  const [deletingSubmittedDay, setDeletingSubmittedDay] = useState(false);
+  const [removingEntryId, setRemovingEntryId] = useState<string | null>(null);
   const [editingCrewMember, setEditingCrewMember] = useState<EditingCrewMember | null>(null);
   const [connectionStatus, setConnectionStatus] = useState("Mock data active");
   const [projectLoadError, setProjectLoadError] = useState("");
@@ -3691,11 +3699,7 @@ export function TimeAllocationWorkspace() {
   }
 
   async function saveAllocationEntries() {
-    if (!selectedProject || !currentUser || dayIsSubmitted) {
-      return;
-    }
-
-    if (!(await ensureEntriesAreCurrent(selectedProject.id, workDate))) {
+    if (!selectedProject || !currentUser || dayIsSubmitted || savingEntries) {
       return;
     }
 
@@ -3729,51 +3733,66 @@ export function TimeAllocationWorkspace() {
       return;
     }
 
-    const nextEntries = selectedProject.payItems.flatMap((payItem) => {
-      const draft = draftsByPayItem[payItem.id];
-      const existingEntry = visibleEntries.find((entry) => entry.payItemId === payItem.id);
+    setSavingEntries(true);
+    setEntryNotice("Saving entries...");
 
-      if (!draftIsSaveable(draft)) {
-        return [];
+    try {
+      if (!(await ensureEntriesAreCurrent(selectedProject.id, workDate))) {
+        return;
       }
 
-      const hours = draft?.hours ? Number(draft.hours) : existingEntry?.hours ?? 0;
-      const quantity = draft?.quantity ? Number(draft.quantity) : existingEntry?.quantityCompleted ?? 0;
+      const nextEntries = selectedProject.payItems.flatMap((payItem) => {
+        const draft = draftsByPayItem[payItem.id];
+        const existingEntry = visibleEntries.find((entry) => entry.payItemId === payItem.id);
 
-      return [
-        {
-          id: existingEntry?.id ?? crypto.randomUUID(),
-          projectId: selectedProject.id,
-          projectName: existingEntry?.projectName ?? selectedProject.name,
-          date: workDate,
-          payItemId: payItem.id,
-          payItemCode: existingEntry?.payItemCode ?? payItem.code,
-          payItemName: existingEntry?.payItemName ?? payItem.name,
-          payItemBudgetedQuantity: existingEntry?.payItemBudgetedQuantity ?? payItem.budgetedQuantity,
-          payItemUnitOfMeasure: existingEntry?.payItemUnitOfMeasure ?? payItem.unitOfMeasure.toUpperCase(),
-          hours,
-          quantityCompleted: quantity,
-          crewAllocations: buildCrewAllocations(draft, selectedProjectCrewMembers, hours),
-          savedByUserId: currentUser.id,
-          savedByName: formatUserName(currentUser),
-          savedAt: new Date().toISOString()
+        if (!draftIsSaveable(draft)) {
+          return [];
         }
-      ];
-    });
 
-    if (nextEntries.length === 0) {
-      return;
+        const hours = draft?.hours ? Number(draft.hours) : existingEntry?.hours ?? 0;
+        const quantity = draft?.quantity ? Number(draft.quantity) : existingEntry?.quantityCompleted ?? 0;
+
+        return [
+          {
+            id: existingEntry?.id ?? crypto.randomUUID(),
+            projectId: selectedProject.id,
+            projectName: existingEntry?.projectName ?? selectedProject.name,
+            date: workDate,
+            payItemId: payItem.id,
+            payItemCode: existingEntry?.payItemCode ?? payItem.code,
+            payItemName: existingEntry?.payItemName ?? payItem.name,
+            payItemBudgetedQuantity: existingEntry?.payItemBudgetedQuantity ?? payItem.budgetedQuantity,
+            payItemUnitOfMeasure: existingEntry?.payItemUnitOfMeasure ?? payItem.unitOfMeasure.toUpperCase(),
+            hours,
+            quantityCompleted: quantity,
+            crewAllocations: buildCrewAllocations(draft, selectedProjectCrewMembers, hours),
+            savedByUserId: currentUser.id,
+            savedByName: formatUserName(currentUser),
+            savedAt: new Date().toISOString()
+          }
+        ];
+      });
+
+      if (nextEntries.length === 0) {
+        return;
+      }
+
+      setEntries((current) => {
+        const upsertIds = new Set(nextEntries.map((entry) => entry.id));
+        return [...current.filter((entry) => !upsertIds.has(entry.id)), ...nextEntries];
+      });
+      try {
+        await saveDatabaseEntries(nextEntries);
+      } catch (error) {
+        setEntryNotice(error instanceof Error ? error.message : "Rows saved locally, but did not sync to the database.");
+        return;
+      }
+
+      setDraftsByPayItem({});
+      setEntryNotice(`${nextEntries.length} row${nextEntries.length === 1 ? "" : "s"} saved for ${formatDate(workDate)}.`);
+    } finally {
+      setSavingEntries(false);
     }
-
-    setEntries((current) => {
-      const upsertIds = new Set(nextEntries.map((entry) => entry.id));
-      return [...current.filter((entry) => !upsertIds.has(entry.id)), ...nextEntries];
-    });
-    void saveDatabaseEntries(nextEntries).catch((error) => {
-      setEntryNotice(error instanceof Error ? error.message : "Rows saved locally, but did not sync to the database.");
-    });
-    setDraftsByPayItem({});
-    setEntryNotice(`${nextEntries.length} row${nextEntries.length === 1 ? "" : "s"} saved for ${formatDate(workDate)}.`);
   }
 
   function clearDraftInputs() {
@@ -3782,52 +3801,76 @@ export function TimeAllocationWorkspace() {
   }
 
   async function removeEntry(entryId: string) {
-    if (dayIsSubmitted) {
+    if (dayIsSubmitted || removingEntryId) {
       return;
     }
 
     const entryToRemove = entries.find((entry) => entry.id === entryId);
 
-    if (!entryToRemove || !(await ensureEntriesAreCurrent(entryToRemove.projectId, entryToRemove.date))) {
-      return;
-    }
+    setRemovingEntryId(entryId);
+    setEntryNotice("Removing entry...");
 
-    setEntries((current) => current.filter((entry) => entry.id !== entryId));
-    void deleteDatabaseEntry(entryId).catch((error) => {
-      setEntryNotice(error instanceof Error ? error.message : "Entry deleted locally, but did not sync to the database.");
-    });
+    try {
+      if (!entryToRemove || !(await ensureEntriesAreCurrent(entryToRemove.projectId, entryToRemove.date))) {
+        return;
+      }
+
+      setEntries((current) => current.filter((entry) => entry.id !== entryId));
+      try {
+        await deleteDatabaseEntry(entryId);
+        setEntryNotice("Entry removed.");
+      } catch (error) {
+        setEntryNotice(error instanceof Error ? error.message : "Entry deleted locally, but did not sync to the database.");
+      }
+    } finally {
+      setRemovingEntryId(null);
+    }
   }
 
   async function deleteSubmittedDay() {
-    if (currentUser?.role !== "admin" || !selectedProject) {
+    if (currentUser?.role !== "admin" || !selectedProject || deletingSubmittedDay) {
       return;
     }
 
-    if (
-      !(await ensureEntriesAreCurrent(selectedProject.id, workDate)) ||
-      !(await ensureDaySubmissionIsCurrent(selectedProject.id, workDate))
-    ) {
-      return;
+    setDeletingSubmittedDay(true);
+    setEntryNotice("Deleting submitted day...");
+
+    try {
+      if (
+        !(await ensureEntriesAreCurrent(selectedProject.id, workDate)) ||
+        !(await ensureDaySubmissionIsCurrent(selectedProject.id, workDate))
+      ) {
+        return;
+      }
+
+      const dayKey = getDayKey(selectedProject.id, workDate);
+
+      setEntries((current) =>
+        current.filter((entry) => !(entry.projectId === selectedProject.id && entry.date === workDate))
+      );
+      try {
+        await deleteDatabaseDayEntries(selectedProject.id, workDate);
+      } catch (error) {
+        setEntryNotice(error instanceof Error ? error.message : "Submitted day deleted locally, but entries did not sync.");
+        return;
+      }
+      setDaySubmissions((current) => {
+        const next = { ...current };
+        delete next[dayKey];
+        return next;
+      });
+      try {
+        await deleteDatabaseDaySubmission(selectedProject.id, workDate);
+      } catch (error) {
+        setEntryNotice(error instanceof Error ? error.message : "Submitted day deleted locally, but day status did not sync.");
+        return;
+      }
+      setEditingEntry(null);
+      setDraftsByPayItem({});
+      setEntryNotice("Submitted day deleted.");
+    } finally {
+      setDeletingSubmittedDay(false);
     }
-
-    const dayKey = getDayKey(selectedProject.id, workDate);
-
-    setEntries((current) =>
-      current.filter((entry) => !(entry.projectId === selectedProject.id && entry.date === workDate))
-    );
-    void deleteDatabaseDayEntries(selectedProject.id, workDate).catch((error) => {
-      setEntryNotice(error instanceof Error ? error.message : "Submitted day deleted locally, but entries did not sync.");
-    });
-    setDaySubmissions((current) => {
-      const next = { ...current };
-      delete next[dayKey];
-      return next;
-    });
-    void deleteDatabaseDaySubmission(selectedProject.id, workDate).catch((error) => {
-      setEntryNotice(error instanceof Error ? error.message : "Submitted day deleted locally, but day status did not sync.");
-    });
-    setEditingEntry(null);
-    setDraftsByPayItem({});
   }
 
   function startEditingEntry(entry: AllocationEntry) {
@@ -3839,136 +3882,160 @@ export function TimeAllocationWorkspace() {
   }
 
   async function saveEditedEntry() {
-    if (!editingEntry || dayIsSubmitted || !currentUser) {
+    if (!editingEntry || dayIsSubmitted || !currentUser || savingEditedEntry) {
       return;
     }
 
     const entryToEdit = entries.find((entry) => entry.id === editingEntry.entryId);
 
-    if (!entryToEdit || !(await ensureEntriesAreCurrent(entryToEdit.projectId, entryToEdit.date))) {
-      return;
-    }
+    setSavingEditedEntry(true);
+    setEntryNotice("Saving edited row...");
 
-    const hours = Number(editingEntry.hours);
-    const quantity = Number(editingEntry.quantity);
-
-    if (hours < 0 || quantity < 0 || !Number.isFinite(hours) || !Number.isFinite(quantity)) {
-      return;
-    }
-
-    const remainingQuantity = selectedProject?.id === entryToEdit.projectId
-      ? remainingQuantitiesByPayItem[entryToEdit.payItemId]
-      : undefined;
-
-    if (
-      remainingQuantity !== undefined &&
-      quantity > remainingQuantity + 0.0001 &&
-      !confirmQuantityOverrun([
-        `${entryToEdit.payItemCode}: ${formatPayItemQuantity(quantity)} entered, ${formatPayItemQuantity(remainingQuantity)} remaining.`
-      ])
-    ) {
-      setEntryNotice("Update cancelled. Adjust the quantity or save again to confirm the overrun.");
-      return;
-    }
-
-    let updatedEntry: AllocationEntry | null = null;
-    const nextEntries = entries.map((entry) => {
-      if (entry.id !== editingEntry.entryId) {
-        return entry;
+    try {
+      if (!entryToEdit || !(await ensureEntriesAreCurrent(entryToEdit.projectId, entryToEdit.date))) {
+        return;
       }
 
-      updatedEntry = {
-        ...entry,
-        hours,
-        quantityCompleted: quantity,
-        crewAllocations: scaleCrewAllocations(entry.crewAllocations ?? [], hours),
-        savedByUserId: currentUser.id,
-        savedByName: formatUserName(currentUser),
-        savedAt: new Date().toISOString()
-      };
+      const hours = Number(editingEntry.hours);
+      const quantity = Number(editingEntry.quantity);
 
-      return updatedEntry;
-    });
+      if (hours < 0 || quantity < 0 || !Number.isFinite(hours) || !Number.isFinite(quantity)) {
+        return;
+      }
 
-    setEntries(nextEntries);
-    if (updatedEntry) {
-      void saveDatabaseEntries([updatedEntry]).catch((error) => {
-        setEntryNotice(error instanceof Error ? error.message : "Daily allocation updated locally, but did not sync.");
+      const remainingQuantity = selectedProject?.id === entryToEdit.projectId
+        ? remainingQuantitiesByPayItem[entryToEdit.payItemId]
+        : undefined;
+
+      if (
+        remainingQuantity !== undefined &&
+        quantity > remainingQuantity + 0.0001 &&
+        !confirmQuantityOverrun([
+          `${entryToEdit.payItemCode}: ${formatPayItemQuantity(quantity)} entered, ${formatPayItemQuantity(remainingQuantity)} remaining.`
+        ])
+      ) {
+        setEntryNotice("Update cancelled. Adjust the quantity or save again to confirm the overrun.");
+        return;
+      }
+
+      let updatedEntry: AllocationEntry | null = null;
+      const nextEntries = entries.map((entry) => {
+        if (entry.id !== editingEntry.entryId) {
+          return entry;
+        }
+
+        updatedEntry = {
+          ...entry,
+          hours,
+          quantityCompleted: quantity,
+          crewAllocations: scaleCrewAllocations(entry.crewAllocations ?? [], hours),
+          savedByUserId: currentUser.id,
+          savedByName: formatUserName(currentUser),
+          savedAt: new Date().toISOString()
+        };
+
+        return updatedEntry;
       });
+
+      setEntries(nextEntries);
+      if (updatedEntry) {
+        try {
+          await saveDatabaseEntries([updatedEntry]);
+        } catch (error) {
+          setEntryNotice(error instanceof Error ? error.message : "Daily allocation updated locally, but did not sync.");
+          return;
+        }
+      }
+      setEditingEntry(null);
+      setEntryNotice("Daily allocation row updated.");
+    } finally {
+      setSavingEditedEntry(false);
     }
-    setEditingEntry(null);
-    setEntryNotice("Daily allocation row updated.");
   }
 
   async function submitDay() {
-    if (!selectedProject || !currentUser || visibleEntries.length === 0) {
+    if (!selectedProject || !currentUser || visibleEntries.length === 0 || submittingDay) {
       return;
     }
 
-    if (
-      !(await ensureEntriesAreCurrent(selectedProject.id, workDate)) ||
-      !(await ensureDaySubmissionIsCurrent(selectedProject.id, workDate))
-    ) {
-      return;
+    setSubmittingDay(true);
+
+    try {
+      if (
+        !(await ensureEntriesAreCurrent(selectedProject.id, workDate)) ||
+        !(await ensureDaySubmissionIsCurrent(selectedProject.id, workDate))
+      ) {
+        return;
+      }
+
+      if (!window.confirm(`Submit ${selectedProject.name} for ${formatDate(workDate)}? This will lock the day for standard edits.`)) {
+        return;
+      }
+
+      setEntryNotice("Submitting day...");
+
+      const daySubmission: DaySubmission = {
+        status: "submitted",
+        submittedByUserId: currentUser.id,
+        submittedByName: formatUserName(currentUser),
+        submittedAt: new Date().toISOString()
+      };
+
+      setDaySubmissions((current) => ({
+        ...current,
+        [getDayKey(selectedProject.id, workDate)]: daySubmission
+      }));
+      try {
+        await saveDatabaseDaySubmission(selectedProject.id, workDate, daySubmission);
+      } catch (error) {
+        setEntryNotice(error instanceof Error ? error.message : "Day submitted locally, but did not sync.");
+        return;
+      }
+      setEditingEntry(null);
+      setDraftsByPayItem({});
+      setEntryNotice("Day submitted.");
+    } finally {
+      setSubmittingDay(false);
     }
-
-    if (!window.confirm(`Submit ${selectedProject.name} for ${formatDate(workDate)}? This will lock the day for standard edits.`)) {
-      return;
-    }
-
-    const daySubmission: DaySubmission = {
-      status: "submitted",
-      submittedByUserId: currentUser.id,
-      submittedByName: formatUserName(currentUser),
-      submittedAt: new Date().toISOString()
-    };
-
-    setDaySubmissions((current) => ({
-      ...current,
-      [getDayKey(selectedProject.id, workDate)]: daySubmission
-    }));
-    void saveDatabaseDaySubmission(selectedProject.id, workDate, daySubmission).catch((error) => {
-      setEntryNotice(error instanceof Error ? error.message : "Day submitted locally, but did not sync.");
-    });
-    setEditingEntry(null);
-    setDraftsByPayItem({});
-    setEntryNotice("Day submitted.");
   }
 
   async function reopenSubmittedDay() {
-    if (currentUser?.role !== "admin" || !selectedProject || !dayIsSubmitted) {
+    if (currentUser?.role !== "admin" || !selectedProject || !dayIsSubmitted || reopeningDay) {
       return;
     }
 
-    if (!(await ensureDaySubmissionIsCurrent(selectedProject.id, workDate))) {
-      return;
+    setReopeningDay(true);
+    setEntryNotice("Reopening submitted day...");
+
+    try {
+      if (!(await ensureDaySubmissionIsCurrent(selectedProject.id, workDate))) {
+        return;
+      }
+
+      const dayKey = getDayKey(selectedProject.id, workDate);
+
+      const daySubmission: DaySubmission = {
+        status: "draft"
+      };
+
+      setDaySubmissions((current) => ({
+        ...current,
+        [dayKey]: daySubmission
+      }));
+      try {
+        await saveDatabaseDaySubmission(selectedProject.id, workDate, daySubmission);
+      } catch (error) {
+        setEntryNotice(error instanceof Error ? error.message : "Submitted day reopened locally, but did not sync.");
+        return;
+      }
+      setEntryNotice("Submitted day reopened.");
+    } finally {
+      setReopeningDay(false);
     }
-
-    const dayKey = getDayKey(selectedProject.id, workDate);
-
-    const daySubmission: DaySubmission = {
-      status: "draft"
-    };
-
-    setDaySubmissions((current) => ({
-      ...current,
-      [dayKey]: daySubmission
-    }));
-    void saveDatabaseDaySubmission(selectedProject.id, workDate, daySubmission).catch((error) => {
-      setEntryNotice(error instanceof Error ? error.message : "Submitted day reopened locally, but did not sync.");
-    });
-    setEntryNotice("Submitted day reopened.");
   }
 
   if (!authChecked) {
-    return (
-      <main className="app-shell centered-shell">
-        <div className="panel auth-panel">
-          <h1>Crew Time Allocation</h1>
-          <p className="field-note">Checking session...</p>
-        </div>
-      </main>
-    );
+    return <AppLoadingShell />;
   }
 
   if (!currentUser) {
@@ -4221,13 +4288,13 @@ export function TimeAllocationWorkspace() {
                   onSplitEvenly={splitDraftCrewHoursEvenly}
                 />
               ) : (
-                <div className="empty-state">No worked pay items for this job and date yet.</div>
+                <EmptyState title="No worked pay items">Saved or drafted pay item rows will show here.</EmptyState>
               )}
             </div>
             <div className="matrix-fullscreen-actions">
               <button
                 className="secondary-button"
-                disabled={Object.keys(draftsByPayItem).length === 0 || dayIsSubmitted}
+                disabled={Object.keys(draftsByPayItem).length === 0 || dayIsSubmitted || savingEntries}
                 onClick={clearDraftInputs}
                 type="button"
               >
@@ -4235,15 +4302,15 @@ export function TimeAllocationWorkspace() {
               </button>
               <button
                 className="primary-button prominent-action"
-                disabled={draftEntryCount === 0 || dayIsSubmitted}
+                disabled={draftEntryCount === 0 || dayIsSubmitted || savingEntries}
                 onClick={saveAllocationEntries}
                 type="button"
               >
-                <Save aria-hidden="true" size={18} />
-                Save entries
+                {savingEntries ? <InlineSpinner /> : <Save aria-hidden="true" size={18} />}
+                {savingEntries ? "Saving..." : "Save entries"}
               </button>
             </div>
-            {entryNotice ? <div className={entryNoticeIsError(entryNotice) ? "inline-alert" : "success-alert"}>{entryNotice}</div> : null}
+            {entryNotice ? <div className={getEntryNoticeClassName(entryNotice)}>{entryNotice}</div> : null}
           </div>
         </div>
       ) : null}
@@ -4312,11 +4379,13 @@ export function TimeAllocationWorkspace() {
             />
           ) : null}
           {projects.length === 0 && !projectLoadError ? (
-            <div className="empty-state">
+            <EmptyState title={allProjects.length > 0 ? "No selectable projects" : "No projects loaded"}>
               {allProjects.length > 0
-                ? "All cached projects are currently blacklisted."
-                : "No projects with pay items are cached yet."}
-            </div>
+                ? "All cached projects are currently hidden by admin controls."
+                : currentUser.role === "admin"
+                  ? "Use Admin Tools to load NetSuite jobs and pay items."
+                  : "Projects will appear after an admin syncs NetSuite data."}
+            </EmptyState>
           ) : null}
           {projectLoadError ? <div className="inline-alert">{projectLoadError}</div> : null}
           {syncedAt ? (
@@ -4409,7 +4478,7 @@ export function TimeAllocationWorkspace() {
                 </div>
                 <div className="field-note">Add people as crew members. Add subcontractors as company names only.</div>
                 {entryNotice && entryNoticeIsCrewRelated(entryNotice) ? (
-                  <div className={entryNoticeIsError(entryNotice) ? "inline-alert" : "success-alert"}>{entryNotice}</div>
+                  <div className={getEntryNoticeClassName(entryNotice)}>{entryNotice}</div>
                 ) : null}
                 <div className="crew-form-section">
                   <h3>Crew Member</h3>
@@ -4515,7 +4584,9 @@ export function TimeAllocationWorkspace() {
                 </div>
                 <div className="crew-list">
                   {selectedProjectCrewMembers.length === 0 ? (
-                    <div className="empty-state">No crew members saved to this job.</div>
+                    <EmptyState icon={Users} title="No crew assigned">
+                      Add crew members or subcontractors to make pay item hour allocation available.
+                    </EmptyState>
                   ) : (
                     selectedProjectCrewMembers.map((member) => {
                       const memberIsUsed = selectedProject
@@ -4823,9 +4894,11 @@ export function TimeAllocationWorkspace() {
                   </button>
                 </div>
               </div>
-              {!selectedProject?.payItems.length ? <div className="empty-state">No pay items returned for this job.</div> : null}
+              {!selectedProject?.payItems.length ? (
+                <EmptyState title="No pay items returned">This job can still use daily reports and image uploads.</EmptyState>
+              ) : null}
               {selectedProject?.payItems.length && displayedPayItems.length === 0 ? (
-                <div className="empty-state">No worked pay items for this job and date yet.</div>
+                <EmptyState title="No worked items yet">Turn off the worked-items filter to view all pay items.</EmptyState>
               ) : null}
               {selectedProject?.payItems.length && displayedPayItems.length > 0 ? (
                 <PayItemMatrix
@@ -4865,7 +4938,7 @@ export function TimeAllocationWorkspace() {
                   </span>
                   <button
                     className="secondary-button"
-                    disabled={Object.keys(draftsByPayItem).length === 0 || dayIsSubmitted}
+                    disabled={Object.keys(draftsByPayItem).length === 0 || dayIsSubmitted || savingEntries}
                     onClick={clearDraftInputs}
                     type="button"
                   >
@@ -4873,16 +4946,16 @@ export function TimeAllocationWorkspace() {
                   </button>
                   <button
                     className="primary-button save-button prominent-action"
-                    disabled={draftEntryCount === 0 || dayIsSubmitted}
+                    disabled={draftEntryCount === 0 || dayIsSubmitted || savingEntries}
                     onClick={saveAllocationEntries}
                     type="button"
                   >
-                    <Save aria-hidden="true" size={18} />
-                    Save entries
+                    {savingEntries ? <InlineSpinner /> : <Save aria-hidden="true" size={18} />}
+                    {savingEntries ? "Saving..." : "Save entries"}
                   </button>
                 </div>
               ) : null}
-              {entryNotice ? <div className={entryNoticeIsError(entryNotice) ? "inline-alert" : "success-alert"}>{entryNotice}</div> : null}
+              {entryNotice ? <div className={getEntryNoticeClassName(entryNotice)}>{entryNotice}</div> : null}
             </div>
 
             <div className="panel workflow-panel">
@@ -4894,12 +4967,12 @@ export function TimeAllocationWorkspace() {
                 {!dayIsSubmitted ? (
                   <button
                     className="primary-button prominent-action"
-                    disabled={visibleEntries.length === 0}
+                    disabled={visibleEntries.length === 0 || submittingDay || savingEntries}
                     onClick={submitDay}
                     type="button"
                   >
-                    <Send aria-hidden="true" size={18} />
-                    Submit day
+                    {submittingDay ? <InlineSpinner /> : <Send aria-hidden="true" size={18} />}
+                    {submittingDay ? "Submitting..." : "Submit day"}
                   </button>
                 ) : null}
               </div>
@@ -4911,12 +4984,13 @@ export function TimeAllocationWorkspace() {
                 </span>
                 {dayIsSubmitted && currentUser.role === "admin" ? (
                   <div className="admin-day-actions">
-                    <button className="secondary-button" onClick={reopenSubmittedDay} type="button">
-                      Reopen day
+                    <button className="secondary-button" disabled={reopeningDay || deletingSubmittedDay} onClick={reopenSubmittedDay} type="button">
+                      {reopeningDay ? <InlineSpinner /> : null}
+                      {reopeningDay ? "Reopening..." : "Reopen day"}
                     </button>
-                    <button className="secondary-button" onClick={deleteSubmittedDay} type="button">
-                      <Trash2 aria-hidden="true" size={18} />
-                      Delete submitted day
+                    <button className="secondary-button" disabled={reopeningDay || deletingSubmittedDay} onClick={deleteSubmittedDay} type="button">
+                      {deletingSubmittedDay ? <InlineSpinner /> : <Trash2 aria-hidden="true" size={18} />}
+                      {deletingSubmittedDay ? "Deleting..." : "Delete submitted day"}
                     </button>
                   </div>
                 ) : null}
@@ -4934,7 +5008,9 @@ export function TimeAllocationWorkspace() {
               ) : (
                 <div className="entry-list">
                   {visibleEntries.length === 0 ? (
-                    <div className="empty-state">No pay item entries for this job and date.</div>
+                    <EmptyState title="No saved pay item rows">
+                      Saved rows for this job and date will appear here before submission.
+                    </EmptyState>
                   ) : (
                     visibleEntries.map((entry) => (
                       <div className="entry-row" key={entry.id}>
@@ -4969,8 +5045,9 @@ export function TimeAllocationWorkspace() {
                               }
                               onWheel={(event) => event.currentTarget.blur()}
                             />
-                            <button className="secondary-button" onClick={saveEditedEntry} type="button">
-                              Save
+                            <button className="secondary-button" disabled={savingEditedEntry} onClick={saveEditedEntry} type="button">
+                              {savingEditedEntry ? <InlineSpinner /> : null}
+                              {savingEditedEntry ? "Saving..." : "Save"}
                             </button>
                           </>
                         ) : (
@@ -4992,11 +5069,11 @@ export function TimeAllocationWorkspace() {
                         <button
                           aria-label={`Remove ${entry.payItemCode}`}
                           className="icon-button"
-                          disabled={dayIsSubmitted}
+                          disabled={dayIsSubmitted || removingEntryId === entry.id}
                           onClick={() => removeEntry(entry.id)}
                           type="button"
                         >
-                          <Trash2 aria-hidden="true" size={17} />
+                          {removingEntryId === entry.id ? <InlineSpinner /> : <Trash2 aria-hidden="true" size={17} />}
                         </button>
                       </div>
                     ))
@@ -5021,7 +5098,9 @@ export function TimeAllocationWorkspace() {
                 <IconLabel icon={Users} text={`${crewSummaryRows.length} crew member${crewSummaryRows.length === 1 ? "" : "s"}`} />
               </div>
               {crewSummaryRows.length === 0 ? (
-                <div className="empty-state">No crew hours allocated for this job and date.</div>
+                <EmptyState icon={Users} title="No crew hours allocated">
+                  Crew totals will appear after saved pay item rows include crew selections.
+                </EmptyState>
               ) : (
                 <div className="crew-summary-list">
                   {crewSummaryRows.map((row) => (
@@ -5089,7 +5168,7 @@ export function TimeAllocationWorkspace() {
                       onClick={downloadDailyReportPdf}
                       type="button"
                     >
-                      <Download aria-hidden="true" size={18} />
+                      {downloadingDailyReportPdf ? <InlineSpinner /> : <Download aria-hidden="true" size={18} />}
                       {downloadingDailyReportPdf ? "Downloading..." : "Download PDF"}
                     </button>
                   ) : null}
@@ -5100,7 +5179,7 @@ export function TimeAllocationWorkspace() {
                       onClick={uploadDailyReportToProcoreDocuments}
                       type="button"
                     >
-                      <UploadCloud aria-hidden="true" size={18} />
+                      {uploadingDailyReport ? <InlineSpinner /> : <UploadCloud aria-hidden="true" size={18} />}
                       {uploadingDailyReport ? "Uploading..." : "Upload to Procore"}
                     </button>
                   ) : null}
@@ -5139,7 +5218,9 @@ export function TimeAllocationWorkspace() {
                   )}
                 </div>
               ) : (
-                <div className="empty-state">No daily report has been created for this job and date.</div>
+                <EmptyState title="No daily report saved">
+                  Create a daily report before downloading a PDF or uploading to Procore.
+                </EmptyState>
               )}
               {currentDailyReport ? (
                 <div className="daily-report-upload-status">
@@ -5230,7 +5311,7 @@ export function TimeAllocationWorkspace() {
                     onClick={uploadQueuedJobImages}
                     type="button"
                   >
-                    <UploadCloud aria-hidden="true" size={18} />
+                    {uploadingJobImages ? <InlineSpinner /> : <UploadCloud aria-hidden="true" size={18} />}
                     {uploadingJobImages ? "Uploading..." : "Upload Images to Procore"}
                   </button>
                 </div>
@@ -5329,7 +5410,7 @@ export function TimeAllocationWorkspace() {
                   ) : null}
                 </div>
               ) : (
-                <div className="empty-state">No images are queued for upload.</div>
+                <EmptyState title="No images queued">Added photos will stay here until they are uploaded to Procore.</EmptyState>
               )}
               <div className="job-image-history">
                 <div className="job-image-section-heading">
@@ -5374,7 +5455,9 @@ export function TimeAllocationWorkspace() {
                     ))}
                   </div>
                 ) : (
-                  <div className="empty-state">No Procore image uploads have been recorded for this job and date.</div>
+                  <EmptyState title="No image upload history">
+                    Uploaded or failed image attempts for this job and date will appear here.
+                  </EmptyState>
                 )}
               </div>
             </div>
@@ -5384,21 +5467,21 @@ export function TimeAllocationWorkspace() {
                 <>
                   <button
                     className="primary-button"
-                    disabled={draftEntryCount === 0 || dayIsSubmitted}
+                    disabled={draftEntryCount === 0 || dayIsSubmitted || savingEntries}
                     onClick={saveAllocationEntries}
                     type="button"
                   >
-                    <Save aria-hidden="true" size={17} />
-                    Save
+                    {savingEntries ? <InlineSpinner /> : <Save aria-hidden="true" size={17} />}
+                    {savingEntries ? "Saving..." : "Save"}
                   </button>
                   <button
                     className="secondary-button"
-                    disabled={dayIsSubmitted || visibleEntries.length === 0}
+                    disabled={dayIsSubmitted || visibleEntries.length === 0 || submittingDay || savingEntries}
                     onClick={submitDay}
                     type="button"
                   >
-                    <Send aria-hidden="true" size={17} />
-                    Submit
+                    {submittingDay ? <InlineSpinner /> : <Send aria-hidden="true" size={17} />}
+                    {submittingDay ? "Submitting..." : "Submit"}
                   </button>
                 </>
               ) : null}
@@ -5534,6 +5617,65 @@ function DailyStatusStrip({
       />
     </div>
   );
+}
+
+function AppLoadingShell() {
+  return (
+    <main className="app-shell centered-shell">
+      <div className="panel auth-panel loading-panel" aria-label="Loading application">
+        <LoadingSkeleton className="skeleton-title" />
+        <LoadingSkeleton />
+        <div className="skeleton-field-stack">
+          <LoadingSkeleton className="skeleton-field" />
+          <LoadingSkeleton className="skeleton-field" />
+          <LoadingSkeleton className="skeleton-button" />
+        </div>
+      </div>
+    </main>
+  );
+}
+
+function LoadingSkeleton({ className = "" }: { className?: string }) {
+  return <div className={`loading-skeleton ${className}`} />;
+}
+
+function ReportLoadingSkeleton({ rows = 5 }: { rows?: number }) {
+  return (
+    <div className="report-loading-skeleton" aria-label="Loading report rows">
+      {Array.from({ length: rows }, (_, index) => (
+        <div className="report-skeleton-row" key={index}>
+          <LoadingSkeleton />
+          <LoadingSkeleton />
+          <LoadingSkeleton />
+          <LoadingSkeleton />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function EmptyState({
+  children,
+  icon: Icon = Inbox,
+  title
+}: {
+  children?: ReactNode;
+  icon?: LucideIcon;
+  title: string;
+}) {
+  return (
+    <div className="empty-state enhanced-empty-state">
+      <span className="empty-state-icon">
+        <Icon aria-hidden="true" size={20} />
+      </span>
+      <strong>{title}</strong>
+      {children ? <p>{children}</p> : null}
+    </div>
+  );
+}
+
+function InlineSpinner() {
+  return <LoaderCircle aria-hidden="true" className="inline-spinner" size={17} />;
 }
 
 function PageHeader({
@@ -7420,8 +7562,9 @@ function ReportsView({
             : " Outlier filtering is off."}
         </div>
         {reportError ? <div className="inline-alert">{reportError}</div> : null}
-        {reportLoading ? <div className="field-note">Loading report...</div> : null}
-        {reportMode === "summary" ? (
+        {reportLoading ? (
+          <ReportLoadingSkeleton />
+        ) : reportMode === "summary" ? (
           <>
             <PayItemReportTable rows={payItemRows} />
             {reportPagination ? (
@@ -7519,7 +7662,7 @@ function MyJobsManager({
         </div>
       </div>
       {sortedProjects.length === 0 ? (
-        <div className="empty-state">No jobs are available to tag yet.</div>
+        <EmptyState title="No jobs available">Synced projects will appear here for My Projects tagging.</EmptyState>
       ) : (
         <div className="my-jobs-list">
           {sortedProjects.map((project) => (
@@ -7686,7 +7829,9 @@ function WeeklyStatusReport({
         </div>
       </div>
       {visibleProjects.length === 0 ? (
-        <div className="empty-state">Select one or more projects, or tag My Projects, to view weekly status.</div>
+        <EmptyState icon={CalendarDays} title="No calendar projects selected">
+          Select one or more projects, or tag My Projects, to view weekly status.
+        </EmptyState>
       ) : (
         <div className="weekly-calendar">
           <div className="weekly-calendar-row weekly-calendar-header">
@@ -7865,7 +8010,7 @@ function PayItemReportTable({ rows }: { rows: PayItemReportRow[] }) {
   const [expandedPayItemKey, setExpandedPayItemKey] = useState<string | null>(null);
 
   if (rows.length === 0) {
-    return <div className="empty-state">No saved entries available for pay item reporting.</div>;
+    return <EmptyState icon={BarChart3} title="No pay item report data">Saved entries that match the filters will appear here.</EmptyState>;
   }
 
   return (
@@ -8017,9 +8162,9 @@ function DetailedPayItemReport({
       </div>
 
       {!normalizedQuery ? (
-        <div className="empty-state">Search for a pay item to load detailed crew performance rows.</div>
+        <EmptyState icon={BarChart3} title="Select a pay item">Choose a pay item or search by code/description to load detail rows.</EmptyState>
       ) : detailRows.length === 0 ? (
-        <div className="empty-state">No saved entries match that pay item search.</div>
+        <EmptyState icon={BarChart3} title="No matching detail rows">Adjust the pay item search or report filters.</EmptyState>
       ) : (
         <div className="report-table detail-analysis-table">
           <div className="report-row report-header detail-analysis-row">
@@ -8076,7 +8221,7 @@ function CrewPerformanceReport({ rows }: { rows: CrewPerformanceRow[] }) {
   const [expandedCrewMemberId, setExpandedCrewMemberId] = useState<string | null>(null);
 
   if (rows.length === 0) {
-    return <div className="empty-state">No crew allocation entries are available for crew performance reporting.</div>;
+    return <EmptyState icon={Users} title="No crew performance data">Crew allocation rows that match the filters will appear here.</EmptyState>;
   }
 
   return (
@@ -11093,6 +11238,14 @@ function buildDailyReportConflictSignature(dailyReport: DailyReport | undefined)
 
 function formatConflictNumber(value: number) {
   return Number.isFinite(value) ? value.toFixed(6) : "";
+}
+
+function getEntryNoticeClassName(message: string) {
+  return entryNoticeIsError(message) ? "inline-alert" : entryNoticeIsProgress(message) ? "status-alert" : "success-alert";
+}
+
+function entryNoticeIsProgress(message: string) {
+  return ["Deleting", "Removing", "Reopening", "Saving", "Submitting"].some((prefix) => message.startsWith(prefix));
 }
 
 function entryNoticeIsError(message: string) {

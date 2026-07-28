@@ -563,6 +563,72 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   padding: 10px;
 }
 
+.status-alert {
+  align-items: center;
+  background: #102735;
+  border: 1px solid #2f6f78;
+  border-radius: 6px;
+  color: #d8f3f6;
+  display: flex;
+  font-size: 0.86rem;
+  gap: 8px;
+  margin: 14px 0 0;
+  padding: 10px;
+}
+
+.inline-spinner {
+  animation: spin 0.85s linear infinite;
+  flex: 0 0 auto;
+}
+
+.loading-panel {
+  overflow: hidden;
+}
+
+.skeleton-field-stack {
+  display: grid;
+  gap: 10px;
+}
+
+.loading-skeleton {
+  animation: skeleton-shimmer 1.3s ease-in-out infinite;
+  background: linear-gradient(90deg, #162231 0%, #203246 50%, #162231 100%);
+  background-size: 200% 100%;
+  border-radius: 6px;
+  height: 14px;
+  width: 100%;
+}
+
+.skeleton-title {
+  height: 24px;
+  width: 72%;
+}
+
+.skeleton-field {
+  height: 42px;
+}
+
+.skeleton-button {
+  height: 44px;
+  width: 48%;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+
+  100% {
+    background-position: -200% 0;
+  }
+}
+
 .modal-backdrop {
   align-items: center;
   background: rgb(3 8 13 / 0.78);
@@ -2790,10 +2856,63 @@ a.daily-report-procore-status:hover {
   text-align: center;
 }
 
+.enhanced-empty-state {
+  align-items: center;
+  background: rgba(13, 21, 29, 0.42);
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+  min-height: 112px;
+}
+
+.empty-state-icon {
+  align-items: center;
+  background: rgba(34, 166, 179, 0.1);
+  border: 1px solid rgba(34, 166, 179, 0.28);
+  border-radius: 999px;
+  color: #b8e7ec;
+  display: inline-flex;
+  height: 40px;
+  justify-content: center;
+  width: 40px;
+}
+
+.enhanced-empty-state strong {
+  color: var(--foreground);
+  font-size: 0.98rem;
+}
+
+.enhanced-empty-state p {
+  color: var(--muted);
+  line-height: 1.45;
+  margin: 0;
+  max-width: 560px;
+}
+
 .report-table {
   border: 1px solid var(--line);
   border-radius: 8px;
   overflow: hidden;
+}
+
+.report-loading-skeleton {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 0;
+  margin-top: 8px;
+  overflow: hidden;
+}
+
+.report-skeleton-row {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(180px, 2fr) repeat(3, minmax(90px, 1fr));
+  padding: 14px;
+}
+
+.report-skeleton-row + .report-skeleton-row {
+  border-top: 1px solid var(--line);
 }
 
 .report-mode-tabs {
@@ -3401,6 +3520,10 @@ a.daily-report-procore-status:hover {
     padding: 12px;
   }
 
+  .allocation-grid {
+    gap: 12px;
+  }
+
   .entry-allocation-grid {
     padding-bottom: 96px;
   }
@@ -3410,6 +3533,10 @@ a.daily-report-procore-status:hover {
     overflow: hidden;
     padding: 12px;
     width: 100%;
+  }
+
+  .field-group {
+    margin-bottom: 12px;
   }
 
   .page-header {
@@ -3456,11 +3583,23 @@ a.daily-report-procore-status:hover {
   }
 
   .summary-strip {
+    gap: 8px;
     grid-template-columns: 1fr;
   }
 
   .daily-status-strip {
+    gap: 8px;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .daily-status-item,
+  .metric {
+    padding: 10px;
+  }
+
+  .enhanced-empty-state {
+    min-height: 96px;
+    padding: 16px 12px;
   }
 
   .workflow-section-heading {
@@ -3501,6 +3640,7 @@ a.daily-report-procore-status:hover {
   .matrix-footer {
     align-items: stretch;
     flex-direction: column;
+    gap: 8px;
   }
 
   .matrix-footer .secondary-button,
@@ -3630,6 +3770,10 @@ a.daily-report-procore-status:hover {
   }
 
   .report-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .report-skeleton-row {
     grid-template-columns: 1fr;
   }
 
@@ -4005,8 +4149,44 @@ a.daily-report-procore-status:hover {
     padding-right: 10px;
   }
 
+  .brand-logo {
+    max-width: min(180px, 100%);
+  }
+
+  .brand-block h1 {
+    font-size: 1rem;
+  }
+
+  .primary-nav {
+    gap: 3px;
+  }
+
+  .primary-nav .tab-button {
+    font-size: 0.88rem;
+    min-height: 38px;
+    padding: 7px 8px;
+  }
+
   .panel {
     padding: 10px;
+  }
+
+  .page-title-group h2 {
+    font-size: 1.08rem;
+  }
+
+  .page-header-meta {
+    gap: 6px;
+  }
+
+  .page-header-meta span {
+    border-radius: 6px;
+    font-size: 0.74rem;
+    padding: 5px 7px;
+  }
+
+  .skeleton-button {
+    width: 100%;
   }
 
   .mobile-pay-item-card,
