@@ -574,6 +574,7 @@ export function TimeAllocationWorkspace() {
   const [showOnlyMyProjects, setShowOnlyMyProjects] = useState(false);
   const [showWorkedPayItemsOnly, setShowWorkedPayItemsOnly] = useState(false);
   const [matrixFullscreenOpen, setMatrixFullscreenOpen] = useState(false);
+  const [jobSetupExpanded, setJobSetupExpanded] = useState(false);
   const [myProjectsEditorOpen, setMyProjectsEditorOpen] = useState(false);
   const [crewSetupExpanded, setCrewSetupExpanded] = useState(false);
   const [mobileSelectedPayItemId, setMobileSelectedPayItemId] = useState("");
@@ -4299,38 +4300,54 @@ export function TimeAllocationWorkspace() {
       ) : null}
 
       <div className="workspace">
-        <aside className="panel">
-          <h2>Job Setup</h2>
-          <div className="field-group">
-            <label htmlFor="project">Job</label>
-            <select
-              className="desktop-select"
-              id="project"
-              disabled={jobPickerProjects.length === 0}
-              value={selectedProjectId}
-              onChange={(event) => {
-                changeSelectedProject(event.target.value);
-              }}
-            >
-              {jobPickerProjects.map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.name}
-                </option>
-              ))}
-            </select>
-            <MobileOptionPicker
-              disabled={jobPickerProjects.length === 0}
-              label="Job"
-              options={jobPickerProjects.map((project) => ({
-                value: project.id,
-                label: project.name
-              }))}
-              value={selectedProjectId}
-              onChange={(value) => {
-                changeSelectedProject(value);
-              }}
-            />
-          </div>
+        <aside className={jobSetupExpanded ? "panel job-setup-panel expanded" : "panel job-setup-panel"}>
+          <button
+            aria-controls="job-setup-body"
+            aria-expanded={jobSetupExpanded}
+            className="job-setup-mobile-toggle"
+            onClick={() => setJobSetupExpanded((current) => !current)}
+            type="button"
+          >
+            <span>
+              <strong>Job Setup</strong>
+              <small>
+                {selectedProject?.name ?? "No job selected"} - {formatDate(workDate)}
+              </small>
+            </span>
+            <ChevronDown aria-hidden="true" size={18} />
+          </button>
+          <h2 className="job-setup-desktop-title">Job Setup</h2>
+          <div className="job-setup-body" id="job-setup-body">
+            <div className="field-group">
+              <label htmlFor="project">Job</label>
+              <select
+                className="desktop-select"
+                id="project"
+                disabled={jobPickerProjects.length === 0}
+                value={selectedProjectId}
+                onChange={(event) => {
+                  changeSelectedProject(event.target.value);
+                }}
+              >
+                {jobPickerProjects.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.name}
+                  </option>
+                ))}
+              </select>
+              <MobileOptionPicker
+                disabled={jobPickerProjects.length === 0}
+                label="Job"
+                options={jobPickerProjects.map((project) => ({
+                  value: project.id,
+                  label: project.name
+                }))}
+                value={selectedProjectId}
+                onChange={(value) => {
+                  changeSelectedProject(value);
+                }}
+              />
+            </div>
           <div className="my-project-sidebar-tools">
             <button
               aria-expanded={myProjectsEditorOpen}
@@ -4800,6 +4817,7 @@ export function TimeAllocationWorkspace() {
               </div>
             </details>
           ) : null}
+          </div>
         </aside>
 
         {viewMode === "entry" ? (

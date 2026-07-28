@@ -264,6 +264,10 @@ button {
   margin: 0 0 12px;
 }
 
+.job-setup-mobile-toggle {
+  display: none;
+}
+
 .view-tabs {
   background: var(--field);
   border: 1px solid var(--line);
@@ -3588,6 +3592,72 @@ a.daily-report-procore-status:hover {
     overflow: hidden;
     padding: 12px;
     width: 100%;
+  }
+
+  .job-setup-panel {
+    padding: 0;
+  }
+
+  .job-setup-desktop-title {
+    display: none;
+  }
+
+  .job-setup-mobile-toggle {
+    align-items: center;
+    background: var(--panel);
+    border: 0;
+    color: var(--foreground);
+    cursor: pointer;
+    display: flex;
+    gap: 12px;
+    justify-content: space-between;
+    min-height: 56px;
+    padding: 11px 12px;
+    text-align: left;
+    width: 100%;
+  }
+
+  .job-setup-mobile-toggle span {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .job-setup-mobile-toggle strong,
+  .job-setup-mobile-toggle small {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .job-setup-mobile-toggle strong {
+    font-size: 0.98rem;
+  }
+
+  .job-setup-mobile-toggle small {
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-weight: 500;
+  }
+
+  .job-setup-mobile-toggle svg {
+    color: #9fb0c4;
+    flex: 0 0 auto;
+    transition: transform 0.18s ease;
+  }
+
+  .job-setup-panel.expanded .job-setup-mobile-toggle svg {
+    transform: rotate(180deg);
+  }
+
+  .job-setup-body {
+    border-top: 1px solid var(--line);
+    padding: 12px;
+  }
+
+  .job-setup-panel:not(.expanded) .job-setup-body {
+    display: none;
   }
 
   .field-group {
