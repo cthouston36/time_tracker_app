@@ -3723,8 +3723,13 @@ a.daily-report-procore-status:hover {
   }
 
   .enhanced-empty-state {
-    min-height: 96px;
-    padding: 16px 12px;
+    gap: 6px;
+    min-height: auto;
+    padding: 14px 12px;
+  }
+
+  .enhanced-empty-state p {
+    display: none;
   }
 
   .workflow-section-heading {
