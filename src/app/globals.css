@@ -1,19 +1,20 @@
 :root {
-  color-scheme: dark;
-  --background: #0b1117;
-  --foreground: #edf3f8;
-  --muted: #93a4b5;
-  --line: #263442;
-  --panel: #111a24;
-  --panel-soft: #162231;
-  --field: #0d151d;
-  --accent: #22a6b3;
-  --accent-strong: #168591;
-  --danger: #ff6b6b;
-  --success: #55d18f;
-  --warning-bg: #2b1b12;
-  --warning-line: #7a4a22;
-  --warning-text: #ffc78a;
+  color-scheme: light;
+  --background: #f5f7fa;
+  --foreground: #102033;
+  --muted: #637083;
+  --line: #d7dee8;
+  --panel: #ffffff;
+  --panel-soft: #edf3f8;
+  --field: #f8fafc;
+  --accent: #007c89;
+  --accent-strong: #006775;
+  --danger: #b91c1c;
+  --success: #15803d;
+  --warning-bg: #fff7ed;
+  --warning-line: #fdba74;
+  --warning-text: #9a3412;
+  --shadow: 0 16px 38px rgb(15 23 42 / 0.12);
 }
 
 * {
@@ -4492,4 +4493,300 @@ a.daily-report-procore-status:hover {
   .daily-pay-item-row {
     min-width: 520px;
   }
+}
+
+/* Light operations theme overrides for legacy dark-specific selectors. */
+.top-bar,
+.mobile-sticky-action-bar {
+  background: #ffffff;
+}
+
+.top-bar {
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.06);
+}
+
+.mobile-sticky-action-bar {
+  box-shadow: 0 -10px 26px rgb(15 23 42 / 0.1);
+}
+
+.status-pill,
+.success-alert,
+.sync-summary,
+.daily-status-item.success,
+.status-badge.submitted,
+.status-badge.uploaded,
+.performance-pill.strong,
+.job-image-status.uploaded {
+  background: #ecfdf3;
+  border-color: #bbf7d0;
+  color: #166534;
+}
+
+.status-pill,
+.user-chip {
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
+}
+
+.user-chip,
+.compact-check-row,
+.field-group label,
+.report-info-panel,
+.report-detail-row span,
+.performance-pill.average,
+.mobile-header-menu > summary {
+  color: #334155;
+}
+
+.app-footer a,
+.text-button,
+.date-input-button:hover,
+.page-title-kicker,
+.production-code-totals-heading span,
+.production-code-total-row span strong,
+.production-code-total-row > strong,
+.production-code-key-item strong,
+.matrix-code,
+.report-drilldown-button:hover,
+.empty-state-icon {
+  color: #007c89;
+}
+
+.app-footer a:hover {
+  color: #005f6b;
+}
+
+.mobile-picker-option:hover,
+.secondary-button:hover {
+  border-color: #94a3b8;
+}
+
+select option {
+  background: #ffffff;
+  color: #102033;
+}
+
+.mobile-install-prompt,
+.status-alert,
+.password-reset-code-panel {
+  background: #e6f6f8;
+  border-color: #9bdbe3;
+  color: #164e63;
+}
+
+.password-reset-code-panel strong,
+.status-alert,
+.production-code-total-row > strong {
+  color: #164e63;
+}
+
+.mobile-install-prompt span,
+.password-reset-code-panel small,
+.job-image-retry-queue span {
+  color: #475569;
+}
+
+.mobile-picker-overlay,
+.modal-backdrop {
+  background: rgb(15 23 42 / 0.42);
+}
+
+.mobile-picker-sheet,
+.modal-panel,
+.modal-actions,
+.job-multi-select-panel,
+.crew-allocator-body {
+  box-shadow: var(--shadow);
+}
+
+input[type="date"] {
+  color-scheme: light;
+}
+
+.loading-skeleton {
+  background: linear-gradient(90deg, #e8eef6 0%, #f7fafc 50%, #e8eef6 100%);
+}
+
+.inline-alert,
+.sync-summary.warning,
+.job-image-retry-queue,
+.daily-status-item.warning,
+.performance-pill.review,
+.status-badge.created,
+.job-image-status.queued,
+.job-image-status.uploading {
+  background: #fff7ed;
+  border-color: #fdba74;
+  color: #9a3412;
+}
+
+.daily-report-procore-status.uploaded,
+.daily-status-item.success strong,
+.sync-summary,
+.success-alert,
+.job-image-status.uploaded {
+  color: #166534;
+}
+
+.daily-report-procore-status.pending,
+.daily-status-item.warning strong,
+.quantity-overrun-note {
+  color: #9a3412;
+}
+
+.daily-report-procore-status.failed,
+.retry-queue-row p,
+.job-image-card-body p,
+.job-image-history-row p,
+.daily-status-item.error strong,
+.status-badge.failed,
+.status-badge.missing,
+.job-image-status.failed,
+.admin-clear-button {
+  color: #b91c1c;
+}
+
+.daily-status-item.error,
+.status-badge.failed,
+.status-badge.missing,
+.job-image-status.failed {
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
+.admin-clear-button,
+.job-image-card.failed,
+.job-image-history-row.failed {
+  border-color: #fecaca;
+}
+
+.admin-clear-button:hover {
+  border-color: #b91c1c;
+  color: #7f1d1d;
+}
+
+.matrix-header,
+.matrix-header > span:first-child,
+.daily-labor-header,
+.daily-pay-item-header,
+.daily-itsfm-header,
+.weekly-calendar-header,
+.report-header {
+  background: #edf3f8;
+  color: #475569;
+}
+
+.matrix-header > span:first-child,
+.matrix-code {
+  box-shadow: 1px 0 0 var(--line), 12px 0 18px rgb(148 163 184 / 0.22);
+}
+
+.matrix-row,
+.matrix-code {
+  background: #ffffff;
+}
+
+.matrix-row.worked-row,
+.matrix-row.worked-row .matrix-code,
+.mobile-pay-item-card.worked-card {
+  background: #e9f8fb;
+  border-color: #9bdbe3;
+  box-shadow: inset 3px 0 0 #007c89;
+}
+
+.matrix-row.quantity-overrun-row,
+.matrix-row.quantity-overrun-row .matrix-code {
+  background: #fff7ed;
+  box-shadow: inset 3px 0 0 #f59e0b;
+}
+
+.matrix-row.quantity-overrun-row .matrix-code {
+  color: #9a3412;
+}
+
+.job-image-preview {
+  background-color: #e2e8f0;
+}
+
+.job-image-card.uploaded,
+.job-image-history-row.uploaded,
+.job-checkbox-row.emphasized {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+}
+
+.job-image-card.failed,
+.job-image-history-row.failed {
+  background: #fef2f2;
+}
+
+.page-header {
+  background: linear-gradient(135deg, #ecfeff 0%, #ffffff 70%);
+}
+
+.page-header-meta span,
+.mobile-sticky-action-bar {
+  background: #f8fafc;
+}
+
+.workflow-panel {
+  border-color: var(--line);
+}
+
+.workflow-step {
+  background: #e6f6f8;
+  border-color: #9bdbe3;
+  color: #006775;
+}
+
+.prominent-action:not(:disabled) {
+  box-shadow: 0 0 0 1px rgb(0 124 137 / 0.16), 0 8px 18px rgb(0 124 137 / 0.14);
+}
+
+.daily-itsfm-section-heading,
+.vendor-search-option:hover,
+.vendor-search-option.selected,
+.enhanced-empty-state,
+.empty-state-icon {
+  background: #ecfeff;
+}
+
+.vendor-search-option:hover,
+.vendor-search-option.selected,
+.empty-state-icon {
+  border-color: #9bdbe3;
+}
+
+.status-badge.draft,
+.status-badge.not-applicable,
+.performance-pill.limited {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.report-detail-panel,
+.report-row > span[data-label],
+.report-detail-row,
+.submitted-review-section,
+.submitted-day-summary div,
+.submitted-crew-row,
+.submitted-entry-header {
+  background: #f8fafc;
+}
+
+.production-code-total-row,
+.tab-button.active,
+.calendar-status-toggle button.active {
+  background: #e8f1f7;
+}
+
+.crew-list-row,
+.crew-summary-row,
+.metric,
+.panel,
+.job-image-card,
+.mobile-pay-item-card,
+.report-row,
+.weekly-calendar-row,
+.submitted-entry-row {
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
 }
