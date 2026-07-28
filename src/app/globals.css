@@ -3441,6 +3441,62 @@ a.daily-report-procore-status:hover {
   text-transform: uppercase;
 }
 
+@media (min-width: 861px) and (max-width: 1180px) {
+  .top-bar {
+    align-items: center;
+    gap: 10px 16px;
+    grid-template-columns: minmax(320px, 1fr) auto;
+    padding: 12px 20px;
+  }
+
+  .brand-block {
+    gap: 10px;
+  }
+
+  .brand-logo {
+    height: 34px;
+    max-width: 165px;
+  }
+
+  .brand-block h1 {
+    font-size: 1rem;
+    max-width: none;
+    overflow-wrap: normal;
+    word-break: normal;
+  }
+
+  .primary-nav {
+    justify-self: end;
+  }
+
+  .primary-nav .tab-button {
+    min-height: 34px;
+    min-width: 96px;
+    padding: 6px 10px;
+  }
+
+  .header-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+  }
+
+  .header-actions .secondary-button,
+  .header-actions .status-pill,
+  .header-actions .user-chip {
+    font-size: 0.8rem;
+    min-height: 32px;
+    padding: 6px 9px;
+  }
+
+  .daily-status-strip {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  }
+
+  .daily-status-item {
+    min-height: 32px;
+  }
+}
+
 @media (max-width: 860px) {
   .top-bar {
     align-items: stretch;

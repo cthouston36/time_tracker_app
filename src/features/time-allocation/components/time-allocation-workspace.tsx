@@ -7147,7 +7147,7 @@ function ReportsView({
   const reportJobPickerOptions = [
     {
       value: "all",
-      label: "All Jobs"
+      label: reportMode === "employee_hours" ? "All Jobs With Daily Reports" : "All Jobs"
     },
     ...(canManageMyJobs && myJobIds.length > 0
       ? [
@@ -7162,7 +7162,9 @@ function ReportsView({
       label: project.name
     }))
   ];
-  const selectedReportJobLabel = reportJobPickerOptions.find((option) => option.value === reportProjectId)?.label ?? "All Jobs";
+  const selectedReportJobLabel =
+    reportJobPickerOptions.find((option) => option.value === reportProjectId)?.label ??
+    (reportMode === "employee_hours" ? "All Jobs With Daily Reports" : "All Jobs");
   const reportDateRangeLabel =
     reportStartDate || reportEndDate
       ? `${reportStartDate ? formatDate(reportStartDate) : "Any start"} - ${reportEndDate ? formatDate(reportEndDate) : "Any end"}`
