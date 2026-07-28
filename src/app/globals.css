@@ -1775,18 +1775,11 @@ a.daily-report-procore-status:hover {
   display: flex;
   gap: 10px;
   margin-top: 2px;
-  padding-top: 4px;
+  padding-top: 12px;
 }
 
-.workflow-section-heading span {
-  color: #b8e7ec;
-  font-size: 0.72rem;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.workflow-section-heading strong {
-  font-size: 1rem;
+.workflow-section-heading .workflow-title {
+  margin: 0;
 }
 
 .prominent-action:not(:disabled) {

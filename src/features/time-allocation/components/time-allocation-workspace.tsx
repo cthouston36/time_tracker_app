@@ -5075,8 +5075,10 @@ export function TimeAllocationWorkspace() {
 
             {selectedProjectUsesPayItems ? (
               <div className="workflow-section-heading">
-                <span>Step 3</span>
-                <strong>Daily Wrap-Up</strong>
+                <h2 className="workflow-title">
+                  <span className="workflow-step">3</span>
+                  Daily Wrap-Up
+                </h2>
               </div>
             ) : null}
 
