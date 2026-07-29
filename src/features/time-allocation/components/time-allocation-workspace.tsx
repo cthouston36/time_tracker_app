@@ -1103,7 +1103,6 @@ export function TimeAllocationWorkspace() {
     }
 
     replaceEntriesForDay(projectId, date, databaseDayEntries);
-    setDraftsByPayItem({});
     setEditingEntry(null);
     setEntryNotice("This job/day was changed by another user. Review the latest entries before saving again.");
     return false;
@@ -12291,7 +12290,7 @@ function buildEntryConflictSignature(entries: AllocationEntry[]) {
         entry.payItemId,
         formatConflictNumber(entry.hours),
         formatConflictNumber(entry.quantityCompleted),
-        entry.savedAt ?? "",
+        formatConflictTimestamp(entry.savedAt),
         crewSignature
       ].join("|");
     })
@@ -12321,6 +12320,16 @@ function buildDailyReportConflictSignature(dailyReport: DailyReport | undefined)
 
 function formatConflictNumber(value: number) {
   return Number.isFinite(value) ? value.toFixed(6) : "";
+}
+
+function formatConflictTimestamp(value: string | undefined) {
+  if (!value) {
+    return "";
+  }
+
+  const timestamp = new Date(value).getTime();
+
+  return Number.isFinite(timestamp) ? String(timestamp) : value;
 }
 
 function getEntryNoticeClassName(message: string) {
