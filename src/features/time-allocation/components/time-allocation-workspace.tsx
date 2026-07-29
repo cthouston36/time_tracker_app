@@ -5333,32 +5333,6 @@ export function TimeAllocationWorkspace() {
               </div>
             ) : null}
 
-            {selectedProjectUsesPayItems ? (
-              <div className="panel">
-              <div className="panel-heading">
-                <h2>Crew Hours Summary</h2>
-                <IconLabel icon={Users} text={`${crewSummaryRows.length} crew member${crewSummaryRows.length === 1 ? "" : "s"}`} />
-              </div>
-              {crewSummaryRows.length === 0 ? (
-                <EmptyState icon={Users} title="No crew hours allocated">
-                  Crew totals will appear after saved pay item rows include crew selections.
-                </EmptyState>
-              ) : (
-                <div className="crew-summary-list">
-                  {crewSummaryRows.map((row) => (
-                    <div className="crew-summary-row" key={row.crewMemberId}>
-                      <span>
-                        <strong>{getCrewDisplayName(row)}</strong>
-                        {formatCrewMemberMeta(row)}
-                      </span>
-                      <strong>{row.hours.toFixed(2)} hrs</strong>
-                    </div>
-                  ))}
-                </div>
-              )}
-              </div>
-            ) : null}
-
             <input
               ref={jobImageInputRef}
               accept="image/*"
