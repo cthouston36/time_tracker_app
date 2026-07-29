@@ -3701,13 +3701,13 @@ export function TimeAllocationWorkspace() {
 
       return {
         ...current,
-        [payItemId]: {
+        [payItemId]: normalizeDraftCrewHours({
           ...draft,
           crewHours: {
             ...draft.crewHours,
             [crewMemberId]: value
           }
-        }
+        })
       };
     });
   }
@@ -3925,7 +3925,7 @@ export function TimeAllocationWorkspace() {
     ).length;
 
     if (incompleteCount > 0) {
-      setEntryNotice("Enter both hours and quantity before saving a row.");
+      setEntryNotice("Allocate crew hours and enter quantity before saving a row.");
       return;
     }
 
@@ -3966,7 +3966,7 @@ export function TimeAllocationWorkspace() {
           return [];
         }
 
-        const hours = draft?.hours ? Number(draft.hours) : existingEntry?.hours ?? 0;
+        const hours = getDraftTotalHours(draft, existingEntry);
         const quantity = draft?.quantity ? Number(draft.quantity) : existingEntry?.quantityCompleted ?? 0;
 
         return [
@@ -6957,6 +6957,7 @@ function PayItemMatrix({
         const rowHasWork = Boolean(savedEntry) || draftHasAnyInput(draft);
         const remainingQuantity = remainingQuantitiesByPayItem[item.id] ?? item.budgetedQuantity;
         const rowHasQuantityOverrun = draftQuantityExceedsRemaining(draft, remainingQuantity);
+        const calculatedHours = getDraftTotalHours(draft, savedEntry);
 
         return (
           <div
@@ -6981,20 +6982,9 @@ function PayItemMatrix({
               onCrewToggle={onCrewToggle}
               onSplitEvenly={onSplitEvenly}
             />
-            <input
-              aria-label={`Hours for ${item.code}`}
-              className="number-entry"
-              data-label="Hours"
-              disabled={dayIsSubmitted}
-              inputMode="decimal"
-              min="0"
-              placeholder="Hours"
-              step="0.25"
-              type="number"
-              value={draft?.hours ?? ""}
-              onChange={(event) => onDraftChange(item.id, "hours", event.target.value)}
-              onWheel={(event) => event.currentTarget.blur()}
-            />
+            <span className="matrix-calculated-hours" data-label="Hours">
+              {formatCalculatedHours(calculatedHours)}
+            </span>
             <input
               aria-label={`Quantity for ${item.code}`}
               className="number-entry"
@@ -7039,10 +7029,7 @@ function CrewAllocationEditor({
   const selectedCrewMemberIds = getSelectedCrewMemberIds(draft, savedEntry);
   const selectedCrewHours = getSelectedCrewHours(draft, savedEntry);
   const selectedCrewMembers = getSelectedCrewMembers(selectedCrewMemberIds, crewMembers, savedEntry);
-  const allocationTotal = selectedCrewMemberIds.reduce(
-    (total, crewMemberId) => total + Number(selectedCrewHours[crewMemberId] || 0),
-    0
-  );
+  const allocationTotal = getDraftTotalHours(draft, savedEntry);
   const summaryText =
     selectedCrewMembers.length === 0
       ? "Select crew"
@@ -7089,7 +7076,7 @@ function CrewAllocationEditor({
               <span>Allocated Hours</span>
               <button
                 className="text-button"
-                disabled={dayIsSubmitted}
+                disabled={dayIsSubmitted || !Number.isFinite(allocationTotal) || allocationTotal <= 0}
                 onClick={() => onSplitEvenly(payItemId)}
                 type="button"
               >
@@ -7113,7 +7100,9 @@ function CrewAllocationEditor({
                 />
               </label>
             ))}
-            <div className="crew-allocation-total">Total allocated: {allocationTotal.toFixed(2)} hrs</div>
+            <div className="crew-allocation-total">
+              Total allocated: {Number.isFinite(allocationTotal) ? allocationTotal.toFixed(2) : "-"} hrs
+            </div>
           </div>
         ) : null}
         <div className="crew-allocator-actions">
@@ -7157,6 +7146,7 @@ function MobilePayItemEntry({
   const savedEntry = savedEntries.find((entry) => entry.payItemId === selectedPayItem.id);
   const rowHasWork = Boolean(savedEntry) || draftHasAnyInput(draft);
   const quantityOverrun = draftQuantityExceedsRemaining(draft, remainingQuantity);
+  const calculatedHours = getDraftTotalHours(draft, savedEntry);
 
   return (
     <div className="pay-item-mobile-entry">
@@ -7194,6 +7184,10 @@ function MobilePayItemEntry({
           <span>Saved Qty</span>
           <strong>{savedEntry ? savedEntry.quantityCompleted.toFixed(2) : "-"}</strong>
         </div>
+        <div>
+          <span>Hours</span>
+          <strong>{formatCalculatedHours(calculatedHours)}</strong>
+        </div>
       </div>
 
       <div className="mobile-crew-field">
@@ -7211,23 +7205,6 @@ function MobilePayItemEntry({
       </div>
 
       <div className="mobile-pay-item-inputs">
-        <div className="field-group">
-          <label htmlFor="mobile-hours">Hours</label>
-          <input
-            id="mobile-hours"
-            aria-label={`Hours for ${selectedPayItem.code}`}
-            className="number-entry"
-            disabled={dayIsSubmitted}
-            inputMode="decimal"
-            min="0"
-            placeholder="Hours"
-            step="0.25"
-            type="number"
-            value={draft?.hours ?? ""}
-            onChange={(event) => onDraftChange(selectedPayItem.id, "hours", event.target.value)}
-            onWheel={(event) => event.currentTarget.blur()}
-          />
-        </div>
         <div className="field-group">
           <label htmlFor="mobile-quantity">Quantity</label>
           <input
@@ -11840,38 +11817,20 @@ function normalizeDraftCrewHours(draft: PayItemDraft) {
   const crewHours = Object.fromEntries(
     Object.entries(draft.crewHours).filter(([crewMemberId]) => draft.crewMemberIds.includes(crewMemberId))
   );
-  const nextDraft = {
+  const nextDraft: PayItemDraft = {
     ...draft,
     crewHours
   };
+  const hourStats = getDraftCrewHourStats(nextDraft);
 
-  if (draft.crewMemberIds.length === 1 && draft.hours !== "") {
-    return {
-      ...nextDraft,
-      crewHours: {
-        [draft.crewMemberIds[0]]: draft.hours
-      }
-    };
-  }
-
-  const totalHours = Number(draft.hours);
-  const allocatedHours = draft.crewMemberIds.reduce((total, crewMemberId) => total + Number(crewHours[crewMemberId] || 0), 0);
-  const hasMissingCrewHours = draft.crewMemberIds.some((crewMemberId) => crewHours[crewMemberId] === undefined || crewHours[crewMemberId] === "");
-
-  if (
-    draft.crewMemberIds.length > 1 &&
-    Number.isFinite(totalHours) &&
-    totalHours > 0 &&
-    (hasMissingCrewHours || allocatedHours === 0 || Math.abs(allocatedHours - totalHours) > 0.01)
-  ) {
-    return splitCrewHoursEvenly(nextDraft);
-  }
-
-  return nextDraft;
+  return {
+    ...nextDraft,
+    hours: hourStats.hasAnyInput && !hourStats.hasInvalid ? formatDraftHourValue(hourStats.total) : ""
+  };
 }
 
 function splitCrewHoursEvenly(draft: PayItemDraft) {
-  const totalHours = Number(draft.hours);
+  const totalHours = getDraftTotalHours(draft);
 
   if (!Number.isFinite(totalHours) || draft.crewMemberIds.length === 0) {
     return draft;
@@ -11889,8 +11848,92 @@ function splitCrewHoursEvenly(draft: PayItemDraft) {
 
   return {
     ...draft,
+    hours: formatDraftHourValue(totalHours),
     crewHours
   };
+}
+
+function getDraftCrewHourStats(draft: PayItemDraft | undefined) {
+  if (!draft) {
+    return {
+      hasAnyInput: false,
+      hasInvalid: false,
+      hasMissing: false,
+      hasNonPositive: false,
+      total: 0
+    };
+  }
+
+  let total = 0;
+  let hasAnyInput = false;
+  let hasInvalid = false;
+  let hasMissing = false;
+  let hasNonPositive = false;
+
+  for (const crewMemberId of draft.crewMemberIds) {
+    const value = draft.crewHours[crewMemberId];
+
+    if (value === undefined || value === "") {
+      hasMissing = true;
+      continue;
+    }
+
+    hasAnyInput = true;
+    const hours = Number(value);
+
+    if (!Number.isFinite(hours) || hours < 0) {
+      hasInvalid = true;
+      continue;
+    }
+
+    if (hours <= 0) {
+      hasNonPositive = true;
+    }
+
+    total += hours;
+  }
+
+  return {
+    hasAnyInput,
+    hasInvalid,
+    hasMissing,
+    hasNonPositive,
+    total
+  };
+}
+
+function getDraftTotalHours(draft: PayItemDraft | undefined, savedEntry?: AllocationEntry) {
+  if (!draft) {
+    return savedEntry?.hours ?? 0;
+  }
+
+  const hourStats = getDraftCrewHourStats(draft);
+
+  if (hourStats.hasAnyInput) {
+    return hourStats.hasInvalid ? Number.NaN : hourStats.total;
+  }
+
+  if (draft.crewMemberIds.length > 0 && draft.hours === "") {
+    return 0;
+  }
+
+  if (draft.hours !== "") {
+    const fallbackHours = Number(draft.hours);
+
+    if (Number.isFinite(fallbackHours) && fallbackHours >= 0) {
+      return fallbackHours;
+    }
+  }
+
+  return savedEntry?.hours ?? 0;
+}
+
+function formatDraftHourValue(value: number) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(2);
+}
+
+function formatCalculatedHours(value: number) {
+  return Number.isFinite(value) && value > 0 ? value.toFixed(2) : "-";
 }
 
 function getSelectedCrewMemberIds(draft: PayItemDraft | undefined, savedEntry: AllocationEntry | undefined) {
@@ -11930,13 +11973,7 @@ function getSelectedCrewMembers(
 }
 
 function getCrewAllocationError(draft: PayItemDraft | undefined, crewMembers: CrewMember[]) {
-  if (!draft || !draftIsSaveable(draft)) {
-    return "";
-  }
-
-  const hours = Number(draft.hours);
-
-  if (hours <= 0) {
+  if (!draft || !draftHasAnyInput(draft)) {
     return "";
   }
 
@@ -11954,25 +11991,26 @@ function getCrewAllocationError(draft: PayItemDraft | undefined, crewMembers: Cr
     return "One selected crew member is no longer saved to this job.";
   }
 
-  const allocatedHours = draft.crewMemberIds.reduce((total, crewMemberId) => {
-    const value = draft.crewMemberIds.length === 1 && draft.crewHours[crewMemberId] === "" ? hours : Number(draft.crewHours[crewMemberId]);
-    return total + value;
-  }, 0);
-  const hasInvalidAllocation = draft.crewMemberIds.some((crewMemberId) => {
-    const value = Number(draft.crewHours[crewMemberId]);
-    return !Number.isFinite(value) || value < 0;
-  });
+  const hourStats = getDraftCrewHourStats(draft);
 
-  if (hasInvalidAllocation) {
+  if (hourStats.hasMissing || !hourStats.hasAnyInput) {
+    return "Enter allocated hours for each selected crew member.";
+  }
+
+  if (hourStats.hasInvalid) {
     return "Enter valid allocated hours for each selected crew member.";
+  }
+
+  if (hourStats.hasNonPositive) {
+    return "Enter allocated hours greater than 0 for each selected crew member.";
   }
 
   if (Array.from(selectedCrewMemberIds).length !== draft.crewMemberIds.length) {
     return "Remove duplicate crew selections before saving.";
   }
 
-  if (Math.abs(allocatedHours - hours) > 0.01) {
-    return "Crew allocated hours must equal the pay item hours before saving.";
+  if (hourStats.total <= 0) {
+    return "Allocate more than 0 crew hours before saving.";
   }
 
   return "";
@@ -11985,7 +12023,7 @@ function buildCrewAllocations(draft: PayItemDraft | undefined, crewMembers: Crew
 
   return draft.crewMemberIds.map((crewMemberId) => {
     const crewMember = crewMembers.find((member) => member.id === crewMemberId);
-    const hours = draft.crewMemberIds.length === 1 ? totalHours : Number(draft.crewHours[crewMemberId]);
+    const hours = Number(draft.crewHours[crewMemberId]);
 
     return {
       crewMemberId,
@@ -12090,17 +12128,26 @@ function formatEntryCrew(entry: AllocationEntry) {
 }
 
 function draftIsSaveable(draft: PayItemDraft | undefined) {
-  const hasHoursInput = draft?.hours !== undefined && draft.hours !== "";
   const hasQuantityInput = draft?.quantity !== undefined && draft.quantity !== "";
 
-  if (!hasHoursInput || !hasQuantityInput) {
+  if (!draft || !hasQuantityInput) {
     return false;
   }
 
-  const hours = Number(draft.hours);
+  const hours = getDraftTotalHours(draft);
   const quantity = Number(draft.quantity);
+  const hourStats = getDraftCrewHourStats(draft);
 
-  return hours >= 0 && quantity >= 0 && Number.isFinite(hours) && Number.isFinite(quantity);
+  return (
+    hours > 0 &&
+    quantity >= 0 &&
+    Number.isFinite(hours) &&
+    Number.isFinite(quantity) &&
+    hourStats.hasAnyInput &&
+    !hourStats.hasInvalid &&
+    !hourStats.hasMissing &&
+    !hourStats.hasNonPositive
+  );
 }
 
 function getDraftQuantityOverrunWarnings(
@@ -12164,10 +12211,21 @@ function confirmQuantityOverrun(warnings: string[]) {
 }
 
 function draftIsIncomplete(draft: PayItemDraft | undefined) {
-  const hasHoursInput = draft?.hours !== undefined && draft.hours !== "";
-  const hasQuantityInput = draft?.quantity !== undefined && draft.quantity !== "";
+  if (!draft) {
+    return false;
+  }
 
-  return hasHoursInput !== hasQuantityInput;
+  const hasQuantityInput = draft.quantity !== "";
+  const hasCrewInput =
+    draft.crewMemberIds.length > 0 ||
+    Object.values(draft.crewHours).some((value) => value !== "") ||
+    draft.hours !== "";
+
+  if (!hasQuantityInput && !hasCrewInput) {
+    return false;
+  }
+
+  return !draftIsSaveable(draft);
 }
 
 function draftHasAnyInput(draft: PayItemDraft | undefined) {

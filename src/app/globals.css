@@ -2686,7 +2686,8 @@ a.daily-report-procore-status:hover {
 
 .matrix-name,
 .matrix-budget,
-.matrix-saved {
+.matrix-saved,
+.matrix-calculated-hours {
   min-width: 0;
   overflow-wrap: anywhere;
 }
@@ -2697,15 +2698,26 @@ a.daily-report-procore-status:hover {
 }
 
 .matrix-budget,
-.matrix-saved {
+.matrix-saved,
+.matrix-calculated-hours {
   color: var(--muted);
   font-size: 0.9rem;
 }
 
 .matrix-quantity-header,
 .matrix-budget,
-.matrix-saved {
+.matrix-saved,
+.matrix-calculated-hours {
   text-align: center;
+}
+
+.matrix-calculated-hours {
+  background: var(--panel-soft);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--foreground);
+  font-weight: 700;
+  padding: 9px 8px;
 }
 
 .crew-setup {
@@ -3117,6 +3129,11 @@ a.daily-report-procore-status:hover {
   border-top: 1px solid var(--line);
 }
 
+.mobile-pay-item-card div:last-child:nth-child(odd) {
+  border-right: 0;
+  grid-column: 1 / -1;
+}
+
 .mobile-pay-item-card span {
   color: var(--muted);
   display: block;
@@ -3153,7 +3170,7 @@ a.daily-report-procore-status:hover {
 .mobile-pay-item-inputs {
   display: grid;
   gap: 8px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   margin-top: 10px;
 }
 
