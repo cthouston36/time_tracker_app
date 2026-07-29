@@ -2643,8 +2643,11 @@ a.daily-report-procore-status:hover {
 }
 
 .pay-item-matrix {
+  --matrix-grid-columns: minmax(96px, 0.7fr) minmax(260px, 1.55fr) minmax(112px, 0.72fr) minmax(96px, 0.58fr) minmax(96px, 0.58fr) minmax(190px, 1fr) minmax(110px, 0.65fr) minmax(128px, 0.75fr);
+  --matrix-min-width: 1140px;
   border: 1px solid var(--line);
   border-radius: 8px;
+  background: var(--panel);
   isolation: isolate;
   max-height: 70vh;
   overflow: auto;
@@ -2659,10 +2662,13 @@ a.daily-report-procore-status:hover {
 .matrix-header,
 .matrix-row {
   align-items: center;
+  box-sizing: border-box;
   display: grid;
   gap: 10px;
-  grid-template-columns: minmax(90px, 0.7fr) minmax(220px, 1.5fr) minmax(100px, 0.7fr) minmax(80px, 0.55fr) minmax(80px, 0.55fr) minmax(150px, 1fr) minmax(90px, 0.65fr) minmax(100px, 0.7fr);
+  grid-template-columns: var(--matrix-grid-columns);
+  min-width: var(--matrix-min-width);
   padding: 10px 12px;
+  width: 100%;
 }
 
 .matrix-row > * {
@@ -2676,15 +2682,31 @@ a.daily-report-procore-status:hover {
   color: var(--muted);
   font-size: 0.78rem;
   font-weight: 700;
+  min-height: 44px;
   position: sticky;
   top: 0;
   text-transform: uppercase;
-  z-index: 30;
+  z-index: 50;
 }
 
 .matrix-header > span {
+  align-items: center;
+  align-self: stretch;
+  background: inherit;
+  display: flex;
+  min-width: 0;
+  overflow-wrap: anywhere;
   position: relative;
-  z-index: 31;
+  z-index: 51;
+}
+
+.matrix-header > span:nth-child(3),
+.matrix-header > span:nth-child(4),
+.matrix-header > span:nth-child(5),
+.matrix-header > span:nth-child(7),
+.matrix-header > span:nth-child(8) {
+  justify-content: center;
+  text-align: center;
 }
 
 .matrix-header > span:first-child,
@@ -2703,7 +2725,7 @@ a.daily-report-procore-status:hover {
 .matrix-header > span:first-child {
   background: #0d151d;
   box-shadow: 1px 0 0 var(--line), 12px 0 18px rgba(0, 0, 0, 0.24);
-  z-index: 35;
+  z-index: 55;
 }
 
 .matrix-row {
