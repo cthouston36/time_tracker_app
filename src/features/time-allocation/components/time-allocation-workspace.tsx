@@ -8338,7 +8338,7 @@ function getDailyReportProcoreStatus(
 
   return {
     className: "pending",
-    label: "Pending upload",
+    label: "Pending",
     message: "Pending upload to Procore. Click Upload to Procore when the daily report is ready."
   };
 }
