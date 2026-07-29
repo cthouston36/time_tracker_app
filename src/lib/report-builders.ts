@@ -377,13 +377,15 @@ export function buildCrewPerformanceRows(entries: AllocationEntry[], projects: P
     buildPayItemReportDetailRows(entries, projects).filter(
       (row) => row.crewMemberId !== "unassigned" && row.quantityCompleted > 0 && row.hours > 0
     ),
-    resolvedOptions
+    resolvedOptions,
+    (row) => getCrewPerformanceCompanyStatsKey(row)
   );
   const includedDetailRows = detailRows.filter((row) => !row.isOutlier);
   const companyPayItemStats = new Map<string, { hours: number; quantity: number; hoursPerUnit: number; rateSamples: RateSample[] }>();
 
   for (const row of includedDetailRows) {
-    const current = companyPayItemStats.get(row.payItemKey) ?? {
+    const statsKey = getCrewPerformanceCompanyStatsKey(row);
+    const current = companyPayItemStats.get(statsKey) ?? {
       hours: 0,
       quantity: 0,
       hoursPerUnit: 0,
@@ -394,7 +396,7 @@ export function buildCrewPerformanceRows(entries: AllocationEntry[], projects: P
     current.quantity += row.quantityCompleted;
     current.rateSamples.push(row);
     current.hoursPerUnit = calculateHoursPerUnit(current.rateSamples, resolvedOptions.metric);
-    companyPayItemStats.set(row.payItemKey, current);
+    companyPayItemStats.set(statsKey, current);
   }
 
   const crewPayItemRows = new Map<
@@ -411,7 +413,7 @@ export function buildCrewPerformanceRows(entries: AllocationEntry[], projects: P
   >();
 
   for (const row of includedDetailRows) {
-    const companyStats = companyPayItemStats.get(row.payItemKey);
+    const companyStats = companyPayItemStats.get(getCrewPerformanceCompanyStatsKey(row));
 
     if (!companyStats || companyStats.hoursPerUnit <= 0) {
       continue;
@@ -611,7 +613,8 @@ function resolveReportOptions(options: ReportOptions | undefined): Required<Repo
 
 function applyOutlierFlags<TRow extends RateSample>(
   rows: TRow[],
-  options: Required<ReportOptions>
+  options: Required<ReportOptions>,
+  getGroupKey?: (row: TRow) => string
 ): Array<OutlierEvaluatedRow<TRow>> {
   const rowsWithFlags = rows.map((row) => ({
     ...row,
@@ -622,17 +625,18 @@ function applyOutlierFlags<TRow extends RateSample>(
     return rowsWithFlags;
   }
 
-  const rowsByPayItemKey = new Map<string, Array<OutlierEvaluatedRow<TRow>>>();
+  const rowsByGroupKey = new Map<string, Array<OutlierEvaluatedRow<TRow>>>();
 
   for (const row of rowsWithFlags) {
     if (!isUsableRateSample(row)) {
       continue;
     }
 
-    rowsByPayItemKey.set(row.payItemKey, [...(rowsByPayItemKey.get(row.payItemKey) ?? []), row]);
+    const groupKey = getGroupKey?.(row) ?? row.payItemKey;
+    rowsByGroupKey.set(groupKey, [...(rowsByGroupKey.get(groupKey) ?? []), row]);
   }
 
-  for (const rowsInGroup of rowsByPayItemKey.values()) {
+  for (const rowsInGroup of rowsByGroupKey.values()) {
     if (rowsInGroup.length < OUTLIER_MIN_SAMPLE_SIZE) {
       continue;
     }
@@ -753,6 +757,16 @@ function normalizeCrewLaborTypes(values: CrewLaborType[]) {
   return Array.from(new Set(values.map(normalizeCrewLaborType))).filter((value) =>
     ALL_CREW_LABOR_TYPES.includes(value)
   );
+}
+
+type CrewPerformanceComparisonGroup = "employee_temp" | "subcontractor";
+
+function getCrewPerformanceComparisonGroup(laborType: CrewLaborType | undefined): CrewPerformanceComparisonGroup {
+  return normalizeCrewLaborType(laborType) === "subcontractor" ? "subcontractor" : "employee_temp";
+}
+
+function getCrewPerformanceCompanyStatsKey(row: Pick<PayItemReportDetailRow, "laborType" | "payItemKey">) {
+  return `${row.payItemKey}|${getCrewPerformanceComparisonGroup(row.laborType)}`;
 }
 
 function normalizeCrewLaborType(value: unknown): CrewLaborType {

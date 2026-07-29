@@ -8702,11 +8702,12 @@ function DetailedPayItemReport({
 function CrewPerformanceInfo() {
   return (
     <div className="report-info-panel">
-      This report compares each crew member against the company average for the same pay items they worked on. Each
-      pay-item variance is weighted by that crew member&apos;s hours, so larger work samples matter more than small
-      one-off entries. Lower hours per unit is treated as better performance. Rows marked limited data have less than
-      20 hours or fewer than 3 entries. If outlier filtering is enabled, the app uses the 1.5x IQR rule within each
-      pay item and only applies it when at least 5 comparable rows exist.
+      This report compares each crew member against the company average for the same pay items and labor group they
+      worked in. Subcontractors are compared with subcontractors. Chinchor employees and temp employees are compared
+      together. Each pay-item variance is weighted by that crew member&apos;s hours, so larger work samples matter more
+      than small one-off entries. Lower hours per unit is treated as better performance. Rows marked limited data have
+      less than 20 hours or fewer than 3 entries. If outlier filtering is enabled, the app uses the 1.5x IQR rule
+      within each comparable pay-item group and only applies it when at least 5 comparable rows exist.
     </div>
   );
 }
@@ -10287,13 +10288,15 @@ function buildCrewPerformanceRows(entries: AllocationEntry[], projects: Project[
     buildPayItemReportDetailRows(entries, projects).filter(
       (row) => row.crewMemberId !== "unassigned" && row.quantityCompleted > 0 && row.hours > 0
     ),
-    resolvedOptions
+    resolvedOptions,
+    (row) => getCrewPerformanceCompanyStatsKey(row)
   );
   const includedDetailRows = detailRows.filter((row) => !row.isOutlier);
   const companyPayItemStats = new Map<string, { hours: number; quantity: number; hoursPerUnit: number; rateSamples: RateSample[] }>();
 
   for (const row of includedDetailRows) {
-    const current = companyPayItemStats.get(row.payItemKey) ?? {
+    const statsKey = getCrewPerformanceCompanyStatsKey(row);
+    const current = companyPayItemStats.get(statsKey) ?? {
       hours: 0,
       quantity: 0,
       hoursPerUnit: 0,
@@ -10304,7 +10307,7 @@ function buildCrewPerformanceRows(entries: AllocationEntry[], projects: Project[
     current.quantity += row.quantityCompleted;
     current.rateSamples.push(row);
     current.hoursPerUnit = calculateHoursPerUnit(current.rateSamples, resolvedOptions.metric);
-    companyPayItemStats.set(row.payItemKey, current);
+    companyPayItemStats.set(statsKey, current);
   }
 
   const crewPayItemRows = new Map<
@@ -10321,7 +10324,7 @@ function buildCrewPerformanceRows(entries: AllocationEntry[], projects: Project[
   >();
 
   for (const row of includedDetailRows) {
-    const companyStats = companyPayItemStats.get(row.payItemKey);
+    const companyStats = companyPayItemStats.get(getCrewPerformanceCompanyStatsKey(row));
 
     if (!companyStats || companyStats.hoursPerUnit <= 0) {
       continue;
@@ -10483,7 +10486,8 @@ function resolveReportOptions(options: ReportOptions | undefined): Required<Repo
 
 function applyOutlierFlags<TRow extends RateSample>(
   rows: TRow[],
-  options: Required<ReportOptions>
+  options: Required<ReportOptions>,
+  getGroupKey?: (row: TRow) => string
 ): Array<OutlierEvaluatedRow<TRow>> {
   const rowsWithFlags = rows.map((row) => ({
     ...row,
@@ -10494,17 +10498,18 @@ function applyOutlierFlags<TRow extends RateSample>(
     return rowsWithFlags;
   }
 
-  const rowsByPayItemKey = new Map<string, Array<OutlierEvaluatedRow<TRow>>>();
+  const rowsByGroupKey = new Map<string, Array<OutlierEvaluatedRow<TRow>>>();
 
   for (const row of rowsWithFlags) {
     if (!isUsableRateSample(row)) {
       continue;
     }
 
-    rowsByPayItemKey.set(row.payItemKey, [...(rowsByPayItemKey.get(row.payItemKey) ?? []), row]);
+    const groupKey = getGroupKey?.(row) ?? row.payItemKey;
+    rowsByGroupKey.set(groupKey, [...(rowsByGroupKey.get(groupKey) ?? []), row]);
   }
 
-  for (const rowsInGroup of rowsByPayItemKey.values()) {
+  for (const rowsInGroup of rowsByGroupKey.values()) {
     if (rowsInGroup.length < OUTLIER_MIN_SAMPLE_SIZE) {
       continue;
     }
@@ -11906,6 +11911,16 @@ function filterEntriesByCrewLaborTypes(entries: AllocationEntry[], laborTypes: C
 
 function normalizeCrewLaborTypes(laborTypes: CrewLaborType[]) {
   return Array.from(new Set(laborTypes.map((laborType) => getCrewLaborType({ laborType }))));
+}
+
+type CrewPerformanceComparisonGroup = "employee_temp" | "subcontractor";
+
+function getCrewPerformanceComparisonGroup(laborType: CrewLaborType | undefined): CrewPerformanceComparisonGroup {
+  return getCrewLaborType({ laborType }) === "subcontractor" ? "subcontractor" : "employee_temp";
+}
+
+function getCrewPerformanceCompanyStatsKey(row: Pick<PayItemReportDetailRow, "laborType" | "payItemKey">) {
+  return `${row.payItemKey}|${getCrewPerformanceComparisonGroup(row.laborType)}`;
 }
 
 function getCrewLaborType(source: { laborType?: CrewLaborType } | undefined | null): CrewLaborType {
