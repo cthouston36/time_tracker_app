@@ -2009,18 +2009,18 @@ a.daily-report-procore-status:hover {
 .daily-status-strip {
   display: grid;
   gap: 6px;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
 }
 
 .daily-status-strip-compact {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
 }
 
 .daily-status-item {
   align-items: center;
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: 8px;
   display: flex;
   gap: 8px;
   justify-content: space-between;
@@ -2050,13 +2050,16 @@ a.daily-report-procore-status:hover {
   font-weight: 800;
   letter-spacing: 0.02em;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .daily-status-item strong {
   font-size: 0.82rem;
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
   text-align: right;
+  white-space: nowrap;
 }
 
 .daily-status-item.success {
@@ -2094,6 +2097,9 @@ a.daily-report-procore-status:hover {
   display: grid;
   gap: 6px;
   margin: 12px 0;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
   padding: 12px;
 }
 
@@ -2107,6 +2113,7 @@ a.daily-report-procore-status:hover {
 .sync-summary li,
 .sync-summary summary {
   font-size: 0.84rem;
+  overflow-wrap: anywhere;
 }
 
 .sync-summary ul {
@@ -2121,6 +2128,9 @@ a.daily-report-procore-status:hover {
   border: 1px solid var(--line);
   border-radius: 8px;
   margin-top: 12px;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
   padding: 10px 12px;
 }
 
@@ -2138,12 +2148,17 @@ a.daily-report-procore-status:hover {
   display: grid;
   gap: 8px;
   margin-top: 10px;
+  max-height: 320px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .sync-log-entry {
   border-left: 3px solid var(--success);
   display: grid;
   gap: 4px;
+  min-width: 0;
   padding: 8px 0 8px 10px;
 }
 
@@ -2160,6 +2175,7 @@ a.daily-report-procore-status:hover {
 .sync-log-entry summary {
   color: var(--muted);
   font-size: 0.8rem;
+  overflow-wrap: anywhere;
 }
 
 .sync-log-entry ul {
@@ -2170,10 +2186,10 @@ a.daily-report-procore-status:hover {
 }
 
 .sync-log-heading {
-  align-items: baseline;
-  display: flex;
+  display: grid;
   gap: 8px;
-  justify-content: space-between;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
 }
 
 .sync-log-heading strong {
@@ -2182,7 +2198,7 @@ a.daily-report-procore-status:hover {
 }
 
 .sync-log-heading span {
-  flex: 0 0 auto;
+  overflow-wrap: normal;
 }
 
 .project-blacklist,
@@ -2192,6 +2208,9 @@ a.daily-report-procore-status:hover {
   border: 1px solid var(--line);
   border-radius: 8px;
   margin-top: 12px;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
   padding: 10px 12px;
 }
 
@@ -2235,15 +2254,16 @@ a.daily-report-procore-status:hover {
   display: grid;
   gap: 12px;
   margin-top: 10px;
+  min-width: 0;
 }
 
 .admin-panel-toolbar {
-  align-items: center;
+  align-items: stretch;
   border: 1px solid var(--line);
   border-radius: 8px;
   display: flex;
+  flex-direction: column;
   gap: 10px;
-  justify-content: space-between;
   padding: 8px;
 }
 
@@ -2254,11 +2274,10 @@ a.daily-report-procore-status:hover {
 
 .admin-panel-actions,
 .failed-upload-actions {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
+  align-items: stretch;
+  display: grid;
   gap: 8px;
-  justify-content: flex-end;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .failed-upload-section {
@@ -2276,7 +2295,8 @@ a.daily-report-procore-status:hover {
   display: grid;
   gap: 8px;
   max-height: 340px;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   padding-right: 4px;
 }
 
@@ -2287,7 +2307,8 @@ a.daily-report-procore-status:hover {
   border-radius: 8px;
   display: grid;
   gap: 10px;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
   padding: 10px;
 }
 
@@ -2309,13 +2330,21 @@ a.daily-report-procore-status:hover {
   color: var(--muted);
   display: block;
   font-size: 0.78rem;
+  line-height: 1.35;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+.failed-upload-row small,
+.audit-log-row small {
   overflow-wrap: anywhere;
 }
 
 .admin-audit-filters {
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-width: 0;
 }
 
 .admin-audit-filters label {
@@ -2339,11 +2368,9 @@ a.daily-report-procore-status:hover {
 
 .audit-log-main,
 .audit-log-meta {
-  align-items: baseline;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  justify-content: space-between;
+  display: grid;
+  gap: 3px;
+  min-width: 0;
 }
 
 .admin-tools-drawer {
@@ -2351,6 +2378,9 @@ a.daily-report-procore-status:hover {
   display: grid;
   gap: 10px;
   margin-top: 16px;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
   padding-top: 16px;
 }
 
@@ -2381,6 +2411,11 @@ a.daily-report-procore-status:hover {
   display: grid;
   gap: 12px;
   margin-top: 12px;
+  max-height: min(72vh, 760px);
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .admin-tool-actions {
@@ -2388,6 +2423,7 @@ a.daily-report-procore-status:hover {
   border-radius: 8px;
   display: grid;
   gap: 8px;
+  min-width: 0;
   padding: 10px;
 }
 
@@ -4045,6 +4081,10 @@ a.daily-report-procore-status:hover {
   .failed-upload-row,
   .audit-log-row {
     grid-template-columns: 1fr;
+  }
+
+  .admin-tools-body {
+    max-height: min(70vh, 720px);
   }
 }
 
