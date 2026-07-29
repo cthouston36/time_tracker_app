@@ -754,6 +754,7 @@ export function TimeAllocationWorkspace() {
   const [appStateHydrated, setAppStateHydrated] = useState(false);
   const dateInputRef = useRef<HTMLInputElement>(null);
   const jobImageInputRef = useRef<HTMLInputElement>(null);
+  const payItemEntryPanelRef = useRef<HTMLDivElement>(null);
   const jobImagePreviewUrlsRef = useRef<Set<string>>(new Set());
   const myProjectsFilterInitializedRef = useRef(false);
   const dailyReportDraftAutosaveTimeoutRef = useRef<number | null>(null);
@@ -879,6 +880,15 @@ export function TimeAllocationWorkspace() {
   const showJobImageDetails = Boolean(
     jobImageQueue.length > 0 || currentJobImageUploads.length > 0 || jobImageNotice || uploadingJobImages
   );
+
+  const scrollPayItemEntryPanelToTop = useCallback(() => {
+    window.requestAnimationFrame(() => {
+      payItemEntryPanelRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start"
+      });
+    });
+  }, []);
   const dayIsSubmitted = currentDaySubmission.status === "submitted";
   const currentUserAutoMyJobIds = useMemo(
     () => (currentUser ? getDefaultMyJobIdsForUser(currentUser, projects) : []),
@@ -5151,7 +5161,7 @@ export function TimeAllocationWorkspace() {
 
             {selectedProjectUsesPayItems ? (
               <>
-            <div className="panel workflow-panel">
+            <div className="panel workflow-panel" ref={payItemEntryPanelRef}>
               <div className="panel-heading">
                 <h2 className="workflow-title">
                   <span className="workflow-step">1</span>
@@ -5201,6 +5211,7 @@ export function TimeAllocationWorkspace() {
                   onCrewToggle={toggleDraftCrewMember}
                   onSplitEvenly={splitDraftCrewHoursEvenly}
                   onSelectedPayItemChange={setMobileSelectedPayItemId}
+                  onCrewEditorClose={scrollPayItemEntryPanelToTop}
                 />
               ) : null}
               {selectedProject?.payItems.length ? (
@@ -7044,6 +7055,7 @@ function CrewAllocationEditor({
   savedEntry,
   onCrewHoursChange,
   onCrewToggle,
+  onClose,
   onSplitEvenly
 }: {
   crewMembers: CrewMember[];
@@ -7053,6 +7065,7 @@ function CrewAllocationEditor({
   savedEntry: AllocationEntry | undefined;
   onCrewHoursChange: (payItemId: string, crewMemberId: string, value: string) => void;
   onCrewToggle: (payItemId: string, crewMemberId: string, checked: boolean) => void;
+  onClose?: () => void;
   onSplitEvenly: (payItemId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -7066,6 +7079,16 @@ function CrewAllocationEditor({
       : selectedCrewMembers.length === 1
         ? selectedCrewMembers[0].name
         : `${selectedCrewMembers.length} selected`;
+
+  function closeCrewAllocator() {
+    setOpen(false);
+
+    if (onClose) {
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(onClose);
+      });
+    }
+  }
 
   return (
     <details className="crew-allocator" open={open}>
@@ -7136,7 +7159,7 @@ function CrewAllocationEditor({
           </div>
         ) : null}
         <div className="crew-allocator-actions">
-          <button className="secondary-button" onClick={() => setOpen(false)} type="button">
+          <button className="secondary-button" onClick={closeCrewAllocator} type="button">
             OK
           </button>
         </div>
@@ -7157,7 +7180,8 @@ function MobilePayItemEntry({
   onCrewToggle,
   onDraftChange,
   onSplitEvenly,
-  onSelectedPayItemChange
+  onSelectedPayItemChange,
+  onCrewEditorClose
 }: {
   crewMembers: CrewMember[];
   dayIsSubmitted: boolean;
@@ -7171,6 +7195,7 @@ function MobilePayItemEntry({
   onDraftChange: (payItemId: string, field: "hours" | "quantity", value: string) => void;
   onSplitEvenly: (payItemId: string) => void;
   onSelectedPayItemChange: (payItemId: string) => void;
+  onCrewEditorClose: () => void;
 }) {
   const draft = draftsByPayItem[selectedPayItem.id];
   const savedEntry = savedEntries.find((entry) => entry.payItemId === selectedPayItem.id);
@@ -7230,6 +7255,7 @@ function MobilePayItemEntry({
           savedEntry={savedEntry}
           onCrewHoursChange={onCrewHoursChange}
           onCrewToggle={onCrewToggle}
+          onClose={onCrewEditorClose}
           onSplitEvenly={onSplitEvenly}
         />
       </div>
