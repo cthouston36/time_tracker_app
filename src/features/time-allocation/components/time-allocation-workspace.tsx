@@ -6272,7 +6272,7 @@ function DailyReportModal({
             >
               <div className="daily-labor-row daily-labor-header" role="row">
                 <span>#</span>
-                <span>Employee Name - Classification</span>
+                <span>Employee Name</span>
                 <span>Truck #</span>
                 <span>Time In</span>
                 <span>Lunch Out</span>
