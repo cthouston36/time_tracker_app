@@ -3724,11 +3724,15 @@ export function TimeAllocationWorkspace() {
   }
 
   function addSyncLog(entry: Omit<SyncLogEntry, "id" | "createdAt">) {
-    const syncLogEntry = {
+    const syncLogEntry = normalizeSyncLogEntry({
       id: crypto.randomUUID(),
       createdAt: new Date().toISOString(),
       ...entry
-    };
+    });
+
+    if (!syncLogEntry) {
+      return;
+    }
 
     setSyncLog((current) =>
       [syncLogEntry, ...current].slice(0, 25)
@@ -3768,15 +3772,16 @@ export function TimeAllocationWorkspace() {
           : visibleSyncedProjects[0]?.id ?? ""
       );
       setSyncedAt(data.syncedAt ?? null);
-      setSyncSummary(data.summary ?? null);
-      const message = buildSyncStatus("New project sync", data.summary);
+      const summary = normalizeSyncSummary(data.summary);
+      setSyncSummary(summary ?? null);
+      const message = buildSyncStatus("New project sync", summary);
       setConnectionStatus(message);
       setDraftsByPayItem({});
       addSyncLog({
         action: "Sync New Projects",
-        status: hasSyncWarnings(data.summary) ? "warning" : "success",
+        status: hasSyncWarnings(summary) ? "warning" : "success",
         message,
-        summary: data.summary
+        summary
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to sync NetSuite project data.";
@@ -3822,15 +3827,16 @@ export function TimeAllocationWorkspace() {
           : visibleSyncedProjects[0]?.id ?? ""
       );
       setSyncedAt(data.syncedAt ?? null);
-      setSyncSummary(data.summary ?? null);
-      const message = buildSyncStatus("Full sync", data.summary);
+      const summary = normalizeSyncSummary(data.summary);
+      setSyncSummary(summary ?? null);
+      const message = buildSyncStatus("Full sync", summary);
       setConnectionStatus(message);
       setDraftsByPayItem({});
       addSyncLog({
         action: "Sync All Projects",
-        status: hasSyncWarnings(data.summary) ? "warning" : "success",
+        status: hasSyncWarnings(summary) ? "warning" : "success",
         message,
-        summary: data.summary
+        summary
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to sync all NetSuite projects.";
@@ -8927,15 +8933,17 @@ function SyncSummaryCard({ summary }: { summary: ProcoreSyncSummary }) {
       {summary.failed > 0 ? (
         <span>{summary.failed} project{summary.failed === 1 ? "" : "s"} failed or returned no budget lines.</span>
       ) : null}
-      {summary.failedProjects.length > 0 ? (
+      {getSyncFailedProjects(summary).length > 0 ? (
         <details>
           <summary>Failed projects</summary>
           <ul>
-            {summary.failedProjects.slice(0, 8).map((project) => (
+            {getSyncFailedProjects(summary).slice(0, 8).map((project) => (
               <li key={project}>{project}</li>
             ))}
           </ul>
-          {summary.failedProjects.length > 8 ? <span>{summary.failedProjects.length - 8} more not shown.</span> : null}
+          {getSyncFailedProjects(summary).length > 8 ? (
+            <span>{getSyncFailedProjects(summary).length - 8} more not shown.</span>
+          ) : null}
         </details>
       ) : null}
     </div>
@@ -8963,16 +8971,16 @@ function SyncLogPanel({ entries }: { entries: SyncLogEntry[] }) {
               {entry.summary ? (
                 <span>{formatSyncSummaryLine(entry.summary)}</span>
               ) : null}
-              {entry.summary?.failedProjects.length ? (
+              {entry.summary && getSyncFailedProjects(entry.summary).length > 0 ? (
                 <details>
                   <summary>Failed projects</summary>
                   <ul>
-                    {entry.summary.failedProjects.slice(0, 8).map((project) => (
+                    {getSyncFailedProjects(entry.summary).slice(0, 8).map((project) => (
                       <li key={project}>{project}</li>
                     ))}
                   </ul>
-                  {entry.summary.failedProjects.length > 8 ? (
-                    <span>{entry.summary.failedProjects.length - 8} more not shown.</span>
+                  {getSyncFailedProjects(entry.summary).length > 8 ? (
+                    <span>{getSyncFailedProjects(entry.summary).length - 8} more not shown.</span>
                   ) : null}
                 </details>
               ) : null}
@@ -10725,6 +10733,80 @@ function readTextValue(value: unknown) {
   return "";
 }
 
+function readNumberValue(value: unknown) {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : 0;
+}
+
+function getSyncFailedProjects(summary: Partial<ProcoreSyncSummary> | undefined) {
+  return Array.isArray(summary?.failedProjects)
+    ? summary.failedProjects.map(readTextValue).filter(Boolean)
+    : [];
+}
+
+function normalizeSyncSummary(value: unknown): ProcoreSyncSummary | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const summary = value as Partial<ProcoreSyncSummary>;
+  const normalizedSummary: ProcoreSyncSummary = {
+    attempted: readNumberValue(summary.attempted),
+    failed: readNumberValue(summary.failed),
+    failedProjects: getSyncFailedProjects(summary),
+    skippedExisting: readNumberValue(summary.skippedExisting),
+    synced: readNumberValue(summary.synced)
+  };
+
+  const optionalFields: Array<keyof Omit<ProcoreSyncSummary, "attempted" | "failed" | "failedProjects" | "skippedExisting" | "synced">> = [
+    "autoArchivedProjects",
+    "dailyReportOnlyProjects",
+    "eligibleProjects",
+    "inactiveNetSuiteProjects",
+    "payItemProjects",
+    "remainingNewProjects",
+    "skippedMissingProcoreProjectId",
+    "skippedNoPayItems",
+    "totalNetSuiteProjects"
+  ];
+
+  for (const field of optionalFields) {
+    if (summary[field] !== undefined) {
+      normalizedSummary[field] = readNumberValue(summary[field]);
+    }
+  }
+
+  return normalizedSummary;
+}
+
+function normalizeSyncLogEntries(value: unknown): SyncLogEntry[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map(normalizeSyncLogEntry)
+    .filter((entry): entry is SyncLogEntry => entry !== null);
+}
+
+function normalizeSyncLogEntry(value: unknown): SyncLogEntry | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const entry = value as Partial<SyncLogEntry>;
+  const status = entry.status === "error" || entry.status === "warning" || entry.status === "success" ? entry.status : "success";
+
+  return {
+    id: readTextValue(entry.id) || crypto.randomUUID(),
+    action: readTextValue(entry.action) || "Sync",
+    createdAt: readTextValue(entry.createdAt) || new Date().toISOString(),
+    message: readTextValue(entry.message),
+    status,
+    summary: normalizeSyncSummary(entry.summary)
+  };
+}
+
 function filterActiveProjects(
   projects: Project[],
   projectBlacklistById: ProjectBlacklistById,
@@ -10832,7 +10914,7 @@ function buildSharedAppState(state: SharedAppState): SharedAppState {
     myJobsByUser: normalizeRecord(state.myJobsByUser),
     projectArchiveById: normalizeRecord(state.projectArchiveById),
     projectBlacklistById: normalizeRecord(state.projectBlacklistById),
-    syncLog: Array.isArray(state.syncLog) ? state.syncLog : []
+    syncLog: normalizeSyncLogEntries(state.syncLog)
   };
 }
 
