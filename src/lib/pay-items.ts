@@ -22,7 +22,8 @@ export function splitCostCodeDisplay(value: string) {
 
   return {
     code,
-    name: rawName || code
+    name: rawName || code,
+    sourceCode: rawCode
   };
 }
 

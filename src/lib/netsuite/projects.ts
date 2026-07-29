@@ -365,11 +365,11 @@ function mapNetSuiteProject(projectRow: NetSuiteProjectRow, budgetRows: NetSuite
 }
 
 function dedupeNetSuitePayItems(rows: NetSuiteBudgetLineRow[]) {
-  const payItemsByCode = new Map<string, PayItem>();
+  const payItemsByCode = new Map<string, PayItem & { sourceCodeQuantities: Map<string, number> }>();
 
   for (const row of rows) {
     const displayValue = readString(rowValue(row, "cost_code"));
-    const { code, name } = splitCostCodeDisplay(displayValue);
+    const { code, name, sourceCode } = splitCostCodeDisplay(displayValue);
 
     if (!code) {
       continue;
@@ -377,6 +377,7 @@ function dedupeNetSuitePayItems(rows: NetSuiteBudgetLineRow[]) {
 
     const existingPayItem = payItemsByCode.get(code.toLowerCase());
     const quantity = readNumber(rowValue(row, "quantity"));
+    const sourceCodeKey = (sourceCode || code).toLowerCase();
 
     if (!existingPayItem) {
       payItemsByCode.set(code.toLowerCase(), {
@@ -384,18 +385,34 @@ function dedupeNetSuitePayItems(rows: NetSuiteBudgetLineRow[]) {
         code,
         id: code,
         name: name || code,
+        sourceCodeQuantities: new Map([[sourceCodeKey, quantity]]),
         unitOfMeasure: ""
       });
       continue;
     }
 
-    existingPayItem.budgetedQuantity = Math.max(existingPayItem.budgetedQuantity, quantity);
+    const existingSourceQuantity = existingPayItem.sourceCodeQuantities.get(sourceCodeKey);
+
+    if (existingSourceQuantity === undefined) {
+      existingPayItem.budgetedQuantity += quantity;
+      existingPayItem.sourceCodeQuantities.set(sourceCodeKey, quantity);
+    } else if (quantity > existingSourceQuantity) {
+      existingPayItem.budgetedQuantity += quantity - existingSourceQuantity;
+      existingPayItem.sourceCodeQuantities.set(sourceCodeKey, quantity);
+    }
+
     existingPayItem.name = choosePayItemName(existingPayItem.name, name);
   }
 
-  return Array.from(payItemsByCode.values()).sort((left, right) =>
-    left.code.localeCompare(right.code, undefined, { numeric: true, sensitivity: "base" })
-  );
+  return Array.from(payItemsByCode.values())
+    .map((payItem) => ({
+      budgetedQuantity: payItem.budgetedQuantity,
+      code: payItem.code,
+      id: payItem.id,
+      name: payItem.name,
+      unitOfMeasure: payItem.unitOfMeasure
+    }))
+    .sort((left, right) => left.code.localeCompare(right.code, undefined, { numeric: true, sensitivity: "base" }));
 }
 
 function choosePayItemName(existingName: string, nextName: string) {
