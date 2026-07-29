@@ -677,6 +677,7 @@ export function TimeAllocationWorkspace() {
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [showOnlyMyProjects, setShowOnlyMyProjects] = useState(false);
   const [matrixFullscreenOpen, setMatrixFullscreenOpen] = useState(false);
+  const [jobSetupCollapsed, setJobSetupCollapsed] = useState(false);
   const [jobSetupExpanded, setJobSetupExpanded] = useState(false);
   const [myProjectsEditorOpen, setMyProjectsEditorOpen] = useState(false);
   const [crewSetupExpanded, setCrewSetupExpanded] = useState(false);
@@ -4549,8 +4550,17 @@ export function TimeAllocationWorkspace() {
         </div>
       ) : null}
 
-      <div className="workspace">
-        <aside className={jobSetupExpanded ? "panel job-setup-panel expanded" : "panel job-setup-panel"}>
+      <div className={jobSetupCollapsed ? "workspace job-setup-collapsed" : "workspace"}>
+        <aside
+          className={[
+            "panel",
+            "job-setup-panel",
+            jobSetupExpanded ? "expanded" : "",
+            jobSetupCollapsed ? "collapsed" : ""
+          ]
+            .filter(Boolean)
+            .join(" ")}
+        >
           <button
             aria-controls="job-setup-body"
             aria-expanded={jobSetupExpanded}
@@ -4566,7 +4576,22 @@ export function TimeAllocationWorkspace() {
             </span>
             <ChevronDown aria-hidden="true" size={18} />
           </button>
-          <h2 className="job-setup-desktop-title">Job Setup</h2>
+          <div className="job-setup-desktop-heading">
+            <h2 className="job-setup-desktop-title">Job Setup</h2>
+            <button
+              aria-label={jobSetupCollapsed ? "Expand Job Setup sidebar" : "Collapse Job Setup sidebar"}
+              className="job-setup-desktop-toggle"
+              onClick={() => setJobSetupCollapsed((current) => !current)}
+              title={jobSetupCollapsed ? "Expand Job Setup" : "Collapse Job Setup"}
+              type="button"
+            >
+              {jobSetupCollapsed ? (
+                <ChevronRight aria-hidden="true" size={18} />
+              ) : (
+                <ChevronLeft aria-hidden="true" size={18} />
+              )}
+            </button>
+          </div>
           <div className="job-setup-body" id="job-setup-body">
             <div className="field-group">
               <label htmlFor="project">Job</label>

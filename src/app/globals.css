@@ -370,6 +370,11 @@ summary:focus-visible,
   width: 100%;
 }
 
+.workspace.job-setup-collapsed {
+  gap: 12px;
+  grid-template-columns: 56px minmax(0, 1fr);
+}
+
 .panel {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -384,6 +389,58 @@ summary:focus-visible,
 }
 
 .job-setup-mobile-toggle {
+  display: none;
+}
+
+.job-setup-panel {
+  align-self: start;
+}
+
+.job-setup-desktop-heading {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.job-setup-desktop-heading .job-setup-desktop-title {
+  margin: 0;
+}
+
+.job-setup-desktop-toggle {
+  align-items: center;
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--foreground);
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 auto;
+  height: 34px;
+  justify-content: center;
+  width: 34px;
+}
+
+.job-setup-desktop-toggle:hover,
+.job-setup-desktop-toggle:focus-visible {
+  background: var(--panel-soft);
+  border-color: var(--accent);
+  outline: none;
+}
+
+.job-setup-panel.collapsed {
+  min-height: 52px;
+  padding: 8px;
+}
+
+.job-setup-panel.collapsed .job-setup-desktop-heading {
+  justify-content: center;
+  margin-bottom: 0;
+}
+
+.job-setup-panel.collapsed .job-setup-desktop-title,
+.job-setup-panel.collapsed .job-setup-body {
   display: none;
 }
 
@@ -4116,6 +4173,10 @@ a.daily-report-procore-status:hover {
     padding: 12px;
   }
 
+  .workspace.job-setup-collapsed {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .app-footer {
     padding: 0 12px 96px;
     text-align: center;
@@ -4138,6 +4199,15 @@ a.daily-report-procore-status:hover {
 
   .job-setup-panel {
     padding: 0;
+  }
+
+  .job-setup-panel.collapsed {
+    min-height: 0;
+    padding: 0;
+  }
+
+  .job-setup-desktop-heading {
+    display: none;
   }
 
   .job-setup-desktop-title {
@@ -4200,6 +4270,10 @@ a.daily-report-procore-status:hover {
 
   .job-setup-panel:not(.expanded) .job-setup-body {
     display: none;
+  }
+
+  .job-setup-panel.collapsed.expanded .job-setup-body {
+    display: block;
   }
 
   .field-group {
