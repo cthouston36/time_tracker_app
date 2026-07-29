@@ -2569,6 +2569,7 @@ a.daily-report-procore-status:hover {
 .pay-item-matrix {
   border: 1px solid var(--line);
   border-radius: 8px;
+  isolation: isolate;
   max-height: 70vh;
   overflow: auto;
   position: relative;
@@ -2602,7 +2603,12 @@ a.daily-report-procore-status:hover {
   position: sticky;
   top: 0;
   text-transform: uppercase;
-  z-index: 2;
+  z-index: 30;
+}
+
+.matrix-header > span {
+  position: relative;
+  z-index: 31;
 }
 
 .matrix-header > span:first-child,
@@ -2621,7 +2627,7 @@ a.daily-report-procore-status:hover {
 .matrix-header > span:first-child {
   background: #0d151d;
   box-shadow: 1px 0 0 var(--line), 12px 0 18px rgba(0, 0, 0, 0.24);
-  z-index: 8;
+  z-index: 35;
 }
 
 .matrix-row {
@@ -2648,6 +2654,7 @@ a.daily-report-procore-status:hover {
   box-shadow: 1px 0 0 var(--line), 12px 0 18px rgba(0, 0, 0, 0.24);
   color: #b8e7ec;
   font-weight: 700;
+  z-index: 10;
 }
 
 .matrix-row.worked-row .matrix-code {
