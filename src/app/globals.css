@@ -833,7 +833,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   justify-content: center;
   padding: 18px;
   position: fixed;
-  z-index: 50;
+  z-index: 2000;
 }
 
 .modal-panel {
