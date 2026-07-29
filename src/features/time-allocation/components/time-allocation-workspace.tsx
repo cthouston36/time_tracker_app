@@ -1671,7 +1671,7 @@ export function TimeAllocationWorkspace() {
 
       const nextProjectName = entry.projectName ?? projectSnapshot?.name;
       const nextPayItemBudgetedQuantity = entry.payItemBudgetedQuantity ?? payItemSnapshot?.budgetedQuantity;
-      const nextPayItemUnitOfMeasure = entry.payItemUnitOfMeasure ?? payItemSnapshot?.unitOfMeasure.toUpperCase();
+      const nextPayItemUnitOfMeasure = entry.payItemUnitOfMeasure ?? formatPayItemUnitOfMeasure(payItemSnapshot);
 
       if (
         nextProjectName === entry.projectName &&
@@ -3979,7 +3979,7 @@ export function TimeAllocationWorkspace() {
             payItemCode: existingEntry?.payItemCode ?? payItem.code,
             payItemName: existingEntry?.payItemName ?? payItem.name,
             payItemBudgetedQuantity: existingEntry?.payItemBudgetedQuantity ?? payItem.budgetedQuantity,
-            payItemUnitOfMeasure: existingEntry?.payItemUnitOfMeasure ?? payItem.unitOfMeasure.toUpperCase(),
+            payItemUnitOfMeasure: existingEntry?.payItemUnitOfMeasure ?? formatPayItemUnitOfMeasure(payItem),
             hours,
             quantityCompleted: quantity,
             crewAllocations: buildCrewAllocations(draft, selectedProjectCrewMembers, hours),
@@ -6496,7 +6496,7 @@ function DailyReportModal({
                         onChange={(event) => onPayItemChange(index, "quantity", event.target.value)}
                         onWheel={(event) => event.currentTarget.blur()}
                       />
-                      <span>{selectedPayItem?.unitOfMeasure.toUpperCase() ?? ""}</span>
+                      <span>{formatPayItemUnitOfMeasure(selectedPayItem)}</span>
                     </div>
                   </div>
                 );
@@ -6991,7 +6991,7 @@ function PayItemMatrix({
             <span className="matrix-code" data-label="Code">{item.code}</span>
             <span className="matrix-name" data-label="Pay Item">{item.name}</span>
             <span className="matrix-budget" data-label="Remaining QTY" title="Remaining quantity before this date">
-              {formatPayItemQuantity(remainingQuantity)} {item.unitOfMeasure.toUpperCase()}
+              {formatPayItemQuantity(remainingQuantity)} {formatPayItemUnitOfMeasure(item)}
             </span>
             <span className="matrix-saved" data-label="Saved Hrs">{savedEntry ? savedEntry.hours.toFixed(2) : "-"}</span>
             <span className="matrix-saved" data-label="Saved Qty">{savedEntry ? savedEntry.quantityCompleted.toFixed(2) : "-"}</span>
@@ -7196,7 +7196,7 @@ function MobilePayItemEntry({
         <div>
           <span>Remaining</span>
           <strong>
-            {formatPayItemQuantity(remainingQuantity)} {selectedPayItem.unitOfMeasure.toUpperCase()}
+            {formatPayItemQuantity(remainingQuantity)} {formatPayItemUnitOfMeasure(selectedPayItem)}
           </strong>
         </div>
         <div>
@@ -12306,6 +12306,10 @@ function formatPayItemQuantity(value: number) {
     maximumFractionDigits: 2,
     minimumFractionDigits: 0
   });
+}
+
+function formatPayItemUnitOfMeasure(payItem: Pick<PayItem, "unitOfMeasure"> | null | undefined) {
+  return typeof payItem?.unitOfMeasure === "string" ? payItem.unitOfMeasure.toUpperCase() : "";
 }
 
 function buildEntryConflictSignature(entries: AllocationEntry[]) {
