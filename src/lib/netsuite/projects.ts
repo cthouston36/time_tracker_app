@@ -1,5 +1,6 @@
 import { readProcoreCache, updateProcoreCache, writeProcoreCache } from "@/lib/procore/cache";
 import { projectNameStartsWithTwo } from "@/lib/daily-report-templates";
+import { splitCostCodeDisplay } from "@/lib/pay-items";
 import type { PayItem, Project } from "@/lib/procore/types";
 import { runSuiteQL, runSuiteQLAll } from "@/lib/netsuite/client";
 import { setProjectArchiveForProjects } from "@/lib/project-controls-store";
@@ -395,26 +396,6 @@ function dedupeNetSuitePayItems(rows: NetSuiteBudgetLineRow[]) {
   return Array.from(payItemsByCode.values()).sort((left, right) =>
     left.code.localeCompare(right.code, undefined, { numeric: true, sensitivity: "base" })
   );
-}
-
-function splitCostCodeDisplay(value: string) {
-  const normalizedValue = value.replace(/\s+/g, " ").trim();
-  const match = normalizedValue.match(/^([A-Za-z0-9][A-Za-z0-9.\-]*)\s*(?:-\s*)?(.*)$/);
-
-  if (!match) {
-    return {
-      code: normalizedValue,
-      name: normalizedValue
-    };
-  }
-
-  const code = match[1]?.trim() ?? "";
-  const name = match[2]?.trim() ?? "";
-
-  return {
-    code,
-    name: name || code
-  };
 }
 
 function choosePayItemName(existingName: string, nextName: string) {

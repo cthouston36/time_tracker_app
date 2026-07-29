@@ -1,4 +1,5 @@
 import { getSql } from "@/lib/db";
+import { normalizeNumericCostCode } from "@/lib/pay-items";
 import type { AllocationEntry, CrewAllocation, CrewLaborType } from "@/lib/procore/types";
 
 type EntryRow = {
@@ -162,23 +163,33 @@ async function readEntriesWithAllocations(entryRows: EntryRow[]) {
     allocationsByEntryId.set(allocationRow.entry_id, allocations);
   }
 
-  return entryRows.map((entryRow) => ({
-    id: entryRow.id,
-    projectId: entryRow.project_id,
-    projectName: entryRow.project_name ?? undefined,
-    date: entryRow.date,
-    payItemId: entryRow.pay_item_id,
-    payItemCode: entryRow.pay_item_code,
-    payItemName: entryRow.pay_item_name,
-    payItemBudgetedQuantity: toOptionalNumber(entryRow.pay_item_budgeted_quantity),
-    payItemUnitOfMeasure: entryRow.pay_item_unit_of_measure ?? undefined,
-    hours: toNumber(entryRow.hours),
-    quantityCompleted: toNumber(entryRow.quantity_completed),
-    crewAllocations: allocationsByEntryId.get(entryRow.id) ?? [],
-    savedByUserId: entryRow.saved_by_user_id ?? undefined,
-    savedByName: entryRow.saved_by_name ?? undefined,
-    savedAt: entryRow.saved_at ?? undefined
-  }));
+  return entryRows
+    .map((entryRow) => {
+      const payItemCode = normalizeNumericCostCode(entryRow.pay_item_code);
+
+      if (!payItemCode) {
+        return null;
+      }
+
+      return {
+        id: entryRow.id,
+        projectId: entryRow.project_id,
+        projectName: entryRow.project_name ?? undefined,
+        date: entryRow.date,
+        payItemId: entryRow.pay_item_id,
+        payItemCode,
+        payItemName: entryRow.pay_item_name,
+        payItemBudgetedQuantity: toOptionalNumber(entryRow.pay_item_budgeted_quantity),
+        payItemUnitOfMeasure: entryRow.pay_item_unit_of_measure ?? undefined,
+        hours: toNumber(entryRow.hours),
+        quantityCompleted: toNumber(entryRow.quantity_completed),
+        crewAllocations: allocationsByEntryId.get(entryRow.id) ?? [],
+        savedByUserId: entryRow.saved_by_user_id ?? undefined,
+        savedByName: entryRow.saved_by_name ?? undefined,
+        savedAt: entryRow.saved_at ?? undefined
+      };
+    })
+    .filter((entry) => entry !== null);
 }
 
 export async function replaceAllocationEntries(entries: AllocationEntry[]) {
@@ -486,7 +497,9 @@ async function ensureDailyEntryTables() {
 }
 
 function normalizeAllocationEntry(entry: AllocationEntry) {
-  if (!entry.id || !entry.projectId || !isIsoDate(entry.date) || !entry.payItemId || !entry.payItemCode || !entry.payItemName) {
+  const payItemCode = normalizeNumericCostCode(entry.payItemCode);
+
+  if (!entry.id || !entry.projectId || !isIsoDate(entry.date) || !entry.payItemId || !payItemCode || !entry.payItemName) {
     return null;
   }
 
@@ -496,7 +509,7 @@ function normalizeAllocationEntry(entry: AllocationEntry) {
     projectName: entry.projectName ?? null,
     date: entry.date,
     payItemId: entry.payItemId,
-    payItemCode: entry.payItemCode,
+    payItemCode,
     payItemName: entry.payItemName,
     payItemBudgetedQuantity: toNullableNumber(entry.payItemBudgetedQuantity),
     payItemUnitOfMeasure: entry.payItemUnitOfMeasure ?? null,
