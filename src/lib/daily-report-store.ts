@@ -4,6 +4,11 @@ export type StoredDailyReportsByKey = Record<string, Record<string, unknown>>;
 export type StoredDailyReportUploadsByKey = Record<string, Record<string, unknown>>;
 export type StoredDailyReport = Record<string, unknown>;
 export type StoredDailyReportUpload = Record<string, unknown>;
+export type StoredDailyReportRangeRow = {
+  date: string;
+  projectId: string;
+  report: StoredDailyReport;
+};
 
 type DailyReportRow = {
   project_id: string;
@@ -63,6 +68,52 @@ export async function readDailyReportData() {
     dailyReportUploadsByKey,
     dailyReportsByKey
   };
+}
+
+export async function readDailyReportsForRange({
+  endDate,
+  projectIds,
+  startDate
+}: {
+  endDate: string;
+  projectIds: string[];
+  startDate: string;
+}): Promise<StoredDailyReportRangeRow[] | null> {
+  const sql = getSql();
+
+  if (!sql) {
+    return null;
+  }
+
+  await ensureDailyReportTables();
+
+  const normalizedProjectIds = normalizeStringList(projectIds);
+
+  if (normalizedProjectIds.length === 0 || !isIsoDate(startDate) || !isIsoDate(endDate)) {
+    return [];
+  }
+
+  const projectIdsJson = JSON.stringify(normalizedProjectIds);
+  const reportRows = (await sql`
+    select
+      project_id,
+      to_char(work_date, 'YYYY-MM-DD') as date,
+      report
+    from daily_reports
+    where project_id in (
+      select value
+      from jsonb_array_elements_text(${projectIdsJson}::jsonb)
+    )
+      and work_date >= ${startDate}::date
+      and work_date <= ${endDate}::date
+    order by project_id, work_date
+  `) as DailyReportRow[];
+
+  return reportRows.map((row): StoredDailyReportRangeRow => ({
+    date: row.date,
+    projectId: row.project_id,
+    report: normalizeReportForClient(row.report, row.project_id, row.date) as StoredDailyReport
+  }));
 }
 
 export async function replaceDailyReportData(
@@ -405,6 +456,10 @@ function readString(record: Record<string, unknown>, key: string) {
 
 function readPlainString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeStringList(values: string[]) {
+  return Array.from(new Set(values.map(readPlainString).filter(Boolean)));
 }
 
 function readNullableString(record: Record<string, unknown>, key: string) {

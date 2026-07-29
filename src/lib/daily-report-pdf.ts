@@ -140,8 +140,25 @@ export function buildDailyReportPdfFileName(projectName: string, date: string) {
   return `${date}_${sanitizeFileName(projectNumber)}_Daily_Report.pdf`;
 }
 
+export function buildWeeklyDailyReportsPdfFileName(weekStart: string, weekEnd: string) {
+  return `${weekStart}_to_${weekEnd}_Daily_Reports.pdf`;
+}
+
 export async function buildDailyReportPdf(payload: DailyReportPdfPayload) {
+  return buildDailyReportsPdf([payload], buildDailyReportPdfFileName(payload.project.name, payload.date));
+}
+
+export async function buildCombinedDailyReportPdf(payloads: DailyReportPdfPayload[], title = "Daily Reports") {
+  if (payloads.length === 0) {
+    throw new Error("At least one daily report is required.");
+  }
+
+  return buildDailyReportsPdf(payloads, title);
+}
+
+async function buildDailyReportsPdf(payloads: DailyReportPdfPayload[], title: string) {
   return new Promise<Buffer>((resolve, reject) => {
+    const firstPayload = payloads[0];
     const doc = new PDFDocument({
       autoFirstPage: true,
       bufferPages: true,
@@ -154,27 +171,39 @@ export async function buildDailyReportPdf(payload: DailyReportPdfPayload) {
       size: "LETTER",
       info: {
         Author: "Chinchor Electric Inc.",
-        Subject: `${payload.project.name} daily report for ${payload.date}`,
-        Title: buildDailyReportPdfFileName(payload.project.name, payload.date)
+        Subject:
+          payloads.length === 1 && firstPayload
+            ? `${firstPayload.project.name} daily report for ${firstPayload.date}`
+            : `${payloads.length} combined daily reports`,
+        Title: title
       }
     });
     const chunks: Buffer[] = [];
-    const context: PdfContext = {
-      cursorY: 0,
-      logoBuffer: readLogoBuffer(),
-      payload
-    };
+    const logoBuffer = readLogoBuffer();
 
     doc.on("data", (chunk: Buffer) => chunks.push(chunk));
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
 
-    context.cursorY = drawHeader(doc, context, true);
-    if (getDailyReportTemplateForProject(payload.project) === "two-series") {
-      drawTwoSeriesDailyReportBody(doc, context);
-    } else {
-      drawDailyReportBody(doc, context);
-    }
+    payloads.forEach((payload, index) => {
+      if (index > 0) {
+        doc.addPage();
+      }
+
+      const context: PdfContext = {
+        cursorY: 0,
+        logoBuffer,
+        payload
+      };
+
+      context.cursorY = drawHeader(doc, context, true);
+      if (getDailyReportTemplateForProject(payload.project) === "two-series") {
+        drawTwoSeriesDailyReportBody(doc, context);
+      } else {
+        drawDailyReportBody(doc, context);
+      }
+    });
+
     drawPageFooters(doc);
     doc.end();
   });

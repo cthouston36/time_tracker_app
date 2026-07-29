@@ -1,0 +1,175 @@
+import { NextRequest, NextResponse } from "next/server";
+import { getAuditRequestMetadata, recordAuditLog } from "@/lib/audit-log";
+import { getCurrentUser } from "@/lib/auth/session";
+import {
+  buildCombinedDailyReportPdf,
+  buildWeeklyDailyReportsPdfFileName,
+  type DailyReportPdfPayload
+} from "@/lib/daily-report-pdf";
+import { readDailyReportsForRange } from "@/lib/daily-report-store";
+import { readDayRecords } from "@/lib/day-record-store";
+import { readProjectControls } from "@/lib/project-controls-store";
+import { getProjects } from "@/lib/procore/projects";
+
+export const runtime = "nodejs";
+export const maxDuration = 60;
+
+const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const MAX_COMBINED_DAILY_REPORTS = 120;
+
+type WeeklyDailyReportsPdfRequest = {
+  projectIds?: unknown;
+  weekStart?: unknown;
+};
+
+export async function POST(request: NextRequest) {
+  const user = await getCurrentUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Sign in before exporting daily reports." }, { status: 401 });
+  }
+
+  if (user.role !== "admin" && user.role !== "project_manager") {
+    return NextResponse.json({ error: "Project manager access is required to export weekly daily reports." }, { status: 403 });
+  }
+
+  try {
+    const body = (await request.json()) as WeeklyDailyReportsPdfRequest;
+    const requestedProjectIds = normalizeStringList(body.projectIds);
+    const requestedWeekStart = readString(body.weekStart);
+
+    if (requestedProjectIds.length === 0 || !ISO_DATE_PATTERN.test(requestedWeekStart)) {
+      return NextResponse.json({ error: "Select at least one project and a valid week." }, { status: 400 });
+    }
+
+    const weekStart = getSundayWeekStart(requestedWeekStart);
+    const weekEnd = addDaysToInputDate(weekStart, 6);
+    const allProjects = await getProjects();
+    const projectControls = await readProjectControls();
+    const unavailableProjectIds = new Set([
+      ...Object.keys(projectControls?.projectArchiveById ?? {}),
+      ...Object.keys(projectControls?.projectBlacklistById ?? {})
+    ]);
+    const requestedProjectIdSet = new Set(requestedProjectIds);
+    const projects = allProjects
+      .filter((project) => requestedProjectIdSet.has(project.id) && !unavailableProjectIds.has(project.id))
+      .sort((left, right) => left.name.localeCompare(right.name, undefined, { numeric: true, sensitivity: "base" }));
+
+    if (projects.length === 0) {
+      return NextResponse.json({ error: "No active selected projects were found." }, { status: 404 });
+    }
+
+    const dailyReportRows = await readDailyReportsForRange({
+      endDate: weekEnd,
+      projectIds: projects.map((project) => project.id),
+      startDate: weekStart
+    });
+
+    if (dailyReportRows === null) {
+      return NextResponse.json({ error: "Database storage is not configured for daily report exports." }, { status: 503 });
+    }
+
+    if (dailyReportRows.length === 0) {
+      return NextResponse.json({ error: "No saved daily reports are available for the selected projects and week." }, { status: 404 });
+    }
+
+    if (dailyReportRows.length > MAX_COMBINED_DAILY_REPORTS) {
+      return NextResponse.json(
+        {
+          error: `This export contains ${dailyReportRows.length} daily reports. Narrow the selection to ${MAX_COMBINED_DAILY_REPORTS} or fewer.`
+        },
+        { status: 400 }
+      );
+    }
+
+    const projectMap = new Map(projects.map((project) => [project.id, project]));
+    const dayRecords = await readDayRecords();
+    const payloads = dailyReportRows
+      .flatMap((row) => {
+        const project = projectMap.get(row.projectId);
+
+        if (!project) {
+          return [];
+        }
+
+        return [
+          {
+            date: row.date,
+            dayNotes: dayRecords?.dayEntryNotesByKey[getDayKey(row.projectId, row.date)],
+            project,
+            report: row.report
+          } satisfies DailyReportPdfPayload
+        ];
+      })
+      .sort((left, right) => left.project.name.localeCompare(right.project.name, undefined, { numeric: true, sensitivity: "base" }) || left.date.localeCompare(right.date));
+
+    const fileName = buildWeeklyDailyReportsPdfFileName(weekStart, weekEnd);
+    const pdf = await buildCombinedDailyReportPdf(payloads, fileName);
+
+    await recordAuditLog({
+      action: "daily_reports.weekly_pdf_exported",
+      actor: user,
+      metadata: {
+        dailyReportCount: payloads.length,
+        projectCount: projects.length,
+        weekEnd,
+        weekStart
+      },
+      targetType: "daily_reports",
+      ...getAuditRequestMetadata(request.headers)
+    });
+
+    return new NextResponse(new Uint8Array(pdf), {
+      headers: {
+        "Content-Disposition": `attachment; filename="${fileName}"`,
+        "Content-Type": "application/pdf",
+        "X-Daily-Report-Count": String(payloads.length)
+      }
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Unable to export weekly daily reports." },
+      { status: 500 }
+    );
+  }
+}
+
+function normalizeStringList(value: unknown) {
+  return Array.isArray(value) ? Array.from(new Set(value.map(readString).filter(Boolean))) : [];
+}
+
+function readString(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function getSundayWeekStart(value: string) {
+  const date = parseInputDate(value);
+  date.setDate(date.getDate() - date.getDay());
+
+  return formatInputDate(date);
+}
+
+function addDaysToInputDate(value: string, days: number) {
+  const date = parseInputDate(value);
+  date.setDate(date.getDate() + days);
+
+  return formatInputDate(date);
+}
+
+function parseInputDate(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+
+  return new Date(year, month - 1, day);
+}
+
+function formatInputDate(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function getDayKey(projectId: string, date: string) {
+  return `${projectId}|${date}`;
+}

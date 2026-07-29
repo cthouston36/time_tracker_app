@@ -3564,6 +3564,16 @@ a.daily-report-procore-status:hover {
   color: var(--foreground);
 }
 
+.weekly-export-actions {
+  align-items: center;
+  display: flex;
+}
+
+.weekly-export-actions .primary-button {
+  min-height: 44px;
+  white-space: nowrap;
+}
+
 .week-nav {
   align-items: center;
   display: flex;

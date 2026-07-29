@@ -5755,6 +5755,7 @@ export function TimeAllocationWorkspace() {
                 <h2>Weekly Status</h2>
               </div>
               <WeeklyStatusReport
+                canExportWeeklyDailyReports={currentUser.role === "project_manager" || currentUser.role === "admin"}
                 dailyReportUploadsByKey={dailyReportUploadsByKey}
                 dailyReportsByKey={dailyReportsByKey}
                 daySubmissions={daySubmissions}
@@ -8054,6 +8055,7 @@ function MyJobsManager({
 }
 
 function WeeklyStatusReport({
+  canExportWeeklyDailyReports,
   dailyReportUploadsByKey,
   dailyReportsByKey,
   daySubmissions,
@@ -8068,6 +8070,7 @@ function WeeklyStatusReport({
   useMyJobs,
   weekStart
 }: {
+  canExportWeeklyDailyReports: boolean;
   dailyReportUploadsByKey: DailyReportUploadsByKey;
   dailyReportsByKey: DailyReportsByKey;
   daySubmissions: DaySubmissionsByKey;
@@ -8083,12 +8086,18 @@ function WeeklyStatusReport({
   weekStart: string;
 }) {
   const [calendarStatusMode, setCalendarStatusMode] = useState<CalendarStatusMode>("entry_status");
+  const [exportingWeeklyDailyReportsPdf, setExportingWeeklyDailyReportsPdf] = useState(false);
+  const [weeklyDailyReportsNotice, setWeeklyDailyReportsNotice] = useState<{ message: string; status: "error" | "success" } | null>(null);
   const sortedProjects = sortProjectsByName(projects);
   const weekDates = getWeekDates(weekStart);
   const activeProjectIds = useMyJobs ? myJobIds : selectedProjectIds;
   const activeProjectIdSet = new Set(activeProjectIds);
   const visibleProjects = sortedProjects.filter((project) => activeProjectIdSet.has(project.id));
   const entryDayKeys = useMemo(() => buildEntryDayKeySet(entries), [entries]);
+  const savedDailyReportCount = visibleProjects.reduce(
+    (total, project) => total + weekDates.filter((date) => dailyReportsByKey[getDayKey(project.id, date)]).length,
+    0
+  );
   const selectedLabel = useMyJobs
     ? `My Projects (${myJobIds.length})`
     : selectedProjectIds.length === 0
@@ -8107,6 +8116,60 @@ function WeeklyStatusReport({
     setSelectedProjectIds(
       sortedProjects.filter((project) => nextSelectedProjectIds.has(project.id)).map((project) => project.id)
     );
+  }
+
+  async function downloadWeeklyDailyReportsPdf() {
+    if (visibleProjects.length === 0) {
+      setWeeklyDailyReportsNotice({
+        message: "Select one or more projects before exporting weekly daily reports.",
+        status: "error"
+      });
+      return;
+    }
+
+    if (savedDailyReportCount === 0) {
+      setWeeklyDailyReportsNotice({
+        message: "No saved daily reports are available for this week.",
+        status: "error"
+      });
+      return;
+    }
+
+    setExportingWeeklyDailyReportsPdf(true);
+    setWeeklyDailyReportsNotice(null);
+
+    try {
+      const response = await fetch("/api/daily-reports/weekly-pdf", {
+        body: JSON.stringify({
+          projectIds: visibleProjects.map((project) => project.id),
+          weekStart
+        }),
+        headers: {
+          "Content-Type": "application/json"
+        },
+        method: "POST"
+      });
+
+      if (!response.ok) {
+        throw new Error(await readApiError(response, "Unable to export weekly daily reports."));
+      }
+
+      const blob = await response.blob();
+      const fileName = readDownloadFileName(response.headers) ?? `weekly-daily-reports-${weekStart}.pdf`;
+
+      downloadBlob(blob, fileName);
+      setWeeklyDailyReportsNotice({
+        message: `Downloaded ${fileName}.`,
+        status: "success"
+      });
+    } catch (error) {
+      setWeeklyDailyReportsNotice({
+        message: error instanceof Error ? error.message : "Unable to export weekly daily reports.",
+        status: "error"
+      });
+    } finally {
+      setExportingWeeklyDailyReportsPdf(false);
+    }
   }
 
   return (
@@ -8198,7 +8261,29 @@ function WeeklyStatusReport({
             Daily Reports
           </button>
         </div>
+        {canExportWeeklyDailyReports ? (
+          <div className="weekly-export-actions">
+            <button
+              className="primary-button"
+              disabled={exportingWeeklyDailyReportsPdf || visibleProjects.length === 0 || savedDailyReportCount === 0}
+              onClick={downloadWeeklyDailyReportsPdf}
+              type="button"
+            >
+              <Download aria-hidden="true" size={16} />
+              {exportingWeeklyDailyReportsPdf
+                ? "Exporting..."
+                : savedDailyReportCount > 0
+                  ? `Export Week PDF (${savedDailyReportCount})`
+                  : "Export Week PDF"}
+            </button>
+          </div>
+        ) : null}
       </div>
+      {weeklyDailyReportsNotice ? (
+        <div className={weeklyDailyReportsNotice.status === "error" ? "inline-alert" : "success-alert"}>
+          {weeklyDailyReportsNotice.message}
+        </div>
+      ) : null}
       {visibleProjects.length === 0 ? (
         <EmptyState icon={CalendarDays} title="No calendar projects selected">
           Select one or more projects, or tag My Projects, to view weekly status.
@@ -13681,10 +13766,8 @@ function formatStatusDateTime(value: string) {
 
 function getWeekStart(value: string) {
   const date = parseInputDate(value);
-  const dayOfWeek = date.getDay();
-  const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
 
-  date.setDate(date.getDate() - daysFromMonday);
+  date.setDate(date.getDate() - date.getDay());
 
   return formatInputDate(date);
 }
