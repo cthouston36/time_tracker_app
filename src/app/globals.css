@@ -2633,6 +2633,12 @@ a.daily-report-procore-status:hover {
 .matrix-row {
   background: var(--panel);
   border-bottom: 1px solid var(--line);
+  position: relative;
+  z-index: 1;
+}
+
+.matrix-row:has(.crew-allocator[open]) {
+  z-index: 25;
 }
 
 .matrix-row.worked-row {
@@ -2666,8 +2672,16 @@ a.daily-report-procore-status:hover {
   color: #ffd89e;
 }
 
-.pay-item-matrix-fullscreen .crew-allocator-body {
-  z-index: 20;
+.matrix-row .crew-allocator[open] {
+  z-index: 26;
+}
+
+.matrix-row .crew-allocator[open] .crew-allocator-body {
+  z-index: 28;
+}
+
+.pay-item-matrix-fullscreen .crew-allocator[open] .crew-allocator-body {
+  z-index: 28;
 }
 
 .matrix-name,
