@@ -1715,6 +1715,12 @@ a.daily-report-procore-status:hover {
   overflow-wrap: anywhere;
 }
 
+.submitted-entry-row span[data-label="Pay Item"],
+.submitted-entry-row span[data-label="Crew"] {
+  font-size: 0.88rem;
+  line-height: 1.28;
+}
+
 .icon-button {
   align-items: center;
   background: transparent;
