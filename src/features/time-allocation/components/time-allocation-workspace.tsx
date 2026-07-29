@@ -10633,13 +10633,96 @@ function buildReportPayItemOptions(entries: AllocationEntry[]) {
   );
 }
 
-function sortProjectsByName(projects: Project[]) {
-  return [...projects].sort((a, b) =>
+function sortProjectsByName(projects: unknown) {
+  return normalizeProjectList(projects).sort((a, b) =>
     a.name.localeCompare(b.name, undefined, {
       numeric: true,
       sensitivity: "base"
     })
   );
+}
+
+function normalizeProjectList(projects: unknown): Project[] {
+  if (!Array.isArray(projects)) {
+    return [];
+  }
+
+  return projects
+    .map(normalizeProject)
+    .filter((project): project is Project => project !== null);
+}
+
+function normalizeProject(project: unknown): Project | null {
+  if (!project || typeof project !== "object") {
+    return null;
+  }
+
+  const projectRecord = project as Partial<Project>;
+  const id = readTextValue(projectRecord.id);
+  const name = readTextValue(projectRecord.name);
+
+  if (!id || !name) {
+    return null;
+  }
+
+  return {
+    id,
+    name,
+    netSuiteProjectId: readTextValue(projectRecord.netSuiteProjectId) || undefined,
+    netSuiteProjectManagerId: readTextValue(projectRecord.netSuiteProjectManagerId) || undefined,
+    netSuiteProjectManagerName: readTextValue(projectRecord.netSuiteProjectManagerName) || undefined,
+    payItems: normalizePayItemList(projectRecord.payItems),
+    procoreProjectId: readTextValue(projectRecord.procoreProjectId) || id,
+    sourceSystem: projectRecord.sourceSystem === "netsuite" ? "netsuite" : "procore"
+  };
+}
+
+function normalizePayItemList(payItems: unknown): PayItem[] {
+  if (!Array.isArray(payItems)) {
+    return [];
+  }
+
+  return payItems
+    .map(normalizePayItem)
+    .filter((payItem): payItem is PayItem => payItem !== null)
+    .sort((left, right) => left.code.localeCompare(right.code, undefined, { numeric: true, sensitivity: "base" }));
+}
+
+function normalizePayItem(payItem: unknown): PayItem | null {
+  if (!payItem || typeof payItem !== "object") {
+    return null;
+  }
+
+  const payItemRecord = payItem as Partial<PayItem>;
+  const id = readTextValue(payItemRecord.id);
+  const code = readTextValue(payItemRecord.code);
+  const name = readTextValue(payItemRecord.name);
+
+  if (!id || !code || !name) {
+    return null;
+  }
+
+  const budgetedQuantity = Number(payItemRecord.budgetedQuantity);
+
+  return {
+    id,
+    code,
+    name,
+    budgetedQuantity: Number.isFinite(budgetedQuantity) ? budgetedQuantity : 0,
+    unitOfMeasure: readTextValue(payItemRecord.unitOfMeasure)
+  };
+}
+
+function readTextValue(value: unknown) {
+  if (typeof value === "string") {
+    return value.trim();
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+
+  return "";
 }
 
 function filterActiveProjects(
@@ -10727,10 +10810,10 @@ function buildCrewDirectoryFromProjects(crewMembersByProject: CrewMembersByProje
   return sortCrewMembersByName(Array.from(crewMembersById.values()));
 }
 
-function mergeCrewDirectories(primaryCrewMembers: CrewMember[], fallbackCrewMembers: CrewMember[]) {
+function mergeCrewDirectories(primaryCrewMembers: unknown, fallbackCrewMembers: unknown) {
   const crewMembersById = new Map<string, CrewMember>();
 
-  for (const crewMember of [...fallbackCrewMembers, ...primaryCrewMembers]) {
+  for (const crewMember of [...normalizeCrewMemberList(fallbackCrewMembers), ...normalizeCrewMemberList(primaryCrewMembers)]) {
     crewMembersById.set(crewMember.id, crewMember);
   }
 
@@ -10739,18 +10822,78 @@ function mergeCrewDirectories(primaryCrewMembers: CrewMember[], fallbackCrewMemb
 
 function buildSharedAppState(state: SharedAppState): SharedAppState {
   return {
-    crewDirectory: sortCrewMembersByName(state.crewDirectory),
-    crewMembersByProject: state.crewMembersByProject,
-    dailyReportUploadsByKey: state.dailyReportUploadsByKey,
-    dailyReportsByKey: state.dailyReportsByKey,
-    dayEntryNotesByKey: state.dayEntryNotesByKey,
-    daySubmissions: state.daySubmissions,
-    entries: state.entries,
-    myJobsByUser: state.myJobsByUser,
-    projectArchiveById: state.projectArchiveById,
-    projectBlacklistById: state.projectBlacklistById,
-    syncLog: state.syncLog
+    crewDirectory: sortCrewMembersByName(normalizeCrewMemberList(state.crewDirectory)),
+    crewMembersByProject: normalizeCrewMembersByProject(state.crewMembersByProject),
+    dailyReportUploadsByKey: normalizeRecord(state.dailyReportUploadsByKey),
+    dailyReportsByKey: normalizeRecord(state.dailyReportsByKey),
+    dayEntryNotesByKey: normalizeRecord(state.dayEntryNotesByKey),
+    daySubmissions: normalizeRecord(state.daySubmissions),
+    entries: normalizeAllocationEntryList(state.entries),
+    myJobsByUser: normalizeRecord(state.myJobsByUser),
+    projectArchiveById: normalizeRecord(state.projectArchiveById),
+    projectBlacklistById: normalizeRecord(state.projectBlacklistById),
+    syncLog: Array.isArray(state.syncLog) ? state.syncLog : []
   };
+}
+
+function normalizeRecord<TRecord extends Record<string, unknown>>(value: unknown): TRecord {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as TRecord) : ({} as TRecord);
+}
+
+function normalizeCrewMembersByProject(value: unknown): CrewMembersByProject {
+  const crewMembersByProject: CrewMembersByProject = {};
+
+  for (const [projectId, crewMembers] of Object.entries(normalizeRecord<Record<string, unknown>>(value))) {
+    const normalizedCrewMembers = normalizeCrewMemberList(crewMembers);
+
+    if (projectId && normalizedCrewMembers.length > 0) {
+      crewMembersByProject[projectId] = normalizedCrewMembers;
+    }
+  }
+
+  return crewMembersByProject;
+}
+
+function normalizeCrewMemberList(value: unknown): CrewMember[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map(normalizeCrewMember)
+    .filter((crewMember): crewMember is CrewMember => crewMember !== null);
+}
+
+function normalizeCrewMember(value: unknown): CrewMember | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const crewMember = value as Partial<CrewMember>;
+  const id = readTextValue(crewMember.id);
+  const laborType = getCrewLaborType(crewMember);
+  const subcontractorCompany = readTextValue(crewMember.subcontractorCompany);
+  const name = laborType === "subcontractor"
+    ? subcontractorCompany || readTextValue(crewMember.name)
+    : readTextValue(crewMember.name);
+
+  if (!id || !name) {
+    return null;
+  }
+
+  return {
+    id,
+    jobTitle: laborType === "subcontractor" ? "Subcontractor" : readTextValue(crewMember.jobTitle),
+    laborType,
+    name,
+    netSuiteVendorEntityId: readTextValue(crewMember.netSuiteVendorEntityId) || undefined,
+    netSuiteVendorId: readTextValue(crewMember.netSuiteVendorId) || undefined,
+    subcontractorCompany: laborType === "subcontractor" ? name : subcontractorCompany || undefined
+  };
+}
+
+function normalizeAllocationEntryList(value: unknown): AllocationEntry[] {
+  return Array.isArray(value) ? (value.filter((entry) => entry && typeof entry === "object") as AllocationEntry[]) : [];
 }
 
 async function loadDatabaseEntries() {
@@ -11445,9 +11588,9 @@ function formatJobImageQueueStatus(item: JobImageQueueItem) {
 }
 
 function normalizeSharedAppState(state: Partial<SharedAppState> | null | undefined): SharedAppState {
-  const crewMembersByProject = state?.crewMembersByProject ?? {};
+  const crewMembersByProject = normalizeCrewMembersByProject(state?.crewMembersByProject);
   const crewDirectory = mergeCrewDirectories(
-    state?.crewDirectory ?? [],
+    normalizeCrewMemberList(state?.crewDirectory),
     buildCrewDirectoryFromProjects(crewMembersByProject)
   );
 
@@ -11467,9 +11610,9 @@ function normalizeSharedAppState(state: Partial<SharedAppState> | null | undefin
 }
 
 function readLocalSharedAppState(): SharedAppState {
-  const crewMembersByProject = readLocalJson<CrewMembersByProject>("project-crew-members", {});
+  const crewMembersByProject = normalizeCrewMembersByProject(readLocalJson<unknown>("project-crew-members", {}));
   const crewDirectory = mergeCrewDirectories(
-    readLocalJson<CrewMember[]>("crew-member-directory", []),
+    normalizeCrewMemberList(readLocalJson<unknown>("crew-member-directory", [])),
     buildCrewDirectoryFromProjects(crewMembersByProject)
   );
 
