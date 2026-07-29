@@ -4059,7 +4059,34 @@ a.daily-report-procore-status:hover {
   }
 
   .entry-allocation-grid {
-    padding-bottom: calc(96px + env(safe-area-inset-bottom));
+    padding-bottom: calc(112px + env(safe-area-inset-bottom));
+  }
+
+  .mobile-sticky-action-bar {
+    align-items: stretch;
+    background: #f6f8fa;
+    border-top: 1px solid var(--line);
+    bottom: 0;
+    box-shadow: 0 -10px 26px rgb(31 35 40 / 0.16);
+    display: grid;
+    gap: 8px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    left: 0;
+    margin: 0;
+    padding: 10px max(12px, env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+    position: fixed;
+    right: 0;
+    top: auto;
+    transform: translateZ(0);
+    width: 100%;
+    z-index: 1000;
+  }
+
+  .mobile-sticky-action-bar .primary-button,
+  .mobile-sticky-action-bar .secondary-button {
+    min-height: 44px;
+    min-width: 0;
+    padding: 8px 10px;
   }
 
   .daily-report-modal {
@@ -4255,7 +4282,7 @@ a.daily-report-procore-status:hover {
   }
 
   .app-footer {
-    padding: 0 12px 96px;
+    padding: 0 12px calc(112px + env(safe-area-inset-bottom));
     text-align: center;
   }
 
@@ -4485,18 +4512,22 @@ a.daily-report-procore-status:hover {
 
   .mobile-sticky-action-bar {
     align-items: stretch;
-    background: rgba(13, 21, 29, 0.96);
+    background: #f6f8fa;
     border-top: 1px solid var(--line);
-    box-shadow: 0 -12px 28px rgba(0, 0, 0, 0.35);
+    bottom: 0;
+    box-shadow: 0 -10px 26px rgb(31 35 40 / 0.16);
     display: grid;
     gap: 8px;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     left: 0;
-    padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+    margin: 0;
+    padding: 10px max(12px, env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
     position: fixed;
     right: 0;
-    bottom: 0;
-    z-index: 30;
+    top: auto;
+    transform: translateZ(0);
+    width: 100%;
+    z-index: 1000;
   }
 
   .mobile-sticky-action-bar .primary-button,
