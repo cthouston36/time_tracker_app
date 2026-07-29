@@ -1710,15 +1710,21 @@ a.daily-report-procore-status:hover {
   text-transform: uppercase;
 }
 
-.submitted-entry-row span {
+.submitted-entry-row span,
+.submitted-entry-crew {
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
 .submitted-entry-row span[data-label="Pay Item"],
-.submitted-entry-row span[data-label="Crew"] {
+.submitted-entry-crew {
   font-size: 0.88rem;
   line-height: 1.28;
+}
+
+.submitted-entry-crew {
+  display: grid;
+  gap: 3px;
 }
 
 .icon-button {
@@ -4907,7 +4913,8 @@ a.daily-report-procore-status:hover {
     min-width: 0;
   }
 
-  .submitted-entry-row span::before {
+  .submitted-entry-row span::before,
+  .submitted-entry-crew::before {
     color: var(--muted);
     content: attr(data-label);
     display: block;
@@ -4918,7 +4925,7 @@ a.daily-report-procore-status:hover {
   }
 
   .submitted-entry-row span[data-label="Pay Item"],
-  .submitted-entry-row span[data-label="Crew"] {
+  .submitted-entry-crew {
     grid-column: 1 / -1;
   }
 

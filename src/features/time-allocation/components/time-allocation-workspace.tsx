@@ -6090,8 +6090,28 @@ function SubmittedDayEntryTable({ entries }: { entries: AllocationEntry[] }) {
           <span data-label="Pay Item">{entry.payItemName}</span>
           <span data-label="Hours">{entry.hours.toFixed(2)}</span>
           <span data-label="Quantity">{entry.quantityCompleted.toFixed(2)}</span>
-          <span data-label="Crew">{formatEntryCrew(entry).replace(/^Crew: /, "")}</span>
+          <SubmittedEntryCrewCell entry={entry} />
         </div>
+      ))}
+    </div>
+  );
+}
+
+function SubmittedEntryCrewCell({ entry }: { entry: AllocationEntry }) {
+  if (!entry.crewAllocations?.length) {
+    return (
+      <div className="submitted-entry-crew" data-label="Crew">
+        <span>Unassigned</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="submitted-entry-crew" data-label="Crew">
+      {entry.crewAllocations.map((allocation, index) => (
+        <span key={`${allocation.crewMemberId}-${index}`}>
+          {getCrewDisplayName(allocation)} {allocation.hours.toFixed(2)}h
+        </span>
       ))}
     </div>
   );
