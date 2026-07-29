@@ -5753,6 +5753,7 @@ export function TimeAllocationWorkspace() {
                 dailyReportUploadsByKey={dailyReportUploadsByKey}
                 dailyReportsByKey={dailyReportsByKey}
                 daySubmissions={daySubmissions}
+                entries={entries}
                 myJobIds={currentUserMyJobIds}
                 onOpenDay={openDailyEntry}
                 projects={projects}
@@ -5839,10 +5840,14 @@ function DailyStatusStrip({
         <>
           <DailyStatusItem
             label="Entries"
-            tone={draftEntryCount > 0 ? "warning" : entryCount > 0 ? "success" : "neutral"}
-            value={draftEntryCount > 0 ? `${draftEntryCount} unsaved` : entryCount > 0 ? `${entryCount} saved` : "Not started"}
+            tone={dayIsSubmitted ? "success" : entryCount > 0 ? "warning" : draftEntryCount > 0 ? "warning" : "neutral"}
+            value={dayIsSubmitted ? "Submitted" : entryCount > 0 ? "Draft" : draftEntryCount > 0 ? "Unsaved" : "Not Started"}
           />
-          <DailyStatusItem label="Day" tone={dayIsSubmitted ? "success" : "warning"} value={dayIsSubmitted ? "Submitted" : "Draft"} />
+          <DailyStatusItem
+            label="Day"
+            tone={dayIsSubmitted ? "success" : entryCount > 0 ? "warning" : "neutral"}
+            value={dayIsSubmitted ? "Submitted" : entryCount > 0 ? "Draft" : "Not Started"}
+          />
         </>
       ) : null}
       <DailyStatusItem
@@ -8027,6 +8032,7 @@ function WeeklyStatusReport({
   dailyReportUploadsByKey,
   dailyReportsByKey,
   daySubmissions,
+  entries,
   myJobIds,
   onOpenDay,
   projects,
@@ -8040,6 +8046,7 @@ function WeeklyStatusReport({
   dailyReportUploadsByKey: DailyReportUploadsByKey;
   dailyReportsByKey: DailyReportsByKey;
   daySubmissions: DaySubmissionsByKey;
+  entries: AllocationEntry[];
   myJobIds: string[];
   onOpenDay: (projectId: string, date: string) => void;
   projects: Project[];
@@ -8056,6 +8063,7 @@ function WeeklyStatusReport({
   const activeProjectIds = useMyJobs ? myJobIds : selectedProjectIds;
   const activeProjectIdSet = new Set(activeProjectIds);
   const visibleProjects = sortedProjects.filter((project) => activeProjectIdSet.has(project.id));
+  const entryDayKeys = useMemo(() => buildEntryDayKeySet(entries), [entries]);
   const selectedLabel = useMyJobs
     ? `My Projects (${myJobIds.length})`
     : selectedProjectIds.length === 0
@@ -8188,7 +8196,7 @@ function WeeklyStatusReport({
                     ? getDailyReportCalendarStatus(dailyReportsByKey[dayKey], dailyReportUploadsByKey[dayKey])
                     : isTwoSeriesProject(project)
                       ? getNotApplicableCalendarStatus()
-                      : getEntryCalendarStatus(daySubmissions[dayKey]);
+                      : getEntryCalendarStatus(daySubmissions[dayKey], entryDayKeys.has(dayKey));
 
                 return (
                   <button
@@ -8211,7 +8219,7 @@ function WeeklyStatusReport({
   );
 }
 
-function getEntryCalendarStatus(daySubmission: DaySubmission | undefined) {
+function getEntryCalendarStatus(daySubmission: DaySubmission | undefined, hasSavedEntries: boolean) {
   if (daySubmission?.status === "submitted") {
     return {
       className: "submitted",
@@ -8219,10 +8227,21 @@ function getEntryCalendarStatus(daySubmission: DaySubmission | undefined) {
     };
   }
 
+  if (!hasSavedEntries) {
+    return {
+      className: "not-started",
+      label: "Not Started"
+    };
+  }
+
   return {
     className: "draft",
     label: "Draft"
   };
+}
+
+function buildEntryDayKeySet(entries: AllocationEntry[]) {
+  return new Set(entries.map((entry) => getDayKey(entry.projectId, entry.date)));
 }
 
 function getNotApplicableCalendarStatus() {

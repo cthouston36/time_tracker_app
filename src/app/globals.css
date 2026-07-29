@@ -3574,6 +3574,11 @@ a.daily-report-procore-status:hover {
   color: var(--muted);
 }
 
+.status-badge.not-started {
+  background: var(--panel-soft);
+  color: var(--muted);
+}
+
 .status-badge.uploaded {
   background: #0f2c22;
   color: #c8f4da;
@@ -5420,6 +5425,7 @@ input[type="date"] {
 }
 
 .status-badge.draft,
+.status-badge.not-started,
 .status-badge.not-applicable,
 .performance-pill.limited {
   background: #f6f8fa;
