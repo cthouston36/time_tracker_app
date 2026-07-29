@@ -246,9 +246,9 @@ function drawDailyReportBody(doc: PDFKit.PDFDocument, context: PdfContext) {
       { header: "Lunch Out", width: 58 },
       { header: "Lunch In", width: 52 },
       { header: "Out", width: 44 },
-      { align: "right", header: "Hours", width: 48 },
+      { align: "right", header: "Hours", width: 36 },
       { align: "center", header: "Driver", width: 50 },
-      { align: "center", header: "Passenger", width: 50 }
+      { align: "center", header: "Passenger", width: 62 }
     ],
     employeeRows.length
       ? employeeRows.map((row) => [
