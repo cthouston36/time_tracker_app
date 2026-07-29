@@ -2643,8 +2643,8 @@ a.daily-report-procore-status:hover {
 }
 
 .pay-item-matrix {
-  --matrix-grid-columns: minmax(96px, 0.7fr) minmax(260px, 1.55fr) minmax(112px, 0.72fr) minmax(96px, 0.58fr) minmax(96px, 0.58fr) minmax(190px, 1fr) minmax(110px, 0.65fr) minmax(128px, 0.75fr);
-  --matrix-min-width: 1140px;
+  --matrix-grid-columns: minmax(96px, 0.7fr) minmax(260px, 1.55fr) minmax(112px, 0.72fr) minmax(96px, 0.58fr) minmax(96px, 0.58fr) minmax(210px, 1fr) minmax(112px, 0.65fr) minmax(136px, 0.75fr);
+  --matrix-min-width: 1240px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel);
@@ -2666,9 +2666,9 @@ a.daily-report-procore-status:hover {
   display: grid;
   gap: 10px;
   grid-template-columns: var(--matrix-grid-columns);
-  min-width: var(--matrix-min-width);
+  min-width: 100%;
   padding: 10px 12px;
-  width: 100%;
+  width: var(--matrix-min-width);
 }
 
 .matrix-row > * {
