@@ -1,6 +1,6 @@
 import type { AllocationEntry, CrewLaborType, Project } from "@/lib/procore/types";
 
-export type ReportMode = "summary" | "detail" | "crew";
+export type ReportMode = "summary" | "detail" | "crew" | "daily_work";
 export type DetailGrouping = "crew_day" | "crew_project" | "job_day";
 export type DetailSort = "worst_average" | "best_average" | "most_hours" | "most_quantity";
 export type ReportMetric = "mean" | "median";
@@ -111,6 +111,40 @@ export type ReportPayItemOption = {
   key: string;
   label: string;
   query: string;
+};
+
+export type DailyWorkReportDetailRow = {
+  date: string;
+  id: string;
+  notes: string;
+  quantity: number;
+};
+
+export type DailyWorkReportRow = {
+  dailyReportCount: number;
+  detailRows: DailyWorkReportDetailRow[];
+  firstDate: string;
+  id: string;
+  lastDate: string;
+  payItemCode: string;
+  payItemName: string;
+  projectId: string;
+  projectName: string;
+  rowCount: number;
+  totalQuantity: number;
+  unitOfMeasure?: string;
+};
+
+export type DailyWorkReportSourceRow = {
+  date: string;
+  projectId: string;
+  report: {
+    payItemRows?: Array<{
+      notes?: unknown;
+      payItemId?: unknown;
+      quantity?: unknown;
+    }>;
+  };
 };
 
 const ALL_CREW_LABOR_TYPES: CrewLaborType[] = ["chinchor_employee", "temp_employee", "subcontractor"];
@@ -559,6 +593,84 @@ export function buildReportPayItemOptions(entries: AllocationEntry[]) {
   );
 }
 
+export function buildDailyWorkReportRows(reportRows: DailyWorkReportSourceRow[], projects: Project[]): DailyWorkReportRow[] {
+  const projectsById = new Map(projects.map((project) => [project.id, project]));
+  const rows = new Map<string, DailyWorkReportRow & { dateKeys: Set<string> }>();
+
+  for (const sourceRow of reportRows) {
+    const project = projectsById.get(sourceRow.projectId);
+    const payItemsById = new Map((project?.payItems ?? []).map((payItem) => [payItem.id, payItem]));
+
+    for (const [rowIndex, payItemRow] of (sourceRow.report.payItemRows ?? []).entries()) {
+      const payItemId = readString(payItemRow.payItemId);
+      const quantity = parseReportQuantity(payItemRow.quantity);
+
+      if (!payItemId || quantity <= 0) {
+        continue;
+      }
+
+      const payItem = payItemsById.get(payItemId);
+      const key = `${sourceRow.projectId}|${payItem?.id ?? payItemId}`;
+      const current = rows.get(key) ?? {
+        dailyReportCount: 0,
+        detailRows: [],
+        firstDate: sourceRow.date,
+        id: key,
+        lastDate: sourceRow.date,
+        payItemCode: payItem?.code ?? payItemId,
+        payItemName: payItem?.name ?? "Unknown pay item",
+        projectId: sourceRow.projectId,
+        projectName: project?.name ?? `Unknown job (${sourceRow.projectId})`,
+        rowCount: 0,
+        totalQuantity: 0,
+        unitOfMeasure: payItem?.unitOfMeasure,
+        dateKeys: new Set<string>()
+      };
+
+      current.totalQuantity += quantity;
+      current.rowCount += 1;
+      current.firstDate = current.firstDate < sourceRow.date ? current.firstDate : sourceRow.date;
+      current.lastDate = current.lastDate > sourceRow.date ? current.lastDate : sourceRow.date;
+      current.dateKeys.add(sourceRow.date);
+      current.dailyReportCount = current.dateKeys.size;
+      current.detailRows.push({
+        date: sourceRow.date,
+        id: `${sourceRow.projectId}-${sourceRow.date}-${payItemId}-${rowIndex}`,
+        notes: readString(payItemRow.notes),
+        quantity
+      });
+      rows.set(key, current);
+    }
+  }
+
+  return Array.from(rows.values())
+    .map((row) => {
+      const { dateKeys, ...reportRow } = row;
+
+      void dateKeys;
+
+      return {
+        ...reportRow,
+        detailRows: [...reportRow.detailRows].sort((a, b) => a.date.localeCompare(b.date))
+      };
+    })
+    .sort((a, b) => {
+      const projectComparison = a.projectName.localeCompare(b.projectName, undefined, {
+        numeric: true,
+        sensitivity: "base"
+      });
+
+      if (projectComparison !== 0) {
+        return projectComparison;
+      }
+
+      return a.payItemCode.localeCompare(b.payItemCode, undefined, {
+        numeric: true,
+        sensitivity: "base"
+      });
+    });
+}
+
 export function paginateRows<TRow>(rows: TRow[], page: number, pageSize: number) {
   const safePageSize = Math.max(1, pageSize);
   const totalRows = rows.length;
@@ -767,6 +879,17 @@ function getCrewPerformanceComparisonGroup(laborType: CrewLaborType | undefined)
 
 function getCrewPerformanceCompanyStatsKey(row: Pick<PayItemReportDetailRow, "laborType" | "payItemKey">) {
   return `${row.payItemKey}|${getCrewPerformanceComparisonGroup(row.laborType)}`;
+}
+
+function parseReportQuantity(value: unknown) {
+  const normalizedValue = readString(value).replaceAll(",", "");
+  const numberValue = Number(normalizedValue);
+
+  return Number.isFinite(numberValue) ? numberValue : 0;
+}
+
+function readString(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
 }
 
 function normalizeCrewLaborType(value: unknown): CrewLaborType {

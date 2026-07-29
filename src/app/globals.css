@@ -3954,6 +3954,14 @@ a.daily-report-procore-status:hover {
   grid-template-columns: minmax(150px, 0.8fr) minmax(220px, 1.5fr) repeat(2, minmax(90px, 0.65fr));
 }
 
+.daily-work-row {
+  grid-template-columns: minmax(210px, 1.2fr) minmax(260px, 1.45fr) minmax(105px, 0.55fr) minmax(80px, 0.45fr) minmax(150px, 0.75fr);
+}
+
+.daily-work-detail-row {
+  grid-template-columns: minmax(120px, 0.5fr) minmax(120px, 0.5fr) minmax(320px, 1.8fr);
+}
+
 .performance-pill {
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -4632,6 +4640,7 @@ a.daily-report-procore-status:hover {
 
   .report-detail-row span[data-label="Job"],
   .report-detail-row span[data-label="Crew Member"],
+  .report-detail-row span[data-label="Notes"],
   .report-detail-row span[data-label="Saved By"] {
     grid-column: 1 / -1;
   }

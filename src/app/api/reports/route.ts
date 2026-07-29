@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { readAllocationEntriesForReport } from "@/lib/allocation-entries-store";
 import {
   buildCrewPerformanceRows,
+  buildDailyWorkReportRows,
   filterEntriesByCrewLaborTypes,
   buildPayItemDetailAnalysisRows,
   buildPayItemReport,
@@ -13,12 +14,14 @@ import {
   type ReportMetric,
   type ReportMode
 } from "@/lib/report-builders";
+import { readDailyReportsForRange } from "@/lib/daily-report-store";
 import { getProjects } from "@/lib/procore/projects";
 import type { CrewLaborType } from "@/lib/procore/types";
 
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const DEFAULT_PAGE_SIZE_BY_MODE: Record<ReportMode, number> = {
   crew: 25,
+  daily_work: 50,
   detail: 50,
   summary: 25
 };
@@ -51,6 +54,37 @@ export async function POST(request: NextRequest) {
     projectIds,
     startDate: parseIsoDate(body.startDate)
   };
+
+  if (mode === "daily_work") {
+    const dailyReportRows = await readDailyReportsForRange(baseFilters);
+
+    if (!dailyReportRows) {
+      return NextResponse.json({
+        databaseConfigured: false,
+        filteredEntryCount: 0,
+        mode,
+        page,
+        pageSize,
+        payItemOptions: [],
+        rows: [],
+        totalRows: 0
+      });
+    }
+
+    const reportRows = buildDailyWorkReportRows(dailyReportRows, projects);
+    const pagedRows = paginateRows(reportRows, page, pageSize);
+
+    return NextResponse.json({
+      databaseConfigured: true,
+      filteredEntryCount: dailyReportRows.length,
+      mode,
+      page: pagedRows.page,
+      pageSize: pagedRows.pageSize,
+      rows: pagedRows.rows,
+      totalRows: pagedRows.totalRows
+    });
+  }
+
   const entries = await readAllocationEntriesForReport(baseFilters);
 
   if (!entries) {
@@ -144,7 +178,7 @@ function resolveProjectIds(body: ReportRequestBody, cachedProjectIds: string[]) 
 }
 
 function parseReportMode(value: unknown): ReportMode {
-  return value === "detail" || value === "crew" ? value : "summary";
+  return value === "detail" || value === "crew" || value === "daily_work" ? value : "summary";
 }
 
 function parseDetailGrouping(value: unknown): DetailGrouping {

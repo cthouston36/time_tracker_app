@@ -46,6 +46,7 @@ import {
   isTwoSeriesProject,
   type DailyReportTemplate
 } from "@/lib/daily-report-templates";
+import { buildDailyWorkReportRows, type DailyWorkReportRow, type DailyWorkReportSourceRow } from "@/lib/report-builders";
 import type { AllocationEntry, CrewLaborType, PayItem, Project } from "@/lib/procore/types";
 
 const PROCORE_SYNC_REQUEST_TIMEOUT_MS = 55_000;
@@ -7372,7 +7373,7 @@ type CrewPerformanceRow = {
   payItems: CrewPerformancePayItemRow[];
 };
 
-type ReportMode = "summary" | "detail" | "crew" | "employee_hours";
+type ReportMode = "summary" | "detail" | "crew" | "employee_hours" | "daily_work";
 type DetailGrouping = "crew_day" | "crew_project" | "job_day";
 type DetailSort = "worst_average" | "best_average" | "most_hours" | "most_quantity";
 type ReportMetric = "mean" | "median";
@@ -7435,7 +7436,7 @@ type ReportResponse = {
   page?: number;
   pageSize?: number;
   payItemOptions?: ReportPayItemOption[];
-  rows?: Array<PayItemReportRow | PayItemDetailAnalysisRow | CrewPerformanceRow>;
+  rows?: Array<PayItemReportRow | PayItemDetailAnalysisRow | CrewPerformanceRow | DailyWorkReportRow>;
   totalRows?: number;
 };
 
@@ -7497,12 +7498,13 @@ function ReportsView({
     [dailyReportsByKey, entries, projects]
   );
   const allowedReportProjectIds = useMemo(() => reportProjectOptions.map((project) => project.id), [reportProjectOptions]);
+  const reportUsesDailyReports = reportMode === "employee_hours" || reportMode === "daily_work";
   const canManageMyJobs = currentUser.role === "project_manager" || currentUser.role === "admin";
   const automaticMyJobIds = useMemo(() => getDefaultMyJobIdsForUser(currentUser, projects), [currentUser, projects]);
   const reportJobPickerOptions = [
     {
       value: "all",
-      label: reportMode === "employee_hours" ? "All Jobs With Daily Reports" : "All Jobs"
+      label: reportUsesDailyReports ? "All Jobs With Daily Reports" : "All Jobs"
     },
     ...(canManageMyJobs && myJobIds.length > 0
       ? [
@@ -7519,7 +7521,7 @@ function ReportsView({
   ];
   const selectedReportJobLabel =
     reportJobPickerOptions.find((option) => option.value === reportProjectId)?.label ??
-    (reportMode === "employee_hours" ? "All Jobs With Daily Reports" : "All Jobs");
+    (reportUsesDailyReports ? "All Jobs With Daily Reports" : "All Jobs");
   const reportDateRangeLabel =
     reportStartDate || reportEndDate
       ? `${reportStartDate ? formatDate(reportStartDate) : "Any start"} - ${reportEndDate ? formatDate(reportEndDate) : "Any end"}`
@@ -7577,6 +7579,20 @@ function ReportsView({
       }),
     [dailyReportsByKey, employeeHoursGrouping, myJobIds, projects, reportEndDate, reportProjectId, reportStartDate]
   );
+  const localDailyWorkRows = useMemo(
+    () =>
+      buildDailyWorkReportRows(
+        getFilteredDailyWorkReportSourceRows({
+          dailyReportsByKey,
+          endDate: reportEndDate,
+          myJobIds,
+          projectId: reportProjectId,
+          startDate: reportStartDate
+        }),
+        projects
+      ),
+    [dailyReportsByKey, myJobIds, projects, reportEndDate, reportProjectId, reportStartDate]
+  );
   const serverReportAvailable = Boolean(reportsUseServerData && reportData?.databaseConfigured && reportData.mode === reportMode);
   const payItemRows =
     serverReportAvailable && reportMode === "summary" ? (reportData?.rows ?? []) as PayItemReportRow[] : localPayItemRows;
@@ -7585,6 +7601,8 @@ function ReportsView({
   const detailPayItemOptions =
     serverReportAvailable && reportMode === "detail" ? reportData?.payItemOptions ?? [] : localDetailPayItemOptions;
   const crewRows = serverReportAvailable && reportMode === "crew" ? (reportData?.rows ?? []) as CrewPerformanceRow[] : localCrewRows;
+  const dailyWorkRows =
+    serverReportAvailable && reportMode === "daily_work" ? (reportData?.rows ?? []) as DailyWorkReportRow[] : localDailyWorkRows;
   const reportPagination = serverReportAvailable
     ? {
         page: reportData?.page ?? reportPage,
@@ -7686,9 +7704,14 @@ function ReportsView({
     reportStartDate
   ]);
 
-  async function exportSummaryReportCsv() {
-    if (!reportsUseServerData) {
+  async function exportCurrentReportCsv() {
+    if (reportMode === "summary" && !reportsUseServerData) {
       exportPayItemSummaryToCsv(localPayItemRows);
+      return;
+    }
+
+    if (reportMode === "daily_work" && !reportsUseServerData) {
+      exportDailyWorkReportToCsv(localDailyWorkRows);
       return;
     }
 
@@ -7702,7 +7725,7 @@ function ReportsView({
           crewLaborTypes: reportCrewLaborTypes,
           endDate: reportEndDate,
           excludeOutliers: excludeReportOutliers,
-          mode: "summary",
+          mode: reportMode === "daily_work" ? "daily_work" : "summary",
           myJobIds,
           projectId: reportProjectId,
           reportMetric,
@@ -7719,7 +7742,10 @@ function ReportsView({
       }
 
       const blob = await response.blob();
-      downloadBlob(blob, `time-allocation-summary-${todayInputValue()}.csv`);
+      downloadBlob(
+        blob,
+        `time-allocation-${reportMode === "daily_work" ? "daily-work" : "summary"}-${todayInputValue()}.csv`
+      );
     } catch (error) {
       setReportError(error instanceof Error ? error.message : "Unable to export report CSV.");
     } finally {
@@ -7752,8 +7778,8 @@ function ReportsView({
       <div className="panel">
         <div className="panel-heading">
           <h2>{getReportTitle(reportMode)}</h2>
-          {reportMode === "summary" ? (
-            <button className="secondary-button" disabled={reportExporting} onClick={exportSummaryReportCsv} type="button">
+          {reportMode === "summary" || reportMode === "daily_work" ? (
+            <button className="secondary-button" disabled={reportExporting} onClick={exportCurrentReportCsv} type="button">
               <Download aria-hidden="true" size={18} />
               {reportExporting ? "Exporting..." : "Export CSV"}
             </button>
@@ -7797,6 +7823,13 @@ function ReportsView({
             type="button"
           >
             Employee Hours
+          </button>
+          <button
+            className={reportMode === "daily_work" ? "tab-button active" : "tab-button"}
+            onClick={() => setReportMode("daily_work")}
+            type="button"
+          >
+            Daily Work
           </button>
         </div>
         {canManageMyJobs ? (
@@ -7895,7 +7928,7 @@ function ReportsView({
                 <option value="job">Job</option>
               </select>
             </div>
-          ) : (
+          ) : reportMode === "daily_work" ? null : (
             <>
               <div className="field-group">
                 <label htmlFor="report-metric">Hrs / Unit Metric</label>
@@ -7937,7 +7970,7 @@ function ReportsView({
               reportProjectId === "all" &&
               !reportStartDate &&
               !reportEndDate &&
-              reportCrewLaborTypes.length === ALL_CREW_LABOR_TYPES.length
+              (reportUsesDailyReports || reportCrewLaborTypes.length === ALL_CREW_LABOR_TYPES.length)
             }
             onClick={() => {
               setReportProjectId("all");
@@ -7953,6 +7986,10 @@ function ReportsView({
         {reportMode === "employee_hours" ? (
           <div className="report-methodology-note">
             Employee Hours uses saved Daily Report employee time rows. Empty employee rows and zero-hour rows are excluded.
+          </div>
+        ) : reportMode === "daily_work" ? (
+          <div className="report-methodology-note">
+            Daily Work uses saved Daily Report Work Performed rows. Rows without a selected pay item or positive quantity are excluded.
           </div>
         ) : (
           <div className="report-methodology-note">
@@ -8005,6 +8042,19 @@ function ReportsView({
         ) : reportMode === "crew" ? (
           <>
             <CrewPerformanceReport rows={crewRows} />
+            {reportPagination ? (
+              <ReportPaginationControls
+                loading={reportLoading}
+                page={reportPagination.page}
+                pageSize={reportPagination.pageSize}
+                totalRows={reportPagination.totalRows}
+                onPageChange={setReportPage}
+              />
+            ) : null}
+          </>
+        ) : reportMode === "daily_work" ? (
+          <>
+            <DailyWorkReport rows={dailyWorkRows} />
             {reportPagination ? (
               <ReportPaginationControls
                 loading={reportLoading}
@@ -8876,6 +8926,75 @@ function EmployeeHoursReport({
                     </span>
                     <span data-label="Hours">{detailRow.hours.toFixed(2)}</span>
                     <span data-label="Truck">{detailRow.truckNumber || "-"}</span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function DailyWorkReport({ rows }: { rows: DailyWorkReportRow[] }) {
+  const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
+
+  if (rows.length === 0) {
+    return (
+      <EmptyState icon={BarChart3} title="No daily work found">
+        Saved Daily Report Work Performed rows that match the filters will appear here.
+      </EmptyState>
+    );
+  }
+
+  return (
+    <div className="report-table daily-work-table">
+      <div className="report-row report-header daily-work-row">
+        <span>Job</span>
+        <span>Pay Item</span>
+        <span>Quantity</span>
+        <span>Dailies</span>
+        <span>Date Range</span>
+      </div>
+      {rows.map((row) => {
+        const expanded = expandedRowId === row.id;
+
+        return (
+          <div className="report-row-group" key={row.id}>
+            <div className="report-row daily-work-row">
+              <button
+                aria-expanded={expanded}
+                className="report-drilldown-button"
+                onClick={() => setExpandedRowId(expanded ? null : row.id)}
+                type="button"
+              >
+                {expanded ? (
+                  <ChevronDown aria-hidden="true" size={17} />
+                ) : (
+                  <ChevronRight aria-hidden="true" size={17} />
+                )}
+                <span>{row.projectName}</span>
+              </button>
+              <span data-label="Pay Item">
+                <strong>{row.payItemCode}</strong> - {row.payItemName}
+              </span>
+              <span data-label="Quantity">{formatDailyWorkQuantity(row.totalQuantity, row.unitOfMeasure)}</span>
+              <span data-label="Dailies">{row.dailyReportCount}</span>
+              <span data-label="Date Range">{formatDailyWorkDateRange(row.firstDate, row.lastDate)}</span>
+            </div>
+            {expanded ? (
+              <div className="report-detail-panel">
+                <div className="report-detail-row report-detail-header daily-work-detail-row">
+                  <span>Date</span>
+                  <span>Quantity</span>
+                  <span>Notes</span>
+                </div>
+                {row.detailRows.map((detailRow) => (
+                  <div className="report-detail-row daily-work-detail-row" key={detailRow.id}>
+                    <span data-label="Date">{formatDate(detailRow.date)}</span>
+                    <span data-label="Quantity">{formatDailyWorkQuantity(detailRow.quantity, row.unitOfMeasure)}</span>
+                    <span data-label="Notes">{detailRow.notes || "-"}</span>
                   </div>
                 ))}
               </div>
@@ -9980,7 +10099,7 @@ function buildEmployeeHoursReportRows({
   >();
 
   for (const report of Object.values(dailyReportsByKey)) {
-    if (!dailyReportMatchesEmployeeHoursFilters(report, projectId, myJobIds, startDate, endDate)) {
+    if (!dailyReportMatchesReportFilters(report, projectId, myJobIds, startDate, endDate)) {
       continue;
     }
 
@@ -10067,7 +10186,29 @@ function buildEmployeeHoursReportRows({
     });
 }
 
-function dailyReportMatchesEmployeeHoursFilters(
+function getFilteredDailyWorkReportSourceRows({
+  dailyReportsByKey,
+  endDate,
+  myJobIds,
+  projectId,
+  startDate
+}: {
+  dailyReportsByKey: DailyReportsByKey;
+  endDate: string;
+  myJobIds: string[];
+  projectId: string;
+  startDate: string;
+}): DailyWorkReportSourceRow[] {
+  return Object.values(dailyReportsByKey)
+    .filter((report) => dailyReportMatchesReportFilters(report, projectId, myJobIds, startDate, endDate))
+    .map((report) => ({
+      date: report.date,
+      projectId: report.projectId,
+      report
+    }));
+}
+
+function dailyReportMatchesReportFilters(
   report: DailyReport,
   projectId: string,
   myJobIds: string[],
@@ -10675,6 +10816,10 @@ function getReportTitle(reportMode: ReportMode) {
     return "Employee Hours Report";
   }
 
+  if (reportMode === "daily_work") {
+    return "Daily Work Completed";
+  }
+
   return "Pay Item Production Report";
 }
 
@@ -10687,7 +10832,24 @@ function getReportPageSize(reportMode: ReportMode) {
     return 100;
   }
 
+  if (reportMode === "daily_work") {
+    return 50;
+  }
+
   return 25;
+}
+
+function formatDailyWorkQuantity(quantity: number, unitOfMeasure: string | undefined) {
+  const formattedQuantity = quantity.toLocaleString(undefined, {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: quantity % 1 === 0 ? 0 : 2
+  });
+
+  return unitOfMeasure ? `${formattedQuantity} ${unitOfMeasure}` : formattedQuantity;
+}
+
+function formatDailyWorkDateRange(firstDate: string, lastDate: string) {
+  return firstDate === lastDate ? formatDate(firstDate) : `${formatDate(firstDate)} - ${formatDate(lastDate)}`;
 }
 
 function formatVariance(variance: number) {
@@ -14123,6 +14285,70 @@ function exportPayItemSummaryToCsv(payItemRows: PayItemReportRow[]) {
 
   link.href = url;
   link.download = `time-allocation-summary-${todayInputValue()}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportDailyWorkReportToCsv(rows: DailyWorkReportRow[]) {
+  const headers = [
+    "job",
+    "project_id",
+    "pay_item_code",
+    "pay_item_name",
+    "unit_of_measure",
+    "total_quantity",
+    "daily_report_count",
+    "work_row_count",
+    "first_date",
+    "last_date",
+    "detail_date",
+    "detail_quantity",
+    "detail_notes"
+  ];
+  const csvRows = rows.flatMap((row) =>
+    row.detailRows.length
+      ? row.detailRows.map((detailRow) => [
+          row.projectName,
+          formatCsvIdentifier(row.projectId),
+          row.payItemCode,
+          row.payItemName,
+          row.unitOfMeasure ?? "",
+          formatCsvNumber(row.totalQuantity),
+          row.dailyReportCount,
+          row.rowCount,
+          row.firstDate,
+          row.lastDate,
+          detailRow.date,
+          formatCsvNumber(detailRow.quantity),
+          detailRow.notes
+        ])
+      : [
+          [
+            row.projectName,
+            formatCsvIdentifier(row.projectId),
+            row.payItemCode,
+            row.payItemName,
+            row.unitOfMeasure ?? "",
+            formatCsvNumber(row.totalQuantity),
+            row.dailyReportCount,
+            row.rowCount,
+            row.firstDate,
+            row.lastDate,
+            "",
+            "",
+            ""
+          ]
+        ]
+  );
+  const csv = [headers, ...csvRows].map((row) => row.map((cell) => escapeCsvCell(String(cell))).join(",")).join("\r\n");
+  const blob = new Blob([csv], {
+    type: "text/csv;charset=utf-8"
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = `time-allocation-daily-work-${todayInputValue()}.csv`;
   link.click();
   URL.revokeObjectURL(url);
 }

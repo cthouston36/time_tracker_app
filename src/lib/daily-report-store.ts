@@ -75,9 +75,9 @@ export async function readDailyReportsForRange({
   projectIds,
   startDate
 }: {
-  endDate: string;
+  endDate?: string;
   projectIds: string[];
-  startDate: string;
+  startDate?: string;
 }): Promise<StoredDailyReportRangeRow[] | null> {
   const sql = getSql();
 
@@ -89,10 +89,12 @@ export async function readDailyReportsForRange({
 
   const normalizedProjectIds = normalizeStringList(projectIds);
 
-  if (normalizedProjectIds.length === 0 || !isIsoDate(startDate) || !isIsoDate(endDate)) {
+  if (normalizedProjectIds.length === 0) {
     return [];
   }
 
+  const normalizedStartDate = isIsoDate(startDate) ? startDate : "0001-01-01";
+  const normalizedEndDate = isIsoDate(endDate) ? endDate : "9999-12-31";
   const projectIdsJson = JSON.stringify(normalizedProjectIds);
   const reportRows = (await sql`
     select
@@ -104,8 +106,8 @@ export async function readDailyReportsForRange({
       select value
       from jsonb_array_elements_text(${projectIdsJson}::jsonb)
     )
-      and work_date >= ${startDate}::date
-      and work_date <= ${endDate}::date
+      and work_date >= ${normalizedStartDate}::date
+      and work_date <= ${normalizedEndDate}::date
     order by project_id, work_date
   `) as DailyReportRow[];
 

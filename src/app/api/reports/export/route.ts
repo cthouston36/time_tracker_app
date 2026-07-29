@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { readAllocationEntriesForReport } from "@/lib/allocation-entries-store";
 import {
   buildCrewPerformanceRows,
+  buildDailyWorkReportRows,
   filterEntriesByCrewLaborTypes,
   buildPayItemDetailAnalysisRows,
   buildPayItemReport,
@@ -12,6 +13,7 @@ import {
   type ReportMode
 } from "@/lib/report-builders";
 import { todayInputValue } from "@/lib/date";
+import { readDailyReportsForRange } from "@/lib/daily-report-store";
 import { getProjects } from "@/lib/procore/projects";
 import type { AllocationEntry, CrewLaborType, Project } from "@/lib/procore/types";
 
@@ -42,6 +44,25 @@ export async function POST(request: NextRequest) {
     projectIds,
     startDate: parseIsoDate(body.startDate)
   };
+
+  if (mode === "daily_work") {
+    const dailyReportRows = await readDailyReportsForRange(baseFilters);
+
+    if (!dailyReportRows) {
+      return NextResponse.json({ error: "Database storage is not configured for report exports." }, { status: 503 });
+    }
+
+    const csv = buildDailyWorkReportCsv(buildDailyWorkReportRows(dailyReportRows, projects));
+    const fileName = `time-allocation-daily-work-report-${todayInputValue()}.csv`;
+
+    return new NextResponse(csv, {
+      headers: {
+        "Content-Disposition": `attachment; filename="${fileName}"`,
+        "Content-Type": "text/csv; charset=utf-8"
+      }
+    });
+  }
+
   const entries = await readAllocationEntriesForReport(baseFilters);
 
   if (!entries) {
@@ -176,6 +197,77 @@ function buildCsv(headers: string[], rows: Array<Array<number | string>>) {
   return [headers, ...rows].map((row) => row.map((cell) => escapeCsvCell(String(cell))).join(",")).join("\r\n");
 }
 
+function buildDailyWorkReportCsv(rows: ReturnType<typeof buildDailyWorkReportRows>) {
+  const headers = [
+    "job",
+    "project_id",
+    "pay_item_code",
+    "pay_item_name",
+    "unit_of_measure",
+    "total_quantity",
+    "daily_report_count",
+    "work_row_count",
+    "first_date",
+    "last_date",
+    "detail_date",
+    "detail_quantity",
+    "detail_notes"
+  ];
+  const csvRows = rows.flatMap((row) =>
+    row.detailRows.length
+      ? row.detailRows.map((detailRow) => [
+          row.projectName,
+          formatCsvIdentifier(row.projectId),
+          row.payItemCode,
+          row.payItemName,
+          row.unitOfMeasure ?? "",
+          formatCsvNumber(row.totalQuantity),
+          row.dailyReportCount,
+          row.rowCount,
+          row.firstDate,
+          row.lastDate,
+          detailRow.date,
+          formatCsvNumber(detailRow.quantity),
+          detailRow.notes
+        ])
+      : [
+          [
+            row.projectName,
+            formatCsvIdentifier(row.projectId),
+            row.payItemCode,
+            row.payItemName,
+            row.unitOfMeasure ?? "",
+            formatCsvNumber(row.totalQuantity),
+            row.dailyReportCount,
+            row.rowCount,
+            row.firstDate,
+            row.lastDate,
+            "",
+            "",
+            ""
+          ]
+        ]
+  );
+
+  return buildCsv(headers, csvRows);
+}
+
+function formatCsvNumber(value: number | undefined) {
+  if (value === undefined || !Number.isFinite(value)) {
+    return "";
+  }
+
+  return String(Math.round(value * 1000000) / 1000000);
+}
+
+function formatCsvIdentifier(value: string) {
+  if (/^\d{12,}$/.test(value)) {
+    return `\t${value}`;
+  }
+
+  return value;
+}
+
 function escapeCsvCell(value: string) {
   const safeValue = value.trimStart().match(/^[=+\-@]/) ? `'${value}` : value;
 
@@ -205,7 +297,7 @@ function resolveProjectIds(body: ReportExportRequestBody, cachedProjectIds: stri
 }
 
 function parseReportMode(value: unknown): ReportMode {
-  return value === "detail" || value === "crew" ? value : "summary";
+  return value === "detail" || value === "crew" || value === "daily_work" ? value : "summary";
 }
 
 function parseDetailGrouping(value: unknown): DetailGrouping {
