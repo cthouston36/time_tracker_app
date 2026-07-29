@@ -4012,6 +4012,10 @@ a.daily-report-procore-status:hover {
     min-height: 32px;
   }
 
+  .entry-allocation-grid {
+    padding-bottom: calc(96px + env(safe-area-inset-bottom));
+  }
+
   .daily-report-modal {
     max-width: none;
     width: calc(100vw - 28px);
@@ -4190,7 +4194,8 @@ a.daily-report-procore-status:hover {
   .workspace {
     gap: 12px;
     grid-template-columns: minmax(0, 1fr);
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: visible;
     min-width: 0;
     padding: 12px;
   }
@@ -4209,7 +4214,7 @@ a.daily-report-procore-status:hover {
   }
 
   .entry-allocation-grid {
-    padding-bottom: 96px;
+    padding-bottom: calc(112px + env(safe-area-inset-bottom));
   }
 
   .panel {
