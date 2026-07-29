@@ -446,6 +446,7 @@ type DailyReportEmployeeRow = {
 type DailyReportTimeField = "timeIn" | "lunchOut" | "lunchIn" | "timeOut";
 
 type DailyReportPayItemRow = {
+  notes: string;
   payItemId: string;
   quantity: string;
 };
@@ -2622,6 +2623,7 @@ export function TimeAllocationWorkspace() {
       ...current,
       payItemRows: normalizeDailyReportPayItemRows(
         sortedEntries.map((entry) => ({
+          notes: "",
           payItemId: entry.payItemId,
           quantity: Number.isFinite(entry.quantityCompleted) ? String(entry.quantityCompleted) : ""
         }))
@@ -6485,6 +6487,7 @@ function DailyReportModal({
                 <span>#</span>
                 <span>Pay Item # / Description</span>
                 <span>Quantity</span>
+                <span>Notes</span>
               </div>
               {draft.payItemRows.map((row, index) => {
                 const selectedPayItem = payItems.find((payItem) => payItem.id === row.payItemId);
@@ -6516,6 +6519,13 @@ function DailyReportModal({
                       />
                       <span>{formatPayItemUnitOfMeasure(selectedPayItem)}</span>
                     </div>
+                    <textarea
+                      aria-label={`Notes row ${index + 1}`}
+                      placeholder="Notes"
+                      rows={getDailyReportPayItemNotesRows(row.notes)}
+                      value={row.notes}
+                      onChange={(event) => onPayItemChange(index, "notes", event.target.value)}
+                    />
                   </div>
                 );
               })}
@@ -13275,6 +13285,7 @@ function normalizeDailyReportItsfmRows(rows: DailyReportItsfmRow[] | undefined) 
 
 function createEmptyDailyReportPayItemRows() {
   return Array.from({ length: 8 }, () => ({
+    notes: "",
     payItemId: "",
     quantity: ""
   }));
@@ -13366,7 +13377,15 @@ function getDailyReportEmployeeTotalHours(rows: DailyReportEmployeeRow[] | undef
 }
 
 function dailyReportPayItemRowHasContent(row: DailyReportPayItemRow) {
-  return Boolean(row.payItemId.trim()) || Boolean(row.quantity.trim());
+  return Boolean(row.payItemId.trim()) || Boolean(row.quantity.trim()) || Boolean(row.notes.trim());
+}
+
+function getDailyReportPayItemNotesRows(value: string | undefined) {
+  const text = value ?? "";
+  const explicitLines = text.split(/\r\n|\r|\n/).length;
+  const wrappedLines = Math.ceil(text.length / 42);
+
+  return Math.min(6, Math.max(1, explicitLines, wrappedLines));
 }
 
 function formatYesNoAnswer(value: string) {

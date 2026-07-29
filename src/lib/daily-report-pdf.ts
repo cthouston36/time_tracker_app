@@ -64,6 +64,7 @@ type DailyReportEmployeeRow = {
 };
 
 type DailyReportPayItemRow = {
+  notes?: string;
   payItemId: string;
   quantity: string;
 };
@@ -224,7 +225,7 @@ function drawDailyReportBody(doc: PDFKit.PDFDocument, context: PdfContext) {
       row.totalHours
     ].some(Boolean)
   );
-  const payItemRows = (report.payItemRows ?? []).filter((row) => row.payItemId || row.quantity);
+  const payItemRows = (report.payItemRows ?? []).filter((row) => row.payItemId || row.quantity || row.notes);
   const inspectorQuantitiesTurnedIn = report.quantitiesTurnedIn === "yes";
   const incidentOccurred = report.incidentOccurred === "yes";
 
@@ -271,16 +272,22 @@ function drawDailyReportBody(doc: PDFKit.PDFDocument, context: PdfContext) {
     context,
     [
       { header: "Pay Item #", width: 95 },
-      { header: "Description", width: 345 },
-      { align: "right", header: "Quantity", width: 100 }
+      { header: "Description", width: 220 },
+      { align: "right", header: "Quantity", width: 85 },
+      { header: "Notes", width: 140 }
     ],
     payItemRows.length
       ? payItemRows.map((row) => {
           const payItem = payItemMap.get(row.payItemId);
 
-          return [payItem?.code ?? "", payItem?.name ?? "", `${row.quantity} ${payItem?.unitOfMeasure ?? ""}`.trim()];
+          return [
+            payItem?.code ?? "",
+            payItem?.name ?? "",
+            `${row.quantity} ${payItem?.unitOfMeasure ?? ""}`.trim(),
+            row.notes ?? ""
+          ];
         })
-      : [["No pay item quantities entered.", "", ""]]
+      : [["No pay item quantities entered.", "", "", ""]]
   );
 
   drawSectionTitle(doc, context, "Inspector / Quantities");

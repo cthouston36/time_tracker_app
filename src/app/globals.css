@@ -1130,12 +1130,12 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 }
 
 .daily-pay-item-row {
-  align-items: center;
+  align-items: start;
   border-bottom: 1px solid var(--line);
   display: grid;
   gap: 6px;
-  grid-template-columns: 32px minmax(320px, 1.8fr) minmax(150px, 0.7fr);
-  min-width: 720px;
+  grid-template-columns: 32px minmax(300px, 1.45fr) minmax(140px, 0.55fr) minmax(230px, 1fr);
+  min-width: 860px;
   padding: 7px;
 }
 
@@ -1144,6 +1144,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 }
 
 .daily-pay-item-header {
+  align-items: center;
   background: var(--field);
   color: var(--muted);
   font-size: 0.72rem;
@@ -1152,15 +1153,22 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 }
 
 .daily-pay-item-row select,
-.daily-pay-item-row input {
+.daily-pay-item-row input,
+.daily-pay-item-row textarea {
   background: var(--field);
   border: 1px solid var(--line);
   border-radius: 6px;
   color: var(--foreground);
+  font: inherit;
   min-height: 36px;
   min-width: 0;
   padding: 7px 8px;
   width: 100%;
+}
+
+.daily-pay-item-row textarea {
+  line-height: 1.3;
+  resize: vertical;
 }
 
 .daily-pay-item-quantity {
@@ -4799,8 +4807,8 @@ a.daily-report-procore-status:hover {
   }
 
   .daily-pay-item-row {
-    grid-template-columns: 30px minmax(220px, 1fr) minmax(118px, 0.5fr);
-    min-width: 560px;
+    grid-template-columns: 30px minmax(220px, 1fr) minmax(118px, 0.5fr) minmax(180px, 0.85fr);
+    min-width: 740px;
   }
 
   .daily-itsfm-section-heading {
@@ -4816,6 +4824,7 @@ a.daily-report-procore-status:hover {
   .daily-labor-row select,
   .daily-pay-item-row input,
   .daily-pay-item-row select,
+  .daily-pay-item-row textarea,
   .daily-itsfm-row input {
     font-size: 16px;
   }
@@ -5177,7 +5186,7 @@ a.daily-report-procore-status:hover {
   }
 
   .daily-pay-item-row {
-    min-width: 520px;
+    min-width: 700px;
   }
 }
 

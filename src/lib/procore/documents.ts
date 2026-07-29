@@ -69,6 +69,7 @@ type DailyReportEmployeeRow = {
 };
 
 type DailyReportPayItemRow = {
+  notes?: string;
   payItemId: string;
   quantity: string;
 };
