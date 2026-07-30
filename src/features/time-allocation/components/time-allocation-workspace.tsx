@@ -960,7 +960,16 @@ export function TimeAllocationWorkspace() {
   saveAllocationEntriesRef.current = saveAllocationEntries;
 
   useEffect(() => {
-    if (currentUser?.role === "standard" && viewMode === "dashboard") {
+    if (!currentUser) {
+      return;
+    }
+
+    if (viewMode === "calendar") {
+      setViewMode(currentUser.role === "standard" ? "entry" : "dashboard");
+      return;
+    }
+
+    if (currentUser.role === "standard" && viewMode === "dashboard") {
       setViewMode("entry");
     }
   }, [currentUser, viewMode]);
@@ -4525,14 +4534,6 @@ export function TimeAllocationWorkspace() {
             <Edit3 aria-hidden="true" size={16} />
             Entry
           </button>
-          <button
-            className={viewMode === "calendar" ? "tab-button active" : "tab-button"}
-            onClick={() => changeViewMode("calendar")}
-            type="button"
-          >
-            <CalendarDays aria-hidden="true" size={16} />
-            Calendar
-          </button>
           {canAccessReports(currentUser) ? (
             <button
               className={viewMode === "reports" ? "tab-button active" : "tab-button"}
@@ -4785,7 +4786,7 @@ export function TimeAllocationWorkspace() {
           {myProjectsEditorOpen ? (
             <MyJobsManager
               automaticJobIds={currentUserAutoMyJobIds}
-              description="Tag projects you work on so they are easier to find in entry and calendar views."
+              description="Tag projects you work on so they are easier to find in entry and dashboard views."
               myJobIds={currentUserMyJobIds}
               projects={projects}
               setMyJobIds={setCurrentUserMyJobIds}
@@ -6258,9 +6259,14 @@ function DashboardWeeklyCalendar({
               <span className="weekly-calendar-job">{project.name}</span>
               {weekDates.map((date) => {
                 const dayKey = getDayKey(project.id, date);
+                const hasDailyEntryActivity = getHasDailyEntryActivity(project, dayKey, daySubmissions, entryDayKeys);
                 const status =
                   statusMode === "daily_reports"
-                    ? getDailyReportCalendarStatus(dailyReportsByKey[dayKey], dailyReportUploadsByKey[dayKey])
+                    ? getDailyReportCalendarStatus(
+                        dailyReportsByKey[dayKey],
+                        dailyReportUploadsByKey[dayKey],
+                        hasDailyEntryActivity
+                      )
                     : isTwoSeriesProject(project)
                       ? getNotApplicableCalendarStatus()
                       : getEntryCalendarStatus(daySubmissions[dayKey], entryDayKeys.has(dayKey));
@@ -6363,7 +6369,11 @@ function buildDashboardProjectRows({
       const entryStatus = isTwoSeriesProject(project)
         ? getNotApplicableCalendarStatus()
         : getEntryCalendarStatus(daySubmissions[dayKey], entryDayKeys.has(dayKey));
-      const dailyStatus = getDailyReportCalendarStatus(dailyReportsByKey[dayKey], dailyReportUploadsByKey[dayKey]);
+      const dailyStatus = getDailyReportCalendarStatus(
+        dailyReportsByKey[dayKey],
+        dailyReportUploadsByKey[dayKey],
+        getHasDailyEntryActivity(project, dayKey, daySubmissions, entryDayKeys)
+      );
 
       if (entryStatus.className === "submitted") {
         submittedEntryCount += 1;
@@ -6374,7 +6384,7 @@ function buildDashboardProjectRows({
         openDate ||= date;
       }
 
-      if (dailyStatus.className !== "missing") {
+      if (dailyStatus.className !== "missing" && dailyStatus.className !== "not-started") {
         dailySavedCount += 1;
       }
 
@@ -8849,9 +8859,14 @@ function WeeklyStatusReport({
               <span className="weekly-calendar-job">{project.name}</span>
               {weekDates.map((date) => {
                 const dayKey = getDayKey(project.id, date);
+                const hasDailyEntryActivity = getHasDailyEntryActivity(project, dayKey, daySubmissions, entryDayKeys);
                 const status =
                   calendarStatusMode === "daily_reports"
-                    ? getDailyReportCalendarStatus(dailyReportsByKey[dayKey], dailyReportUploadsByKey[dayKey])
+                    ? getDailyReportCalendarStatus(
+                        dailyReportsByKey[dayKey],
+                        dailyReportUploadsByKey[dayKey],
+                        hasDailyEntryActivity
+                      )
                     : isTwoSeriesProject(project)
                       ? getNotApplicableCalendarStatus()
                       : getEntryCalendarStatus(daySubmissions[dayKey], entryDayKeys.has(dayKey));
@@ -8909,7 +8924,24 @@ function getNotApplicableCalendarStatus() {
   };
 }
 
-function getDailyReportCalendarStatus(dailyReport: DailyReport | undefined, upload: DailyReportUpload | undefined) {
+function getHasDailyEntryActivity(
+  project: Project,
+  dayKey: string,
+  daySubmissions: DaySubmissionsByKey,
+  entryDayKeys: Set<string>
+) {
+  if (isTwoSeriesProject(project)) {
+    return false;
+  }
+
+  return entryDayKeys.has(dayKey) || Boolean(daySubmissions[dayKey]);
+}
+
+function getDailyReportCalendarStatus(
+  dailyReport: DailyReport | undefined,
+  upload: DailyReportUpload | undefined,
+  hasDailyEntryActivity = true
+) {
   if (isUploadedDailyReportUpload(upload)) {
     return {
       className: "uploaded",
@@ -8928,6 +8960,13 @@ function getDailyReportCalendarStatus(dailyReport: DailyReport | undefined, uplo
     return {
       className: "created",
       label: "Pending"
+    };
+  }
+
+  if (!hasDailyEntryActivity) {
+    return {
+      className: "not-started",
+      label: "Not Started"
     };
   }
 
