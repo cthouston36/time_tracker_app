@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { getActiveAppUser } from "@/lib/auth/users";
-import type { AuthUser } from "@/lib/auth/types";
+import { isUserRole, type AuthUser } from "@/lib/auth/types";
 
 const SESSION_COOKIE = "time_tracker_user";
 const SESSION_COOKIE_VERSION = "v1";
@@ -101,7 +101,7 @@ function normalizeSessionUser(value: unknown) {
     typeof user.id !== "string" ||
     typeof user.firstName !== "string" ||
     typeof user.lastName !== "string" ||
-    (user.role !== "standard" && user.role !== "project_manager" && user.role !== "admin")
+    !isUserRole(user.role)
   ) {
     return null;
   }

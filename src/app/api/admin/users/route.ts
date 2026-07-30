@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getAuditRequestMetadata, recordAuditLog } from "@/lib/audit-log";
 import { listAppUsers, saveAppUser, type ManagedAppUser, type SaveAppUserInput } from "@/lib/auth/users";
-import type { AuthUser, UserRole } from "@/lib/auth/types";
+import { isUserRole, type AuthUser, type UserRole } from "@/lib/auth/types";
 
 export async function GET() {
   const currentUser = await getCurrentUser();
@@ -88,10 +88,6 @@ export async function POST(request: NextRequest) {
     ok: true,
     users: users ?? []
   });
-}
-
-function isUserRole(role: unknown): role is UserRole {
-  return role === "standard" || role === "project_manager" || role === "admin";
 }
 
 async function recordUserAuditEvents({

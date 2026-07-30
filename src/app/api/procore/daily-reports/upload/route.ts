@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { userCanAccessProjectId } from "@/lib/auth/project-access";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getAuditRequestMetadata, recordAuditLog } from "@/lib/audit-log";
 import { uploadDailyReportToProcore } from "@/lib/procore/documents";
+import { getProjects } from "@/lib/procore/projects";
 
 export const runtime = "nodejs";
 
@@ -14,7 +16,23 @@ export async function POST(request: NextRequest) {
 
   try {
     const payload = await request.json();
-    const result = await uploadDailyReportToProcore(payload);
+    const projectId = readProjectId(payload);
+    const projects = await getProjects();
+    const project = projects.find((candidate) => candidate.id === projectId);
+
+    if (!projectId || !project) {
+      return NextResponse.json({ error: "Provide a valid project." }, { status: 400 });
+    }
+
+    if (!userCanAccessProjectId(user, projectId, projects)) {
+      return NextResponse.json({ error: "You do not have access to upload daily reports for this project." }, { status: 403 });
+    }
+
+    const result = await uploadDailyReportToProcore({
+      ...payload,
+      project,
+      projectId
+    });
 
     await recordAuditLog({
       action: "procore.daily_report_uploaded",
@@ -26,9 +44,9 @@ export async function POST(request: NextRequest) {
         folderPath: result.folderPath,
         folderUrl: result.folderUrl,
         procoreFileId: result.procoreFileId,
-        projectId: readProjectId(payload)
+        projectId
       },
-      targetId: readProjectDayTargetId(payload),
+      targetId: readProjectDayTargetId({ ...payload, projectId }),
       targetType: "project_day",
       ...getAuditRequestMetadata(request.headers)
     });

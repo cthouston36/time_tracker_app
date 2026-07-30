@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { canAccessReports, getAccessibleProjectsForUser } from "@/lib/auth/project-access";
 import { getCurrentUser } from "@/lib/auth/session";
 import { readAllocationEntriesForReport } from "@/lib/allocation-entries-store";
 import {
@@ -35,7 +36,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Sign in before loading reports." }, { status: 401 });
   }
 
-  if (user.role !== "admin" && user.role !== "project_manager") {
+  if (!canAccessReports(user)) {
     return NextResponse.json({ error: "Project manager access is required to load reports." }, { status: 403 });
   }
 
@@ -47,7 +48,7 @@ export async function POST(request: NextRequest) {
   };
   const page = parsePositiveInteger(body.page, 1);
   const pageSize = Math.min(parsePositiveInteger(body.pageSize, DEFAULT_PAGE_SIZE_BY_MODE[mode]), MAX_PAGE_SIZE);
-  const projects = await getProjects();
+  const projects = getAccessibleProjectsForUser(user, await getProjects());
   const projectIds = resolveProjectIds(body, projects.map((project) => project.id));
   const baseFilters = {
     endDate: parseIsoDate(body.endDate),

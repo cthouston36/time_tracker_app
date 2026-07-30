@@ -16,8 +16,8 @@ type RouteContext = {
 export async function POST(_request: NextRequest, context: RouteContext) {
   const user = await getCurrentUser();
 
-  if (user?.role !== "admin" && user?.role !== "project_manager") {
-    return NextResponse.json({ error: "Project Manager access is required." }, { status: 403 });
+  if (user?.role !== "admin") {
+    return NextResponse.json({ error: "Admin access is required." }, { status: 403 });
   }
 
   const { projectId } = await context.params;

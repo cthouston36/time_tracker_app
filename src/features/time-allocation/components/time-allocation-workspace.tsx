@@ -38,6 +38,7 @@ import {
 } from "lucide-react";
 import { IconLabel } from "@/components/icon-label";
 import { todayInputValue } from "@/lib/date";
+import { canAccessReports, getAccessibleProjectsForUser } from "@/lib/auth/project-access";
 import type { AuthUser } from "@/lib/auth/types";
 import {
   TWO_SERIES_PRODUCTION_CODES,
@@ -763,12 +764,20 @@ export function TimeAllocationWorkspace() {
   const saveDailyReportRef = useRef<(() => Promise<void>) | null>(null);
   const saveAllocationEntriesRef = useRef<(() => Promise<void>) | null>(null);
 
-  const projects = useMemo(
+  const activeProjects = useMemo(
     () => filterActiveProjects(allProjects, projectBlacklistById, projectArchiveById),
     [allProjects, projectArchiveById, projectBlacklistById]
   );
+  const projects = useMemo(
+    () => (currentUser ? getAccessibleProjectsForUser(currentUser, activeProjects) : []),
+    [activeProjects, currentUser]
+  );
   const visibleProjectIds = useMemo(() => new Set(projects.map((project) => project.id)), [projects]);
   const reportEntries = entries.filter((entry) => visibleProjectIds.has(entry.projectId));
+  const reportDailyReportsByKey = useMemo(
+    () => filterDailyReportsByProjectIds(dailyReportsByKey, visibleProjectIds),
+    [dailyReportsByKey, visibleProjectIds]
+  );
   const netSuiteProjectManagerOptions = useMemo(() => buildNetSuiteProjectManagerOptions(allProjects), [allProjects]);
   const selectedSubcontractorVendor = useMemo(
     () => netSuiteVendors.find((vendor) => vendor.id === selectedSubcontractorVendorId) ?? null,
@@ -901,6 +910,10 @@ export function TimeAllocationWorkspace() {
       return [];
     }
 
+    if (currentUser.role === "project_manager") {
+      return currentUserAutoMyJobIds;
+    }
+
     const savedJobIds = (myJobsByUser[currentUser.id] ?? []).filter((projectId) => visibleProjectIds.has(projectId));
     const combinedJobIds = new Set([...currentUserAutoMyJobIds, ...savedJobIds]);
 
@@ -931,6 +944,7 @@ export function TimeAllocationWorkspace() {
     dailyReportModalOpen ||
     queuedJobImages.length > 0;
   const userIsOffline = networkStatus.checked && !networkStatus.online;
+  const currentUserCanManageMyProjects = currentUser?.role === "standard" || currentUser?.role === "admin";
 
   function shouldBlockOfflineAction(setNotice: (message: string) => void) {
     if (!userIsOffline) {
@@ -4404,7 +4418,7 @@ export function TimeAllocationWorkspace() {
             <CalendarDays aria-hidden="true" size={16} />
             Calendar
           </button>
-          {currentUser.role === "project_manager" || currentUser.role === "admin" ? (
+          {canAccessReports(currentUser) ? (
             <button
               className={viewMode === "reports" ? "tab-button active" : "tab-button"}
               onClick={() => changeViewMode("reports")}
@@ -4426,17 +4440,6 @@ export function TimeAllocationWorkspace() {
             </summary>
             <div className="desktop-header-menu-body">
               <IconLabel icon={CheckCircle2} text={connectionStatus} />
-              {currentUser.role === "project_manager" ? (
-                <button
-                  className="secondary-button"
-                  disabled={updatingProject}
-                  onClick={addOrUpdateProject}
-                  type="button"
-                >
-                  <RefreshCw aria-hidden="true" size={18} />
-                  {updatingProject ? "Updating..." : "Add/Update Project"}
-                </button>
-              ) : null}
               <button className="secondary-button" onClick={() => setChangePasswordOpen(true)} type="button">
                 <KeyRound aria-hidden="true" size={18} />
                 Change Password
@@ -4458,17 +4461,6 @@ export function TimeAllocationWorkspace() {
           </summary>
           <div className="mobile-header-menu-body">
             <IconLabel icon={CheckCircle2} text={connectionStatus} />
-            {currentUser.role === "project_manager" ? (
-              <button
-                className="secondary-button"
-                disabled={updatingProject}
-                onClick={addOrUpdateProject}
-                type="button"
-              >
-                <RefreshCw aria-hidden="true" size={18} />
-                {updatingProject ? "Updating..." : "Add/Update Project"}
-              </button>
-            ) : null}
             <button className="secondary-button" onClick={() => setChangePasswordOpen(true)} type="button">
               <KeyRound aria-hidden="true" size={18} />
               Change Password
@@ -4642,26 +4634,30 @@ export function TimeAllocationWorkspace() {
                 }}
               />
             </div>
-          <div className="my-project-sidebar-tools">
-            <button
-              aria-expanded={myProjectsEditorOpen}
-              className="secondary-button"
-              onClick={() => setMyProjectsEditorOpen((current) => !current)}
-              type="button"
-            >
-              <ListChecks aria-hidden="true" size={18} />
-              Create/Update My Projects ({currentUserMyJobIds.length})
-            </button>
-            <label className="compact-check-row">
-              <input
-                checked={showOnlyMyProjects}
-                disabled={currentUserMyJobIds.length === 0}
-                onChange={(event) => setShowOnlyMyProjects(event.target.checked)}
-                type="checkbox"
-              />
-              <span>Show My Projects only</span>
-            </label>
-          </div>
+          {currentUserCanManageMyProjects ? (
+            <div className="my-project-sidebar-tools">
+              <button
+                aria-expanded={myProjectsEditorOpen}
+                className="secondary-button"
+                onClick={() => setMyProjectsEditorOpen((current) => !current)}
+                type="button"
+              >
+                <ListChecks aria-hidden="true" size={18} />
+                Create/Update My Projects ({currentUserMyJobIds.length})
+              </button>
+              <label className="compact-check-row">
+                <input
+                  checked={showOnlyMyProjects}
+                  disabled={currentUserMyJobIds.length === 0}
+                  onChange={(event) => setShowOnlyMyProjects(event.target.checked)}
+                  type="checkbox"
+                />
+                <span>Show My Projects only</span>
+              </label>
+            </div>
+          ) : currentUser.role === "project_manager" ? (
+            <div className="field-note">Your projects are assigned from the NetSuite Project Manager field.</div>
+          ) : null}
           {myProjectsEditorOpen ? (
             <MyJobsManager
               automaticJobIds={currentUserAutoMyJobIds}
@@ -5769,7 +5765,7 @@ export function TimeAllocationWorkspace() {
                 <h2>Weekly Status</h2>
               </div>
               <WeeklyStatusReport
-                canExportWeeklyDailyReports={currentUser.role === "project_manager" || currentUser.role === "admin"}
+                canExportWeeklyDailyReports={canAccessReports(currentUser)}
                 dailyReportUploadsByKey={dailyReportUploadsByKey}
                 dailyReportsByKey={dailyReportsByKey}
                 daySubmissions={daySubmissions}
@@ -5789,7 +5785,7 @@ export function TimeAllocationWorkspace() {
         ) : (
           <ReportsView
             currentUser={currentUser}
-            dailyReportsByKey={dailyReportsByKey}
+            dailyReportsByKey={reportDailyReportsByKey}
             entries={reportEntries}
             myJobIds={currentUserMyJobIds}
             projects={projects}
@@ -7499,14 +7495,16 @@ function ReportsView({
   );
   const allowedReportProjectIds = useMemo(() => reportProjectOptions.map((project) => project.id), [reportProjectOptions]);
   const reportUsesDailyReports = reportMode === "employee_hours" || reportMode === "daily_work";
-  const canManageMyJobs = currentUser.role === "project_manager" || currentUser.role === "admin";
+  const canManageMyJobs = currentUser.role === "admin";
+  const canUseMyJobsReportFilter =
+    (currentUser.role === "project_manager" || currentUser.role === "admin") && myJobIds.length > 0;
   const automaticMyJobIds = useMemo(() => getDefaultMyJobIdsForUser(currentUser, projects), [currentUser, projects]);
   const reportJobPickerOptions = [
     {
       value: "all",
       label: reportUsesDailyReports ? "All Jobs With Daily Reports" : "All Jobs"
     },
-    ...(canManageMyJobs && myJobIds.length > 0
+    ...(canUseMyJobsReportFilter
       ? [
           {
             value: "my-jobs",
@@ -9890,6 +9888,7 @@ function AdminUsersPanel({
             >
               <option value="standard">Standard User</option>
               <option value="project_manager">Project Manager</option>
+              <option value="executive">Executive</option>
               <option value="admin">Admin</option>
             </select>
           </div>
@@ -10904,6 +10903,16 @@ function buildReportProjectOptions(projects: Project[], entries: AllocationEntry
   return Array.from(projectOptions.entries())
     .map(([id, name]) => ({ id, name }))
     .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function filterDailyReportsByProjectIds(dailyReportsByKey: DailyReportsByKey, projectIds: Set<string>) {
+  return Object.fromEntries(
+    Object.entries(dailyReportsByKey).filter(([dayKey]) => {
+      const parsedDayKey = parseDayKey(dayKey);
+
+      return parsedDayKey ? projectIds.has(parsedDayKey.projectId) : false;
+    })
+  );
 }
 
 function buildReportPayItemOptions(entries: AllocationEntry[]) {
@@ -13869,6 +13878,10 @@ function formatRole(role: AuthUser["role"]) {
 
   if (role === "project_manager") {
     return "Project Manager";
+  }
+
+  if (role === "executive") {
+    return "Executive";
   }
 
   return "Standard User";

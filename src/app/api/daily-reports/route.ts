@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getProjectAccessScopeForUser, userCanAccessProjectId } from "@/lib/auth/project-access";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getAuditRequestMetadata, recordAuditLog } from "@/lib/audit-log";
 import {
@@ -12,6 +13,7 @@ import {
   type StoredDailyReportUploadsByKey,
   type StoredDailyReportsByKey
 } from "@/lib/daily-report-store";
+import { getProjects } from "@/lib/procore/projects";
 
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -32,8 +34,11 @@ export async function GET() {
     });
   }
 
+  const projects = await getProjects();
+  const projectAccessScope = getProjectAccessScopeForUser(user, projects);
+
   return NextResponse.json({
-    ...dailyReportData,
+    ...filterDailyReportDataByProjectIds(dailyReportData, projectAccessScope),
     databaseConfigured: true
   });
 }
@@ -106,6 +111,10 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "Provide projectId and date." }, { status: 400 });
   }
 
+  if (!userCanAccessProjectId(user, projectId, await getProjects())) {
+    return NextResponse.json({ error: "You do not have access to save daily reports for this project." }, { status: 403 });
+  }
+
   let result: boolean | null;
 
   if (body.action === "save_report") {
@@ -169,6 +178,10 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: "Provide projectId and date." }, { status: 400 });
   }
 
+  if (!userCanAccessProjectId(user, projectId, await getProjects())) {
+    return NextResponse.json({ error: "You do not have access to delete daily report uploads for this project." }, { status: 403 });
+  }
+
   if (kind !== "upload") {
     return NextResponse.json({ error: "Unsupported daily report delete." }, { status: 400 });
   }
@@ -206,4 +219,33 @@ export async function DELETE(request: NextRequest) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function filterDailyReportDataByProjectIds(
+  dailyReportData: {
+    dailyReportUploadsByKey: StoredDailyReportUploadsByKey;
+    dailyReportsByKey: StoredDailyReportsByKey;
+  },
+  projectIds: string[] | null
+) {
+  if (projectIds === null) {
+    return dailyReportData;
+  }
+
+  const projectIdSet = new Set(projectIds);
+
+  return {
+    dailyReportUploadsByKey: filterRecordByDayProjectId(dailyReportData.dailyReportUploadsByKey, projectIdSet),
+    dailyReportsByKey: filterRecordByDayProjectId(dailyReportData.dailyReportsByKey, projectIdSet)
+  };
+}
+
+function filterRecordByDayProjectId<T>(record: Record<string, T>, projectIdSet: Set<string>) {
+  return Object.fromEntries(
+    Object.entries(record).filter(([dayKey]) => {
+      const [projectId] = dayKey.split("|");
+
+      return projectIdSet.has(projectId);
+    })
+  );
 }

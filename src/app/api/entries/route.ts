@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getProjectAccessScopeForUser, userCanAccessProjectId } from "@/lib/auth/project-access";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getAuditRequestMetadata, recordAuditLog } from "@/lib/audit-log";
 import {
   deleteAllocationEntriesForDay,
   deleteAllocationEntry,
   readAllocationEntries,
+  readAllocationEntriesForReport,
   replaceAllocationEntries,
   upsertAllocationEntries
 } from "@/lib/allocation-entries-store";
 import { readDayRecords } from "@/lib/day-record-store";
+import { getProjects } from "@/lib/procore/projects";
 import type { AllocationEntry } from "@/lib/procore/types";
 
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -20,7 +23,12 @@ export async function GET() {
     return NextResponse.json({ error: "Sign in before loading entries." }, { status: 401 });
   }
 
-  const entries = await readAllocationEntries();
+  const projects = await getProjects();
+  const projectAccessScope = getProjectAccessScopeForUser(user, projects);
+  const entries =
+    projectAccessScope === null
+      ? await readAllocationEntries()
+      : await readAllocationEntriesForReport({ projectIds: projectAccessScope });
 
   if (!entries) {
     return NextResponse.json({
@@ -91,6 +99,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Missing entries." }, { status: 400 });
   }
 
+  const projects = await getProjects();
+
+  if (body.entries.some((entry) => !userCanAccessProjectId(user, entry.projectId, projects))) {
+    return NextResponse.json({ error: "You do not have access to save entries for one or more selected projects." }, { status: 403 });
+  }
+
   if (user.role !== "admin" && (await entriesTouchSubmittedDay(body.entries))) {
     return NextResponse.json({ error: "Submitted days must be reopened before entries can be changed." }, { status: 403 });
   }
@@ -123,6 +137,14 @@ export async function DELETE(request: NextRequest) {
   const date = request.nextUrl.searchParams.get("date")?.trim();
 
   if (entryId) {
+    const projects = await getProjects();
+    const entries = await readAllocationEntries();
+    const existingEntry = entries?.find((candidate) => candidate.id === entryId);
+
+    if (existingEntry && !userCanAccessProjectId(user, existingEntry.projectId, projects)) {
+      return NextResponse.json({ error: "You do not have access to delete this entry." }, { status: 403 });
+    }
+
     if (user.role !== "admin" && (await entryIsSubmitted(entryId))) {
       return NextResponse.json({ error: "Submitted days must be reopened before entries can be deleted." }, { status: 403 });
     }

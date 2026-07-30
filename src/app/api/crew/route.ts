@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getProjectAccessScopeForUser, userCanAccessProjectId } from "@/lib/auth/project-access";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getAuditRequestMetadata, recordAuditLog } from "@/lib/audit-log";
 import {
@@ -12,6 +13,7 @@ import {
   type StoredCrewMember,
   type StoredCrewMembersByProject
 } from "@/lib/crew-store";
+import { getProjects } from "@/lib/procore/projects";
 
 export async function GET() {
   const user = await getCurrentUser();
@@ -30,8 +32,12 @@ export async function GET() {
     });
   }
 
+  const projects = await getProjects();
+  const projectAccessScope = getProjectAccessScopeForUser(user, projects);
+
   return NextResponse.json({
-    ...crewData,
+    crewDirectory: crewData.crewDirectory,
+    crewMembersByProject: filterCrewMembersByProjectIds(crewData.crewMembersByProject, projectAccessScope),
     databaseConfigured: true
   });
 }
@@ -98,6 +104,10 @@ export async function POST(request: NextRequest) {
 
   if (!body || !body.crewMember) {
     return NextResponse.json({ error: "Missing crew member." }, { status: 400 });
+  }
+
+  if (body.action === "add_to_project" && !userCanAccessProjectId(user, body.projectId ?? "", await getProjects())) {
+    return NextResponse.json({ error: "You do not have access to add crew to this project." }, { status: 403 });
   }
 
   const result =
@@ -209,6 +219,10 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: "Provide projectId and crewMemberId." }, { status: 400 });
   }
 
+  if (!userCanAccessProjectId(user, projectId, await getProjects())) {
+    return NextResponse.json({ error: "You do not have access to remove crew from this project." }, { status: 403 });
+  }
+
   const result = await removeCrewMemberFromProject(projectId, crewMemberId);
 
   if (result === null) {
@@ -238,4 +252,14 @@ export async function DELETE(request: NextRequest) {
     databaseConfigured: true,
     ok: true
   });
+}
+
+function filterCrewMembersByProjectIds(crewMembersByProject: StoredCrewMembersByProject, projectIds: string[] | null) {
+  if (projectIds === null) {
+    return crewMembersByProject;
+  }
+
+  const projectIdSet = new Set(projectIds);
+
+  return Object.fromEntries(Object.entries(crewMembersByProject).filter(([projectId]) => projectIdSet.has(projectId)));
 }

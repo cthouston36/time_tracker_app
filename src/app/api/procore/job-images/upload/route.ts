@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuditRequestMetadata, recordAuditLog } from "@/lib/audit-log";
+import { userCanAccessProjectId } from "@/lib/auth/project-access";
 import { getCurrentUser } from "@/lib/auth/session";
 import { countJobImageUploads, upsertJobImageUploads, type StoredJobImageUpload } from "@/lib/job-image-store";
 import { uploadJobImagesToProcore, type JobImageUploadInput } from "@/lib/procore/documents";
+import { getProjects } from "@/lib/procore/projects";
 import type { Project } from "@/lib/procore/types";
 
 export const runtime = "nodejs";
@@ -22,14 +24,25 @@ export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
     const date = readFormString(formData.get("date"));
-    const project = readProject(formData.get("project"));
+    const submittedProject = readProject(formData.get("project"));
     const files = formData.getAll("images").filter(isFile);
     const clientIds = formData.getAll("imageClientIds").map(readFormString);
     const captions = formData.getAll("imageCaptions").map(readFormString);
     const originalFileNames = formData.getAll("originalFileNames").map(readFormString);
 
-    if (!project?.id || !project.name || !ISO_DATE_PATTERN.test(date)) {
+    if (!submittedProject?.id || !ISO_DATE_PATTERN.test(date)) {
       return NextResponse.json({ error: "Provide a valid project and date." }, { status: 400 });
+    }
+
+    const projects = await getProjects();
+    const project = projects.find((candidate) => candidate.id === submittedProject.id);
+
+    if (!project) {
+      return NextResponse.json({ error: "Provide a valid project." }, { status: 400 });
+    }
+
+    if (!userCanAccessProjectId(user, project.id, projects)) {
+      return NextResponse.json({ error: "You do not have access to upload images for this project." }, { status: 403 });
     }
 
     if (files.length === 0) {

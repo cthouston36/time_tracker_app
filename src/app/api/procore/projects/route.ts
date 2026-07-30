@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getAccessibleProjectsForUser } from "@/lib/auth/project-access";
 import { getCurrentUser } from "@/lib/auth/session";
 import { readProcoreCache } from "@/lib/procore/cache";
 import { getProjects } from "@/lib/procore/projects";
@@ -11,7 +12,7 @@ export async function GET() {
   }
 
   try {
-    const projects = await getProjects();
+    const projects = getAccessibleProjectsForUser(user, await getProjects());
     const cache = await readProcoreCache();
 
     return NextResponse.json({

@@ -1,6 +1,6 @@
 import { getSql } from "@/lib/db";
 import { hashPassword, verifyPassword } from "@/lib/auth/passwords";
-import type { AuthUser, UserRole } from "@/lib/auth/types";
+import { isUserRole, type AuthUser, type UserRole } from "@/lib/auth/types";
 
 type BootstrapUser = AuthUser & {
   password?: string;
@@ -534,7 +534,7 @@ async function ensureAuthUsersTable() {
       last_name text not null,
       netsuite_project_manager_id text,
       netsuite_project_manager_name text,
-      role text not null check (role in ('standard', 'project_manager', 'admin')),
+      role text not null check (role in ('standard', 'project_manager', 'executive', 'admin')),
       password_hash text not null,
       active boolean not null default true,
       created_at timestamptz not null default now(),
@@ -544,6 +544,12 @@ async function ensureAuthUsersTable() {
 
   await sql`alter table app_users add column if not exists netsuite_project_manager_id text`;
   await sql`alter table app_users add column if not exists netsuite_project_manager_name text`;
+  await sql`alter table app_users drop constraint if exists app_users_role_check`;
+  await sql`
+    alter table app_users
+    add constraint app_users_role_check
+    check (role in ('standard', 'project_manager', 'executive', 'admin'))
+  `;
 
   await sql`
     create table if not exists app_password_reset_tokens (
@@ -655,8 +661,4 @@ function normalizePassword(password: string | undefined) {
 
 function readOptionalText(value: string | undefined) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-function isUserRole(role: string): role is UserRole {
-  return role === "standard" || role === "project_manager" || role === "admin";
 }

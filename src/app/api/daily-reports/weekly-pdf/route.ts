@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuditRequestMetadata, recordAuditLog } from "@/lib/audit-log";
+import { canAccessReports, getAccessibleProjectsForUser } from "@/lib/auth/project-access";
 import { getCurrentUser } from "@/lib/auth/session";
 import {
   buildCombinedDailyReportPdf,
@@ -29,7 +30,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Sign in before exporting daily reports." }, { status: 401 });
   }
 
-  if (user.role !== "admin" && user.role !== "project_manager") {
+  if (!canAccessReports(user)) {
     return NextResponse.json({ error: "Project manager access is required to export weekly daily reports." }, { status: 403 });
   }
 
@@ -44,7 +45,7 @@ export async function POST(request: NextRequest) {
 
     const weekStart = getSundayWeekStart(requestedWeekStart);
     const weekEnd = addDaysToInputDate(weekStart, 6);
-    const allProjects = await getProjects();
+    const allProjects = getAccessibleProjectsForUser(user, await getProjects());
     const projectControls = await readProjectControls();
     const unavailableProjectIds = new Set([
       ...Object.keys(projectControls?.projectArchiveById ?? {}),

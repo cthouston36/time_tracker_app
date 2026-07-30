@@ -1,4 +1,6 @@
-export type UserRole = "standard" | "project_manager" | "admin";
+export const USER_ROLES = ["standard", "project_manager", "executive", "admin"] as const;
+
+export type UserRole = (typeof USER_ROLES)[number];
 
 export type AuthUser = {
   id: string;
@@ -8,3 +10,7 @@ export type AuthUser = {
   netSuiteProjectManagerName?: string;
   role: UserRole;
 };
+
+export function isUserRole(value: unknown): value is UserRole {
+  return typeof value === "string" && USER_ROLES.includes(value as UserRole);
+}

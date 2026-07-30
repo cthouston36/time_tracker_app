@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getProjectAccessScopeForUser, userCanAccessProjectId } from "@/lib/auth/project-access";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getAuditRequestMetadata, recordAuditLog } from "@/lib/audit-log";
 import {
@@ -12,6 +13,7 @@ import {
   type StoredDaySubmission,
   type StoredDaySubmissionsByKey
 } from "@/lib/day-record-store";
+import { getProjects } from "@/lib/procore/projects";
 
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -32,8 +34,11 @@ export async function GET() {
     });
   }
 
+  const projects = await getProjects();
+  const projectAccessScope = getProjectAccessScopeForUser(user, projects);
+
   return NextResponse.json({
-    ...dayRecords,
+    ...filterDayRecordsByProjectIds(dayRecords, projectAccessScope),
     databaseConfigured: true
   });
 }
@@ -104,6 +109,10 @@ export async function PATCH(request: NextRequest) {
 
   if (!projectId || !ISO_DATE_PATTERN.test(date)) {
     return NextResponse.json({ error: "Provide projectId and date." }, { status: 400 });
+  }
+
+  if (!userCanAccessProjectId(user, projectId, await getProjects())) {
+    return NextResponse.json({ error: "You do not have access to save records for this project." }, { status: 403 });
   }
 
   let result: boolean | null;
@@ -227,4 +236,33 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function formatUserName(user: { firstName: string; lastName: string }) {
   return `${user.firstName} ${user.lastName}`.trim();
+}
+
+function filterDayRecordsByProjectIds(
+  dayRecords: {
+    dayEntryNotesByKey: StoredDayEntryNotesByKey;
+    daySubmissions: StoredDaySubmissionsByKey;
+  },
+  projectIds: string[] | null
+) {
+  if (projectIds === null) {
+    return dayRecords;
+  }
+
+  const projectIdSet = new Set(projectIds);
+
+  return {
+    dayEntryNotesByKey: filterRecordByDayProjectId(dayRecords.dayEntryNotesByKey, projectIdSet),
+    daySubmissions: filterRecordByDayProjectId(dayRecords.daySubmissions, projectIdSet)
+  };
+}
+
+function filterRecordByDayProjectId<T>(record: Record<string, T>, projectIdSet: Set<string>) {
+  return Object.fromEntries(
+    Object.entries(record).filter(([dayKey]) => {
+      const [projectId] = dayKey.split("|");
+
+      return projectIdSet.has(projectId);
+    })
+  );
 }

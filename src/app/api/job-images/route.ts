@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { userCanAccessProjectId } from "@/lib/auth/project-access";
 import { getCurrentUser } from "@/lib/auth/session";
 import { readJobImageUploads } from "@/lib/job-image-store";
+import { getProjects } from "@/lib/procore/projects";
 
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -16,6 +18,10 @@ export async function GET(request: NextRequest) {
 
   if (!projectId || !ISO_DATE_PATTERN.test(date)) {
     return NextResponse.json({ error: "Provide projectId and date." }, { status: 400 });
+  }
+
+  if (!userCanAccessProjectId(user, projectId, await getProjects())) {
+    return NextResponse.json({ error: "You do not have access to load images for this project." }, { status: 403 });
   }
 
   const uploads = await readJobImageUploads(projectId, date);

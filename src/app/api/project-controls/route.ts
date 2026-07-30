@@ -33,6 +33,18 @@ export async function GET() {
     });
   }
 
+  if (user.role !== "admin") {
+    return NextResponse.json({
+      databaseConfigured: true,
+      myJobsByUser: {
+        [user.id]: projectControls.myJobsByUser[user.id] ?? []
+      },
+      projectArchiveById: projectControls.projectArchiveById,
+      projectBlacklistById: projectControls.projectBlacklistById,
+      syncLog: []
+    });
+  }
+
   return NextResponse.json({
     ...projectControls,
     databaseConfigured: true
@@ -117,6 +129,10 @@ export async function PATCH(request: NextRequest) {
   if (body.action === "save_my_jobs") {
     const userId = body.userId?.trim() ?? "";
 
+    if (user.role === "project_manager" || user.role === "executive") {
+      return NextResponse.json({ error: "My Projects are managed automatically for this role." }, { status: 403 });
+    }
+
     if (!userId || !Array.isArray(body.projectIds)) {
       return NextResponse.json({ error: "Provide userId and projectIds." }, { status: 400 });
     }
@@ -151,8 +167,8 @@ export async function PATCH(request: NextRequest) {
 
     result = await setProjectArchive(projectId, body.archived);
   } else if (body.action === "add_sync_log") {
-    if (user.role !== "admin" && user.role !== "project_manager") {
-      return NextResponse.json({ error: "Only project managers and admins can add sync log entries." }, { status: 403 });
+    if (user.role !== "admin") {
+      return NextResponse.json({ error: "Only admins can add sync log entries." }, { status: 403 });
     }
 
     if (!isRecord(body.syncLogEntry)) {
