@@ -668,7 +668,7 @@ export function TimeAllocationWorkspace() {
   const [changePasswordForm, setChangePasswordForm] = useState<ChangePasswordFormState>(() => createEmptyChangePasswordForm());
   const [changePasswordNotice, setChangePasswordNotice] = useState<{ message: string; status: "success" | "error" } | null>(null);
   const [changingPassword, setChangingPassword] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>("entry");
+  const [viewMode, setViewMode] = useState<ViewMode>("dashboard");
   const [reportProjectId, setReportProjectId] = useState("all");
   const [reportStartDate, setReportStartDate] = useState("");
   const [reportEndDate, setReportEndDate] = useState("");
@@ -14160,7 +14160,10 @@ function readPendingProcoreReturn(): PendingProcoreReturn | null {
       intent: parsed.intent === "upload_daily" ? "upload_daily" : "connect",
       mobilePayItemId: parsed.mobilePayItemId,
       projectId: parsed.projectId,
-      viewMode: parsed.viewMode === "calendar" || parsed.viewMode === "reports" ? parsed.viewMode : "entry"
+      viewMode:
+        parsed.viewMode === "dashboard" || parsed.viewMode === "calendar" || parsed.viewMode === "reports"
+          ? parsed.viewMode
+          : "entry"
     };
   } catch {
     window.localStorage.removeItem(PENDING_PROCORE_RETURN_KEY);

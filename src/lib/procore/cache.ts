@@ -14,8 +14,12 @@ export type ProcoreCache = {
   projects: Project[];
 };
 
-export async function readProcoreCache() {
-  const tableCache = await readProcoreTablesCache();
+export type ProcoreCacheReadOptions = {
+  netSuiteProjectManagerId?: string;
+};
+
+export async function readProcoreCache(options: ProcoreCacheReadOptions = {}) {
+  const tableCache = await readProcoreTablesCache(options);
 
   if (tableCache) {
     return tableCache;
@@ -25,7 +29,7 @@ export async function readProcoreCache() {
 
   if (databaseCache) {
     if (await writeProcoreTablesCache(databaseCache.projects, databaseCache.syncedAt)) {
-      return readProcoreTablesCache();
+      return readProcoreTablesCache(options);
     }
 
     return databaseCache;
@@ -62,7 +66,7 @@ export async function updateProcoreCache(updater: (currentProjects: Project[]) =
   return writeProcoreCache(updater(currentCache?.projects ?? []));
 }
 
-async function readProcoreTablesCache() {
+async function readProcoreTablesCache(options: ProcoreCacheReadOptions = {}) {
   const sql = getSql();
 
   if (!sql) {
@@ -71,23 +75,53 @@ async function readProcoreTablesCache() {
 
   await ensureProcoreCacheTables();
 
-  const projectRows = (await sql`
-    select
-      id,
-      name,
-      netsuite_project_id,
-      netsuite_project_manager_id,
-      netsuite_project_manager_name,
-      procore_project_id,
-      source_system
-    from procore_projects
-    order by lower(name), id
-  `) as ProcoreProjectRow[];
+  const netSuiteProjectManagerId = options.netSuiteProjectManagerId?.trim() ?? "";
+  const projectRows = netSuiteProjectManagerId
+    ? ((await sql`
+        select
+          id,
+          name,
+          netsuite_project_id,
+          netsuite_project_manager_id,
+          netsuite_project_manager_name,
+          procore_project_id,
+          source_system
+        from procore_projects
+        where netsuite_project_manager_id = ${netSuiteProjectManagerId}
+        order by lower(name), id
+      `) as ProcoreProjectRow[])
+    : ((await sql`
+        select
+          id,
+          name,
+          netsuite_project_id,
+          netsuite_project_manager_id,
+          netsuite_project_manager_name,
+          procore_project_id,
+          source_system
+        from procore_projects
+        order by lower(name), id
+      `) as ProcoreProjectRow[]);
+
+  const syncStateRows = (await sql`
+    select synced_at
+    from procore_sync_state
+    where key = ${PROCORE_SYNC_STATE_KEY}
+    limit 1
+  `) as ProcoreSyncStateRow[];
 
   if (projectRows.length === 0) {
-    return null;
+    if (!netSuiteProjectManagerId) {
+      return null;
+    }
+
+    return {
+      syncedAt: toIsoDateString(syncStateRows[0]?.synced_at) ?? new Date().toISOString(),
+      projects: []
+    } satisfies ProcoreCache;
   }
 
+  const projectIds = projectRows.map((project) => project.id);
   const payItemRows = (await sql`
     select
       project_id,
@@ -98,14 +132,12 @@ async function readProcoreTablesCache() {
       unit_of_measure,
       sort_order
     from procore_pay_items
+    where project_id in (
+      select value
+      from jsonb_array_elements_text(${JSON.stringify(projectIds)}::jsonb)
+    )
     order by project_id, sort_order, lower(code), lower(name), id
   `) as ProcorePayItemRow[];
-  const syncStateRows = (await sql`
-    select synced_at
-    from procore_sync_state
-    where key = ${PROCORE_SYNC_STATE_KEY}
-    limit 1
-  `) as ProcoreSyncStateRow[];
   const payItemsByProjectId = new Map<string, PayItem[]>();
 
   for (const row of payItemRows) {

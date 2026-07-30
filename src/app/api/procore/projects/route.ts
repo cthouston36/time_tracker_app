@@ -1,19 +1,22 @@
 import { NextResponse } from "next/server";
 import { getAccessibleProjectsForUser } from "@/lib/auth/project-access";
 import { getCurrentUser } from "@/lib/auth/session";
-import { readProcoreCache } from "@/lib/procore/cache";
-import { getProjects } from "@/lib/procore/projects";
+import { getProjectCache } from "@/lib/procore/projects";
 
 export async function GET() {
-  const user = await getCurrentUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Sign in before loading projects." }, { status: 401 });
-  }
-
   try {
-    const projects = getAccessibleProjectsForUser(user, await getProjects());
-    const cache = await readProcoreCache();
+    const user = await getCurrentUser();
+
+    if (!user) {
+      return NextResponse.json({ error: "Sign in before loading projects." }, { status: 401 });
+    }
+
+    const cacheOptions =
+      user.role === "project_manager" && user.netSuiteProjectManagerId
+        ? { netSuiteProjectManagerId: user.netSuiteProjectManagerId }
+        : {};
+    const cache = await getProjectCache(cacheOptions);
+    const projects = getAccessibleProjectsForUser(user, cache?.projects ?? []);
 
     return NextResponse.json({
       projects,

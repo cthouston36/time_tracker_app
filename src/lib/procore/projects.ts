@@ -1,5 +1,5 @@
 import { mockProjects } from "@/lib/data/mock-projects";
-import { readProcoreCache, updateProcoreCache } from "@/lib/procore/cache";
+import { readProcoreCache, updateProcoreCache, type ProcoreCache, type ProcoreCacheReadOptions } from "@/lib/procore/cache";
 import { ProcoreClient } from "@/lib/procore/client";
 import { getProcoreConfig } from "@/lib/procore/config";
 import { getProcoreIntegrationAccessToken } from "@/lib/procore/session";
@@ -22,12 +22,23 @@ export type ProcoreSyncResult = {
   summary: ProcoreSyncSummary;
 };
 
-export async function getProjects(): Promise<Project[]> {
-  const cache = await readProcoreCache();
-  return cache?.projects.map((project) => ({
-    ...project,
-    payItems: dedupePayItems(project.payItems)
-  })) ?? [];
+export async function getProjects(options: ProcoreCacheReadOptions = {}): Promise<Project[]> {
+  return (await getProjectCache(options))?.projects ?? [];
+}
+
+export async function getProjectCache(options: ProcoreCacheReadOptions = {}): Promise<ProcoreCache | null> {
+  const cache = await readProcoreCache(options);
+  if (!cache) {
+    return null;
+  }
+
+  return {
+    ...cache,
+    projects: cache.projects.map((project) => ({
+      ...project,
+      payItems: dedupePayItems(project.payItems)
+    }))
+  };
 }
 
 export async function getCachedProjectPayItems(projectId: string): Promise<PayItem[]> {
