@@ -6154,6 +6154,7 @@ function DashboardView({
     currentUser.role === "project_manager" || currentUser.role === "standard" ? "entry_status" : "daily_reports"
   );
   const [dashboardProjectQuery, setDashboardProjectQuery] = useState("");
+  const [fieldAccessRequest, setFieldAccessRequest] = useState<{ projectId: string; token: number } | null>(null);
   const today = todayInputValue();
   const productionAlertStartDate = addDaysToInputDate(today, -45);
   const weekDates = getWeekDates(weekStart);
@@ -6175,6 +6176,15 @@ function DashboardView({
   const fieldAssignmentRows = useMemo(
     () => buildFieldAssignmentVisibilityRows(sortedProjects, fieldUsers, myJobsByUser),
     [fieldUsers, myJobsByUser, sortedProjects]
+  );
+  const fieldAssignmentCountsByProjectId = useMemo(
+    () =>
+      fieldAssignmentRows.reduce<Record<string, number>>((counts, row) => {
+        counts[row.project.id] = row.assignedUsers.length;
+
+        return counts;
+      }, {}),
+    [fieldAssignmentRows]
   );
   const productionAlerts = useMemo(
     () =>
@@ -6201,6 +6211,13 @@ function DashboardView({
     .slice(0, 8);
   const isProjectManager = currentUser.role === "project_manager";
   const isExecutive = currentUser.role === "executive";
+  const canManageFieldAccess = currentUser.role === "admin" || currentUser.role === "project_manager";
+  const requestFieldAccessProject = useCallback((projectId: string) => {
+    setFieldAccessRequest((current) => ({
+      projectId,
+      token: (current?.token ?? 0) + 1
+    }));
+  }, []);
   const dashboardTitle =
     currentUser.role === "admin"
       ? "Admin Dashboard"
@@ -6290,7 +6307,9 @@ function DashboardView({
               dailyReportsByKey={dailyReportsByKey}
               daySubmissions={daySubmissions}
               entryDayKeys={entryDayKeys}
+              fieldAssignmentCountsByProjectId={fieldAssignmentCountsByProjectId}
               onOpenDay={onOpenDay}
+              onOpenFieldAccess={canManageFieldAccess ? requestFieldAccessProject : undefined}
               projects={sortedProjects}
               setStatusMode={setStatusMode}
               setWeekStart={setWeekStart}
@@ -6315,6 +6334,8 @@ function DashboardView({
             notice={fieldAssignmentNotice}
             onSaveAssignments={onSaveFieldAssignments}
             projects={sortedProjects}
+            requestedProjectId={fieldAccessRequest?.projectId}
+            requestKey={fieldAccessRequest?.token ?? 0}
             savingProjectId={savingFieldAssignmentProjectId}
           />
         </div>
@@ -6557,7 +6578,9 @@ function DashboardWeeklyCalendar({
   dailyReportsByKey,
   daySubmissions,
   entryDayKeys,
+  fieldAssignmentCountsByProjectId,
   onOpenDay,
+  onOpenFieldAccess,
   projects,
   setStatusMode,
   setWeekStart,
@@ -6569,7 +6592,9 @@ function DashboardWeeklyCalendar({
   dailyReportsByKey: DailyReportsByKey;
   daySubmissions: DaySubmissionsByKey;
   entryDayKeys: Set<string>;
+  fieldAssignmentCountsByProjectId?: Record<string, number>;
   onOpenDay: (projectId: string, date: string) => void;
+  onOpenFieldAccess?: (projectId: string) => void;
   projects: Project[];
   setStatusMode: (mode: CalendarStatusMode) => void;
   setWeekStart: (weekStart: string) => void;
@@ -6634,7 +6659,20 @@ function DashboardWeeklyCalendar({
           </div>
           {projects.map((project) => (
             <div className="weekly-calendar-row" key={project.id}>
-              <span className="weekly-calendar-job">{project.name}</span>
+              <span className="weekly-calendar-job dashboard-weekly-calendar-job">
+                <span>{project.name}</span>
+                {onOpenFieldAccess ? (
+                  <button
+                    aria-label={`Open Field Access for ${project.name}. ${fieldAssignmentCountsByProjectId?.[project.id] ?? 0} Field users assigned.`}
+                    className="field-assignment-count-button"
+                    onClick={() => onOpenFieldAccess(project.id)}
+                    type="button"
+                  >
+                    <Users aria-hidden="true" size={14} />
+                    {fieldAssignmentCountsByProjectId?.[project.id] ?? 0}
+                  </button>
+                ) : null}
+              </span>
               {weekDates.map((date) => {
                 const dayKey = getDayKey(project.id, date);
                 const hasDailyEntryActivity = getHasDailyEntryActivity(project, dayKey, daySubmissions, entryDayKeys);
@@ -6727,6 +6765,8 @@ function FieldProjectAssignmentPanel({
   notice,
   onSaveAssignments,
   projects,
+  requestedProjectId,
+  requestKey = 0,
   savingProjectId
 }: {
   currentUser: AuthUser;
@@ -6735,8 +6775,11 @@ function FieldProjectAssignmentPanel({
   notice: { message: string; status: "success" | "error" } | null;
   onSaveAssignments: (projectId: string, fieldUserIds: string[]) => Promise<void>;
   projects: Project[];
+  requestedProjectId?: string;
+  requestKey?: number;
   savingProjectId: string;
 }) {
+  const detailsRef = useRef<HTMLDetailsElement>(null);
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [fieldUserSearch, setFieldUserSearch] = useState("");
   const [draftFieldUserIds, setDraftFieldUserIds] = useState<string[]>([]);
@@ -6763,6 +6806,24 @@ function FieldProjectAssignmentPanel({
     setDraftFieldUserIds(getFieldUserIdsAssignedToProject(fieldUsers, myJobsByUser, selectedProject.id));
   }, [fieldUsers, myJobsByUser, selectedProject, selectedProjectId]);
 
+  useEffect(() => {
+    if (!requestedProjectId || !projects.some((project) => project.id === requestedProjectId)) {
+      return;
+    }
+
+    setSelectedProjectId(requestedProjectId);
+
+    if (detailsRef.current) {
+      detailsRef.current.open = true;
+      window.requestAnimationFrame(() => {
+        detailsRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start"
+        });
+      });
+    }
+  }, [projects, requestedProjectId, requestKey]);
+
   function toggleFieldUser(userId: string) {
     setDraftFieldUserIds((current) =>
       current.includes(userId) ? current.filter((candidate) => candidate !== userId) : [...current, userId]
@@ -6774,7 +6835,7 @@ function FieldProjectAssignmentPanel({
   }
 
   return (
-    <details className="panel dashboard-field-access-panel">
+    <details className="panel dashboard-field-access-panel" ref={detailsRef}>
       <summary className="field-access-summary">
         <span>
           <strong>Field Access</strong>

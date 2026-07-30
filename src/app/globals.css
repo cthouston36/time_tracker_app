@@ -4150,6 +4150,42 @@ a.daily-report-procore-status:hover {
   font-weight: 700;
 }
 
+.dashboard-weekly-calendar-job {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.dashboard-weekly-calendar-job > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.field-assignment-count-button {
+  align-items: center;
+  background: var(--panel-soft);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--foreground);
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 800;
+  gap: 4px;
+  min-height: 28px;
+  padding: 4px 8px;
+}
+
+.field-assignment-count-button:hover,
+.field-assignment-count-button:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent);
+  outline: 0;
+}
+
 .status-badge {
   font-size: 0.82rem;
   justify-content: center;
