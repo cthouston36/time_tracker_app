@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { userCanAccessProjectId } from "@/lib/auth/project-access";
+import { requestUserCanAccessProjectId } from "@/lib/auth/project-access-server";
 import { getCurrentUser } from "@/lib/auth/session";
 import { readJobImageUploads } from "@/lib/job-image-store";
 import { getProjects } from "@/lib/procore/projects";
@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Provide projectId and date." }, { status: 400 });
   }
 
-  if (!userCanAccessProjectId(user, projectId, await getProjects())) {
+  if (!(await requestUserCanAccessProjectId(user, projectId, await getProjects()))) {
     return NextResponse.json({ error: "You do not have access to load images for this project." }, { status: 403 });
   }
 

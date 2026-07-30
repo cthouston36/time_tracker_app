@@ -219,6 +219,12 @@ type AdminUsersResponse = {
   users?: ManagedAppUser[];
 };
 
+type FieldUsersResponse = {
+  databaseConfigured?: boolean;
+  error?: string;
+  users?: AuthUser[];
+};
+
 type AdminClearStagingDataResponse = {
   cleared?: Record<string, unknown>;
   databaseConfigured?: boolean;
@@ -737,6 +743,9 @@ export function TimeAllocationWorkspace() {
   const [entryNotice, setEntryNotice] = useState("");
   const [adminUsers, setAdminUsers] = useState<ManagedAppUser[]>([]);
   const [adminUsersNotice, setAdminUsersNotice] = useState("");
+  const [fieldUsers, setFieldUsers] = useState<AuthUser[]>([]);
+  const [fieldAssignmentNotice, setFieldAssignmentNotice] = useState<{ message: string; status: "success" | "error" } | null>(null);
+  const [savingFieldAssignmentUserId, setSavingFieldAssignmentUserId] = useState("");
   const [adminPasswordResetToken, setAdminPasswordResetToken] = useState<PasswordResetResponse | null>(null);
   const [adminUserForm, setAdminUserForm] = useState<AdminUserFormState>(() => createEmptyAdminUserForm());
   const [editingAdminUserId, setEditingAdminUserId] = useState("");
@@ -770,8 +779,8 @@ export function TimeAllocationWorkspace() {
     [allProjects, projectArchiveById, projectBlacklistById]
   );
   const projects = useMemo(
-    () => (currentUser ? getAccessibleProjectsForUser(currentUser, activeProjects) : []),
-    [activeProjects, currentUser]
+    () => (currentUser ? getAccessibleProjectsForUser(currentUser, activeProjects, { assignedProjectIdsByUser: myJobsByUser }) : []),
+    [activeProjects, currentUser, myJobsByUser]
   );
   const visibleProjectIds = useMemo(() => new Set(projects.map((project) => project.id)), [projects]);
   const reportEntries = entries.filter((entry) => visibleProjectIds.has(entry.projectId));
@@ -945,7 +954,7 @@ export function TimeAllocationWorkspace() {
     dailyReportModalOpen ||
     queuedJobImages.length > 0;
   const userIsOffline = networkStatus.checked && !networkStatus.online;
-  const currentUserCanManageMyProjects = currentUser?.role === "standard" || currentUser?.role === "admin";
+  const currentUserCanManageMyProjects = currentUser?.role === "admin";
 
   function shouldBlockOfflineAction(setNotice: (message: string) => void) {
     if (!userIsOffline) {
@@ -1389,6 +1398,40 @@ export function TimeAllocationWorkspace() {
     setEditingAdminUserId("");
     setClearingStagingData(false);
     setAdminMaintenanceNotice(null);
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (!currentUser || !canAccessReports(currentUser)) {
+      setFieldUsers([]);
+      setFieldAssignmentNotice(null);
+      setSavingFieldAssignmentUserId("");
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadFieldUsers() {
+      try {
+        const users = await loadAssignableFieldUsers();
+
+        if (!cancelled) {
+          setFieldUsers(users);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setFieldAssignmentNotice({
+            message: error instanceof Error ? error.message : "Unable to load Field users.",
+            status: "error"
+          });
+        }
+      }
+    }
+
+    void loadFieldUsers();
+
+    return () => {
+      cancelled = true;
+    };
   }, [currentUser]);
 
   useEffect(() => {
@@ -2348,6 +2391,35 @@ export function TimeAllocationWorkspace() {
     void saveDatabaseMyJobs(currentUser.id, uniqueJobIds).catch((error) => {
       setEntryNotice(error instanceof Error ? error.message : "My Projects saved locally, but did not sync.");
     });
+  }
+
+  async function saveFieldProjectAssignments(userId: string, projectIds: string[]) {
+    if (!currentUser || !canAccessReports(currentUser)) {
+      return;
+    }
+
+    setSavingFieldAssignmentUserId(userId);
+    setFieldAssignmentNotice(null);
+
+    try {
+      const assignedProjectIds = await saveDatabaseFieldProjectAssignments(userId, projectIds);
+
+      setMyJobsByUser((current) => ({
+        ...current,
+        [userId]: assignedProjectIds
+      }));
+      setFieldAssignmentNotice({
+        message: "Field project access updated.",
+        status: "success"
+      });
+    } catch (error) {
+      setFieldAssignmentNotice({
+        message: error instanceof Error ? error.message : "Unable to save Field project access.",
+        status: "error"
+      });
+    } finally {
+      setSavingFieldAssignmentUserId("");
+    }
   }
 
   function toggleProjectBlacklist(projectId: string, blacklisted: boolean) {
@@ -5166,8 +5238,13 @@ export function TimeAllocationWorkspace() {
             dailyReportsByKey={dailyReportsByKey}
             daySubmissions={daySubmissions}
             entries={entries}
+            fieldAssignmentNotice={fieldAssignmentNotice}
+            fieldUsers={fieldUsers}
+            myJobsByUser={myJobsByUser}
             onOpenDay={openDailyEntry}
+            onSaveFieldAssignments={saveFieldProjectAssignments}
             projects={projects}
+            savingFieldAssignmentUserId={savingFieldAssignmentUserId}
           />
         ) : viewMode === "entry" ? (
           <section className="allocation-grid entry-allocation-grid">
@@ -6043,8 +6120,13 @@ function DashboardView({
   dailyReportsByKey,
   daySubmissions,
   entries,
+  fieldAssignmentNotice,
+  fieldUsers,
+  myJobsByUser,
   onOpenDay,
-  projects
+  onSaveFieldAssignments,
+  projects,
+  savingFieldAssignmentUserId
 }: {
   adminTools?: ReactNode;
   currentUser: AuthUser;
@@ -6052,8 +6134,13 @@ function DashboardView({
   dailyReportsByKey: DailyReportsByKey;
   daySubmissions: DaySubmissionsByKey;
   entries: AllocationEntry[];
+  fieldAssignmentNotice: { message: string; status: "success" | "error" } | null;
+  fieldUsers: AuthUser[];
+  myJobsByUser: MyJobsByUser;
   onOpenDay: (projectId: string, date: string) => void;
+  onSaveFieldAssignments: (userId: string, projectIds: string[]) => Promise<void>;
   projects: Project[];
+  savingFieldAssignmentUserId: string;
 }) {
   const [weekStart, setWeekStart] = useState(getWeekStart(todayInputValue()));
   const [statusMode, setStatusMode] = useState<CalendarStatusMode>(
@@ -6146,6 +6233,16 @@ function DashboardView({
             </div>
             <DashboardAttentionList rows={attentionRows} onOpenDay={onOpenDay} />
           </div>
+
+          <FieldProjectAssignmentPanel
+            currentUser={currentUser}
+            fieldUsers={fieldUsers}
+            myJobsByUser={myJobsByUser}
+            notice={fieldAssignmentNotice}
+            onSaveAssignments={onSaveFieldAssignments}
+            projects={sortProjectsByName(projects)}
+            savingUserId={savingFieldAssignmentUserId}
+          />
         </div>
 
         {currentUser.role === "admin" && adminTools ? (
@@ -6323,6 +6420,139 @@ function DashboardAttentionList({
           ) : null}
         </div>
       ))}
+    </div>
+  );
+}
+
+function FieldProjectAssignmentPanel({
+  currentUser,
+  fieldUsers,
+  myJobsByUser,
+  notice,
+  onSaveAssignments,
+  projects,
+  savingUserId
+}: {
+  currentUser: AuthUser;
+  fieldUsers: AuthUser[];
+  myJobsByUser: MyJobsByUser;
+  notice: { message: string; status: "success" | "error" } | null;
+  onSaveAssignments: (userId: string, projectIds: string[]) => Promise<void>;
+  projects: Project[];
+  savingUserId: string;
+}) {
+  const [selectedUserId, setSelectedUserId] = useState("");
+  const [projectSearch, setProjectSearch] = useState("");
+  const [draftProjectIds, setDraftProjectIds] = useState<string[]>([]);
+  const selectedUser = fieldUsers.find((user) => user.id === selectedUserId) ?? fieldUsers[0];
+  const assignableProjectIds = useMemo(() => new Set(projects.map((project) => project.id)), [projects]);
+  const assignedProjectIds = selectedUser
+    ? (myJobsByUser[selectedUser.id] ?? []).filter((projectId) => assignableProjectIds.has(projectId))
+    : [];
+  const draftProjectIdSet = useMemo(() => new Set(draftProjectIds), [draftProjectIds]);
+  const filteredProjects = useMemo(() => filterProjectsBySearch(projects, projectSearch), [projectSearch, projects]);
+  const hasChanges = selectedUser ? !sameStringSet(assignedProjectIds, draftProjectIds) : false;
+
+  useEffect(() => {
+    if (!selectedUser) {
+      setSelectedUserId("");
+      setDraftProjectIds([]);
+      return;
+    }
+
+    if (selectedUser.id !== selectedUserId) {
+      setSelectedUserId(selectedUser.id);
+    }
+
+    setDraftProjectIds((myJobsByUser[selectedUser.id] ?? []).filter((projectId) => assignableProjectIds.has(projectId)));
+  }, [assignableProjectIds, myJobsByUser, selectedUser, selectedUserId]);
+
+  function toggleProject(projectId: string) {
+    setDraftProjectIds((current) =>
+      current.includes(projectId) ? current.filter((candidate) => candidate !== projectId) : [...current, projectId]
+    );
+  }
+
+  if (currentUser.role === "standard") {
+    return null;
+  }
+
+  return (
+    <div className="panel dashboard-field-access-panel">
+      <div className="panel-heading">
+        <div>
+          <h2>Field Access</h2>
+          <span className="dashboard-panel-meta">Assign Field users to jobs they can enter and upload against.</span>
+        </div>
+        {selectedUser ? (
+          <span className="dashboard-panel-meta">
+            {draftProjectIds.length} assigned project{draftProjectIds.length === 1 ? "" : "s"}
+          </span>
+        ) : null}
+      </div>
+
+      {notice ? <div className={notice.status === "error" ? "inline-alert" : "success-alert"}>{notice.message}</div> : null}
+
+      {fieldUsers.length === 0 ? (
+        <EmptyState icon={Users} title="No Field users available">
+          Create active Field users before assigning project access.
+        </EmptyState>
+      ) : projects.length === 0 ? (
+        <EmptyState icon={Inbox} title="No assignable projects">
+          Projects you can assign will appear here after sync and access setup.
+        </EmptyState>
+      ) : (
+        <div className="field-access-layout">
+          <div className="field-access-controls">
+            <label className="field-group">
+              <span>Field User</span>
+              <select value={selectedUser?.id ?? ""} onChange={(event) => setSelectedUserId(event.target.value)}>
+                {fieldUsers.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {formatUserName(user)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field-group">
+              <span>Find Project</span>
+              <input
+                placeholder="Search job number or name"
+                value={projectSearch}
+                onChange={(event) => setProjectSearch(event.target.value)}
+              />
+            </label>
+          </div>
+
+          <div className="field-access-project-list">
+            {filteredProjects.map((project) => (
+              <label className="field-access-project-row" key={project.id}>
+                <input checked={draftProjectIdSet.has(project.id)} onChange={() => toggleProject(project.id)} type="checkbox" />
+                <span>
+                  <strong>{project.name}</strong>
+                  {project.netSuiteProjectManagerName ? <small>PM: {project.netSuiteProjectManagerName}</small> : null}
+                </span>
+              </label>
+            ))}
+            {filteredProjects.length === 0 ? <EmptyState title="No matching projects" /> : null}
+          </div>
+
+          <div className="field-access-actions">
+            <span className="field-note">
+              PMs can only assign projects tied to their NetSuite Project Manager record.
+            </span>
+            <button
+              className="primary-button prominent-action"
+              disabled={!selectedUser || !hasChanges || savingUserId === selectedUser.id}
+              onClick={() => selectedUser && void onSaveAssignments(selectedUser.id, draftProjectIds)}
+              type="button"
+            >
+              {savingUserId === selectedUser?.id ? <InlineSpinner /> : <Save aria-hidden="true" size={18} />}
+              {savingUserId === selectedUser?.id ? "Saving..." : "Save Field Access"}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -11451,6 +11681,30 @@ function sortProjectsByName(projects: unknown) {
   );
 }
 
+function filterProjectsBySearch(projects: Project[], search: string) {
+  const normalizedSearch = search.trim().toLowerCase();
+
+  if (!normalizedSearch) {
+    return projects;
+  }
+
+  return projects.filter((project) =>
+    [project.name, project.id, project.netSuiteProjectId, project.procoreProjectId].some(
+      (value) => typeof value === "string" && value.toLowerCase().includes(normalizedSearch)
+    )
+  );
+}
+
+function sameStringSet(left: string[], right: string[]) {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  const rightSet = new Set(right);
+
+  return left.every((value) => rightSet.has(value));
+}
+
 function normalizeProjectList(projects: unknown): Project[] {
   if (!Array.isArray(projects)) {
     return [];
@@ -12220,6 +12474,40 @@ async function saveDatabaseMyJobs(userId: string, projectIds: string[]) {
   if (!response.ok || data.ok === false) {
     throw new Error(data.error ?? "Unable to save My Projects.");
   }
+}
+
+async function loadAssignableFieldUsers() {
+  const response = await fetch("/api/field-users", {
+    cache: "no-store"
+  });
+  const data = (await readApiJson(response)) as FieldUsersResponse;
+
+  if (!response.ok || data.databaseConfigured === false) {
+    throw new Error(data.error ?? "Unable to load Field users.");
+  }
+
+  return data.users ?? [];
+}
+
+async function saveDatabaseFieldProjectAssignments(userId: string, projectIds: string[]) {
+  const response = await fetch("/api/project-controls", {
+    body: JSON.stringify({
+      action: "assign_field_projects",
+      projectIds,
+      userId
+    }),
+    headers: {
+      "Content-Type": "application/json"
+    },
+    method: "PATCH"
+  });
+  const data = (await readApiJson(response)) as { assignedProjectIds?: string[]; error?: string; ok?: boolean };
+
+  if (!response.ok || data.ok === false) {
+    throw new Error(data.error ?? "Unable to save Field project access.");
+  }
+
+  return data.assignedProjectIds ?? projectIds;
 }
 
 async function saveDatabaseProjectBlacklist(projectId: string, blacklisted: boolean) {

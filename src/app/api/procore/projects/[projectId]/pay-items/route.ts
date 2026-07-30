@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { userCanAccessProjectId } from "@/lib/auth/project-access";
+import { requestUserCanAccessProjectId } from "@/lib/auth/project-access-server";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getCachedProjectPayItems, getProjects } from "@/lib/procore/projects";
 
@@ -19,7 +19,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
   const { projectId } = await context.params;
 
   try {
-    if (!userCanAccessProjectId(user, projectId, await getProjects())) {
+    if (!(await requestUserCanAccessProjectId(user, projectId, await getProjects()))) {
       return NextResponse.json({ error: "You do not have access to load pay items for this project." }, { status: 403 });
     }
 

@@ -2141,10 +2141,19 @@ a.daily-report-procore-status:hover {
   color: #c8f4da;
 }
 
+.dashboard-metric-card.success span,
+.dashboard-metric-card.error span {
+  color: rgb(255 255 255 / 0.76);
+}
+
 .dashboard-metric-card.warning {
   background: var(--warning-bg);
   border-color: var(--warning-line);
   color: var(--warning-text);
+}
+
+.dashboard-metric-card.warning span {
+  color: #7a4a00;
 }
 
 .dashboard-metric-card.error {
@@ -2236,6 +2245,67 @@ a.daily-report-procore-status:hover {
 .dashboard-attention-row span {
   color: var(--muted);
   font-size: 0.84rem;
+}
+
+.dashboard-field-access-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.field-access-layout {
+  display: grid;
+  gap: 12px;
+}
+
+.field-access-controls {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(180px, 0.8fr) minmax(220px, 1fr);
+}
+
+.field-access-project-list {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.field-access-project-row {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto minmax(0, 1fr);
+  padding: 10px;
+}
+
+.field-access-project-row:last-child {
+  border-bottom: 0;
+}
+
+.field-access-project-row span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.field-access-project-row strong,
+.field-access-project-row small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.field-access-project-row small {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.field-access-actions {
+  align-items: center;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
 }
 
 .sync-summary {
@@ -4224,6 +4294,15 @@ a.daily-report-procore-status:hover {
     grid-template-columns: 1fr;
   }
 
+  .field-access-controls,
+  .field-access-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .field-access-actions .primary-button {
+    width: 100%;
+  }
+
   .daily-status-item {
     min-height: 32px;
   }
@@ -5201,6 +5280,15 @@ a.daily-report-procore-status:hover {
   .dashboard-calendar-controls {
     align-items: stretch;
     grid-template-columns: 1fr;
+  }
+
+  .field-access-controls,
+  .field-access-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .field-access-actions .primary-button {
+    width: 100%;
   }
 
   .dashboard-attention-row {

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getProjectAccessScopeForUser, userCanAccessProjectId } from "@/lib/auth/project-access";
+import { getProjectAccessScopeForRequestUser, requestUserCanAccessProjectId } from "@/lib/auth/project-access-server";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getAuditRequestMetadata, recordAuditLog } from "@/lib/audit-log";
 import {
@@ -33,7 +33,7 @@ export async function GET() {
   }
 
   const projects = await getProjects();
-  const projectAccessScope = getProjectAccessScopeForUser(user, projects);
+  const projectAccessScope = await getProjectAccessScopeForRequestUser(user, projects);
 
   return NextResponse.json({
     crewDirectory: crewData.crewDirectory,
@@ -106,7 +106,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Missing crew member." }, { status: 400 });
   }
 
-  if (body.action === "add_to_project" && !userCanAccessProjectId(user, body.projectId ?? "", await getProjects())) {
+  if (body.action === "add_to_project" && !(await requestUserCanAccessProjectId(user, body.projectId ?? "", await getProjects()))) {
     return NextResponse.json({ error: "You do not have access to add crew to this project." }, { status: 403 });
   }
 
@@ -219,7 +219,7 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: "Provide projectId and crewMemberId." }, { status: 400 });
   }
 
-  if (!userCanAccessProjectId(user, projectId, await getProjects())) {
+  if (!(await requestUserCanAccessProjectId(user, projectId, await getProjects()))) {
     return NextResponse.json({ error: "You do not have access to remove crew from this project." }, { status: 403 });
   }
 

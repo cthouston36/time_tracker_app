@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getProjectAccessScopeForUser, userCanAccessProjectId } from "@/lib/auth/project-access";
+import { getProjectAccessScopeForRequestUser, requestUserCanAccessProjectId } from "@/lib/auth/project-access-server";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getAuditRequestMetadata, recordAuditLog } from "@/lib/audit-log";
 import {
@@ -35,7 +35,7 @@ export async function GET() {
   }
 
   const projects = await getProjects();
-  const projectAccessScope = getProjectAccessScopeForUser(user, projects);
+  const projectAccessScope = await getProjectAccessScopeForRequestUser(user, projects);
 
   return NextResponse.json({
     ...filterDayRecordsByProjectIds(dayRecords, projectAccessScope),
@@ -111,7 +111,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "Provide projectId and date." }, { status: 400 });
   }
 
-  if (!userCanAccessProjectId(user, projectId, await getProjects())) {
+  if (!(await requestUserCanAccessProjectId(user, projectId, await getProjects()))) {
     return NextResponse.json({ error: "You do not have access to save records for this project." }, { status: 403 });
   }
 

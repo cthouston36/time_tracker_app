@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAccessibleProjectsForUser } from "@/lib/auth/project-access";
 import { getCurrentUser } from "@/lib/auth/session";
+import { readProjectControls } from "@/lib/project-controls-store";
 import { getProjectCache } from "@/lib/procore/projects";
 
 export async function GET() {
@@ -11,12 +12,16 @@ export async function GET() {
       return NextResponse.json({ error: "Sign in before loading projects." }, { status: 401 });
     }
 
+    const projectControls = await readProjectControls();
+    const assignedProjectIdsByUser = projectControls?.myJobsByUser ?? {};
     const cacheOptions =
       user.role === "project_manager" && user.netSuiteProjectManagerId
         ? { netSuiteProjectManagerId: user.netSuiteProjectManagerId }
-        : {};
+        : user.role === "standard"
+          ? { projectIds: assignedProjectIdsByUser[user.id] ?? [] }
+          : {};
     const cache = await getProjectCache(cacheOptions);
-    const projects = getAccessibleProjectsForUser(user, cache?.projects ?? []);
+    const projects = getAccessibleProjectsForUser(user, cache?.projects ?? [], { assignedProjectIdsByUser });
 
     return NextResponse.json({
       projects,

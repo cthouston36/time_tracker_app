@@ -16,6 +16,7 @@ export type ProcoreCache = {
 
 export type ProcoreCacheReadOptions = {
   netSuiteProjectManagerId?: string;
+  projectIds?: string[];
 };
 
 export async function readProcoreCache(options: ProcoreCacheReadOptions = {}) {
@@ -32,12 +33,12 @@ export async function readProcoreCache(options: ProcoreCacheReadOptions = {}) {
       return readProcoreTablesCache(options);
     }
 
-    return databaseCache;
+    return filterProcoreCache(databaseCache, options);
   }
 
   try {
     const contents = await readFile(CACHE_FILE, "utf8");
-    return JSON.parse(contents) as ProcoreCache;
+    return filterProcoreCache(JSON.parse(contents) as ProcoreCache, options);
   } catch {
     return null;
   }
@@ -76,32 +77,28 @@ async function readProcoreTablesCache(options: ProcoreCacheReadOptions = {}) {
   await ensureProcoreCacheTables();
 
   const netSuiteProjectManagerId = options.netSuiteProjectManagerId?.trim() ?? "";
-  const projectRows = netSuiteProjectManagerId
-    ? ((await sql`
-        select
-          id,
-          name,
-          netsuite_project_id,
-          netsuite_project_manager_id,
-          netsuite_project_manager_name,
-          procore_project_id,
-          source_system
-        from procore_projects
-        where netsuite_project_manager_id = ${netSuiteProjectManagerId}
-        order by lower(name), id
-      `) as ProcoreProjectRow[])
-    : ((await sql`
-        select
-          id,
-          name,
-          netsuite_project_id,
-          netsuite_project_manager_id,
-          netsuite_project_manager_name,
-          procore_project_id,
-          source_system
-        from procore_projects
-        order by lower(name), id
-      `) as ProcoreProjectRow[]);
+  const filteredProjectIds = normalizeProjectIdFilter(options.projectIds);
+  const hasProjectIdFilter = Array.isArray(options.projectIds);
+  const projectRows = (await sql`
+    select
+      id,
+      name,
+      netsuite_project_id,
+      netsuite_project_manager_id,
+      netsuite_project_manager_name,
+      procore_project_id,
+      source_system
+    from procore_projects
+    where (${!netSuiteProjectManagerId} or netsuite_project_manager_id = ${netSuiteProjectManagerId})
+      and (
+        ${!hasProjectIdFilter}
+        or id in (
+          select value
+          from jsonb_array_elements_text(${JSON.stringify(filteredProjectIds)}::jsonb)
+        )
+      )
+    order by lower(name), id
+  `) as ProcoreProjectRow[];
 
   const syncStateRows = (await sql`
     select synced_at
@@ -111,7 +108,7 @@ async function readProcoreTablesCache(options: ProcoreCacheReadOptions = {}) {
   `) as ProcoreSyncStateRow[];
 
   if (projectRows.length === 0) {
-    if (!netSuiteProjectManagerId) {
+    if (!netSuiteProjectManagerId && !hasProjectIdFilter) {
       return null;
     }
 
@@ -165,6 +162,32 @@ async function readProcoreTablesCache(options: ProcoreCacheReadOptions = {}) {
       sourceSystem: readSourceSystem(project.source_system)
     }))
   } satisfies ProcoreCache;
+}
+
+function filterProcoreCache(cache: ProcoreCache | null, options: ProcoreCacheReadOptions) {
+  if (!cache) {
+    return null;
+  }
+
+  const projectIds = normalizeProjectIdFilter(options.projectIds);
+  const projectIdSet = new Set(projectIds);
+  const hasProjectIdFilter = Array.isArray(options.projectIds);
+  const netSuiteProjectManagerId = options.netSuiteProjectManagerId?.trim() ?? "";
+
+  if (!hasProjectIdFilter && !netSuiteProjectManagerId) {
+    return cache;
+  }
+
+  return {
+    ...cache,
+    projects: cache.projects.filter((project) => {
+      if (hasProjectIdFilter && !projectIdSet.has(project.id)) {
+        return false;
+      }
+
+      return !netSuiteProjectManagerId || project.netSuiteProjectManagerId === netSuiteProjectManagerId;
+    })
+  };
 }
 
 async function writeProcoreTablesCache(projects: Project[], syncedAt: string) {
@@ -435,6 +458,10 @@ function normalizePayItems(payItems: PayItem[] | undefined): PayItem[] {
   }
 
   return normalizedPayItems;
+}
+
+function normalizeProjectIdFilter(projectIds: string[] | undefined) {
+  return Array.from(new Set((projectIds ?? []).map(readString).filter(Boolean)));
 }
 
 function readString(value: unknown) {

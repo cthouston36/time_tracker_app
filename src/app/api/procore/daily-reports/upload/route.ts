@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { userCanAccessProjectId } from "@/lib/auth/project-access";
+import { requestUserCanAccessProjectId } from "@/lib/auth/project-access-server";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getAuditRequestMetadata, recordAuditLog } from "@/lib/audit-log";
 import { uploadDailyReportToProcore } from "@/lib/procore/documents";
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Provide a valid project." }, { status: 400 });
     }
 
-    if (!userCanAccessProjectId(user, projectId, projects)) {
+    if (!(await requestUserCanAccessProjectId(user, projectId, projects))) {
       return NextResponse.json({ error: "You do not have access to upload daily reports for this project." }, { status: 403 });
     }
 

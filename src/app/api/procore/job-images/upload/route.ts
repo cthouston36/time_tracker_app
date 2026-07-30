@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuditRequestMetadata, recordAuditLog } from "@/lib/audit-log";
-import { userCanAccessProjectId } from "@/lib/auth/project-access";
+import { requestUserCanAccessProjectId } from "@/lib/auth/project-access-server";
 import { getCurrentUser } from "@/lib/auth/session";
 import { countJobImageUploads, upsertJobImageUploads, type StoredJobImageUpload } from "@/lib/job-image-store";
 import { uploadJobImagesToProcore, type JobImageUploadInput } from "@/lib/procore/documents";
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Provide a valid project." }, { status: 400 });
     }
 
-    if (!userCanAccessProjectId(user, project.id, projects)) {
+    if (!(await requestUserCanAccessProjectId(user, project.id, projects))) {
       return NextResponse.json({ error: "You do not have access to upload images for this project." }, { status: 403 });
     }
 

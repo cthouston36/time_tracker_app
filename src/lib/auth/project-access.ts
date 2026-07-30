@@ -1,6 +1,10 @@
 import type { AuthUser } from "@/lib/auth/types";
 import type { Project } from "@/lib/procore/types";
 
+export type ProjectAccessOptions = {
+  assignedProjectIdsByUser?: Record<string, string[]>;
+};
+
 export function canAccessReports(user: AuthUser) {
   return user.role === "admin" || user.role === "executive" || user.role === "project_manager";
 }
@@ -9,9 +13,16 @@ export function getReportProjectsForUser(user: AuthUser, projects: Project[]) {
   return canAccessReports(user) ? projects : [];
 }
 
-export function getProjectAccessScopeForUser(user: AuthUser, projects: Project[]) {
-  if (user.role !== "project_manager") {
+export function getProjectAccessScopeForUser(user: AuthUser, projects: Project[], options: ProjectAccessOptions = {}) {
+  if (user.role === "admin" || user.role === "executive") {
     return null;
+  }
+
+  if (user.role === "standard") {
+    const assignedProjectIds = options.assignedProjectIdsByUser?.[user.id] ?? [];
+    const projectIds = new Set(projects.map((project) => project.id));
+
+    return assignedProjectIds.filter((projectId) => projectIds.has(projectId));
   }
 
   const netSuiteProjectManagerId = user.netSuiteProjectManagerId?.trim();
@@ -25,8 +36,8 @@ export function getProjectAccessScopeForUser(user: AuthUser, projects: Project[]
     .map((project) => project.id);
 }
 
-export function getAccessibleProjectsForUser(user: AuthUser, projects: Project[]) {
-  const projectAccessScope = getProjectAccessScopeForUser(user, projects);
+export function getAccessibleProjectsForUser(user: AuthUser, projects: Project[], options: ProjectAccessOptions = {}) {
+  const projectAccessScope = getProjectAccessScopeForUser(user, projects, options);
 
   if (projectAccessScope === null) {
     return projects;
@@ -37,7 +48,12 @@ export function getAccessibleProjectsForUser(user: AuthUser, projects: Project[]
   return projects.filter((project) => accessibleProjectIds.has(project.id));
 }
 
-export function userCanAccessProjectId(user: AuthUser, projectId: string, projects: Project[]) {
+export function userCanAccessProjectId(
+  user: AuthUser,
+  projectId: string,
+  projects: Project[],
+  options: ProjectAccessOptions = {}
+) {
   if (!projectId) {
     return false;
   }
@@ -46,9 +62,9 @@ export function userCanAccessProjectId(user: AuthUser, projectId: string, projec
     return false;
   }
 
-  if (user.role !== "project_manager") {
+  if (user.role === "admin" || user.role === "executive") {
     return true;
   }
 
-  return getAccessibleProjectsForUser(user, projects).some((project) => project.id === projectId);
+  return getAccessibleProjectsForUser(user, projects, options).some((project) => project.id === projectId);
 }

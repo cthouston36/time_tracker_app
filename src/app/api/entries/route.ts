@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getProjectAccessScopeForUser, userCanAccessProjectId } from "@/lib/auth/project-access";
+import { getProjectAccessScopeForRequestUser, requestUserCanAccessProjectId } from "@/lib/auth/project-access-server";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getAuditRequestMetadata, recordAuditLog } from "@/lib/audit-log";
 import {
@@ -24,7 +24,7 @@ export async function GET() {
   }
 
   const projects = await getProjects();
-  const projectAccessScope = getProjectAccessScopeForUser(user, projects);
+  const projectAccessScope = await getProjectAccessScopeForRequestUser(user, projects);
   const entries =
     projectAccessScope === null
       ? await readAllocationEntries()
@@ -101,7 +101,9 @@ export async function POST(request: NextRequest) {
 
   const projects = await getProjects();
 
-  if (body.entries.some((entry) => !userCanAccessProjectId(user, entry.projectId, projects))) {
+  const inaccessibleEntry = await hasInaccessibleEntry(body.entries, user, projects);
+
+  if (inaccessibleEntry) {
     return NextResponse.json({ error: "You do not have access to save entries for one or more selected projects." }, { status: 403 });
   }
 
@@ -141,7 +143,7 @@ export async function DELETE(request: NextRequest) {
     const entries = await readAllocationEntries();
     const existingEntry = entries?.find((candidate) => candidate.id === entryId);
 
-    if (existingEntry && !userCanAccessProjectId(user, existingEntry.projectId, projects)) {
+    if (existingEntry && !(await requestUserCanAccessProjectId(user, existingEntry.projectId, projects))) {
       return NextResponse.json({ error: "You do not have access to delete this entry." }, { status: 403 });
     }
 
@@ -215,6 +217,20 @@ async function entryIsSubmitted(entryId: string) {
   }
 
   return entriesTouchSubmittedDay([entry]);
+}
+
+async function hasInaccessibleEntry(entries: AllocationEntry[], user: Awaited<ReturnType<typeof getCurrentUser>>, projects: Awaited<ReturnType<typeof getProjects>>) {
+  if (!user) {
+    return true;
+  }
+
+  for (const entry of entries) {
+    if (!(await requestUserCanAccessProjectId(user, entry.projectId, projects))) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function getDayKey(projectId: string, date: string) {

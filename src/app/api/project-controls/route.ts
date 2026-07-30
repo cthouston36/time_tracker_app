@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { canAccessReports, getAccessibleProjectsForUser } from "@/lib/auth/project-access";
 import { getCurrentUser } from "@/lib/auth/session";
+import { listAppUsers } from "@/lib/auth/users";
 import { getAuditRequestMetadata, recordAuditLog } from "@/lib/audit-log";
 import {
   insertSyncLogEntry,
@@ -13,6 +15,7 @@ import {
   type StoredProjectBlacklistById,
   type StoredSyncLogEntry
 } from "@/lib/project-controls-store";
+import { getProjects } from "@/lib/procore/projects";
 
 export async function GET() {
   const user = await getCurrentUser();
@@ -29,6 +32,31 @@ export async function GET() {
       myJobsByUser: {},
       projectArchiveById: {},
       projectBlacklistById: {},
+      syncLog: []
+    });
+  }
+
+  if (user.role !== "admin" && canAccessReports(user)) {
+    const allProjects = await getProjects();
+    const accessibleProjectIds = new Set(
+      getAccessibleProjectsForUser(user, allProjects, {
+        assignedProjectIdsByUser: projectControls.myJobsByUser
+      }).map((project) => project.id)
+    );
+    const scopedMyJobsByUser = Object.fromEntries(
+      Object.entries(projectControls.myJobsByUser)
+        .map(([userId, projectIds]) => [
+          userId,
+          projectIds.filter((projectId) => accessibleProjectIds.has(projectId))
+        ])
+        .filter(([, projectIds]) => projectIds.length > 0)
+    );
+
+    return NextResponse.json({
+      databaseConfigured: true,
+      myJobsByUser: scopedMyJobsByUser,
+      projectArchiveById: projectControls.projectArchiveById,
+      projectBlacklistById: projectControls.projectBlacklistById,
       syncLog: []
     });
   }
@@ -142,6 +170,73 @@ export async function PATCH(request: NextRequest) {
     }
 
     result = await replaceMyJobsForUser(userId, body.projectIds.filter((projectId) => typeof projectId === "string"));
+  } else if (body.action === "assign_field_projects") {
+    const userId = body.userId?.trim().toLowerCase() ?? "";
+
+    if (user.role !== "admin" && user.role !== "executive" && user.role !== "project_manager") {
+      return NextResponse.json({ error: "Only PM, Executive, or Admin users can assign Field projects." }, { status: 403 });
+    }
+
+    if (!userId || !Array.isArray(body.projectIds)) {
+      return NextResponse.json({ error: "Provide field userId and projectIds." }, { status: 400 });
+    }
+
+    const users = await listAppUsers();
+    const targetUser = users?.find((candidate) => candidate.id === userId);
+
+    if (!targetUser || targetUser.role !== "standard" || targetUser.active === false) {
+      return NextResponse.json({ error: "Select an active Field user." }, { status: 400 });
+    }
+
+    const projectControls = await readProjectControls();
+    const assignedProjectIdsByUser = projectControls?.myJobsByUser ?? {};
+    const allProjects = await getProjects();
+    const accessibleProjectIds = new Set(
+      getAccessibleProjectsForUser(user, allProjects, { assignedProjectIdsByUser }).map((project) => project.id)
+    );
+    const requestedProjectIds = Array.from(
+      new Set(body.projectIds.filter((projectId) => typeof projectId === "string").map((projectId) => projectId.trim()).filter(Boolean))
+    );
+
+    if (requestedProjectIds.some((projectId) => !accessibleProjectIds.has(projectId))) {
+      return NextResponse.json({ error: "You can only assign projects you can access." }, { status: 403 });
+    }
+
+    const existingProjectIds = assignedProjectIdsByUser[userId] ?? [];
+    const preservedProjectIds = existingProjectIds.filter((projectId) => !accessibleProjectIds.has(projectId));
+    const assignedProjectIds = Array.from(new Set([...preservedProjectIds, ...requestedProjectIds]));
+
+    result = await replaceMyJobsForUser(userId, assignedProjectIds);
+
+    if (result === null) {
+      return NextResponse.json({
+        databaseConfigured: false,
+        ok: true
+      });
+    }
+
+    if (!result) {
+      return NextResponse.json({ error: "Invalid field assignment payload." }, { status: 400 });
+    }
+
+    await recordAuditLog({
+      action: "field_user.projects_assigned",
+      actor: user,
+      metadata: {
+        assignedProjectCount: assignedProjectIds.length,
+        changedScopeProjectCount: requestedProjectIds.length,
+        preservedProjectCount: preservedProjectIds.length
+      },
+      targetId: userId,
+      targetType: "app_user",
+      ...getAuditRequestMetadata(request.headers)
+    });
+
+    return NextResponse.json({
+      assignedProjectIds,
+      databaseConfigured: true,
+      ok: true
+    });
   } else if (body.action === "set_blacklist") {
     const projectId = body.projectId?.trim() ?? "";
 
