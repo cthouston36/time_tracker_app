@@ -974,12 +974,7 @@ export function TimeAllocationWorkspace() {
     }
 
     if (viewMode === "calendar") {
-      setViewMode(currentUser.role === "standard" ? "entry" : "dashboard");
-      return;
-    }
-
-    if (currentUser.role === "standard" && viewMode === "dashboard") {
-      setViewMode("entry");
+      setViewMode("dashboard");
     }
   }, [currentUser, viewMode]);
 
@@ -1809,7 +1804,7 @@ export function TimeAllocationWorkspace() {
     }
 
     setCurrentUser(data.user);
-    setViewMode(getDefaultViewModeForUser(data.user));
+    setViewMode(getDefaultViewModeForUser());
     setLoginPassword("");
   }
 
@@ -4485,7 +4480,7 @@ export function TimeAllocationWorkspace() {
     );
   }
 
-  const userCanAccessDashboard = currentUser.role !== "standard";
+  const userCanAccessDashboard = true;
 
   const renderAdminToolsDrawer = () => (
     <details className="admin-tools-drawer">
@@ -6155,7 +6150,7 @@ function DashboardView({
 }) {
   const [weekStart, setWeekStart] = useState(getWeekStart(todayInputValue()));
   const [statusMode, setStatusMode] = useState<CalendarStatusMode>(
-    currentUser.role === "project_manager" ? "entry_status" : "daily_reports"
+    currentUser.role === "project_manager" || currentUser.role === "standard" ? "entry_status" : "daily_reports"
   );
   const weekDates = getWeekDates(weekStart);
   const entryDayKeys = useMemo(() => buildEntryDayKeySet(entries), [entries]);
@@ -6184,7 +6179,9 @@ function DashboardView({
         ? "Executive Dashboard"
         : isProjectManager
           ? "Project Manager Dashboard"
-          : "Dashboard";
+          : currentUser.role === "standard"
+            ? "Field Dashboard"
+            : "Dashboard";
   const dashboardScope =
     currentUser.role === "admin"
       ? "Company"
@@ -6219,7 +6216,7 @@ function DashboardView({
         <div className="dashboard-main-column">
           <div className="panel dashboard-calendar-panel">
             <div className="panel-heading">
-              <h2>{isProjectManager ? "My Project Calendar" : "Weekly Project Status"}</h2>
+              <h2>{currentUser.role === "standard" ? "Assigned Project Calendar" : isProjectManager ? "My Project Calendar" : "Weekly Project Status"}</h2>
               <span className="dashboard-panel-meta">{formatWeekRange(weekDates)}</span>
             </div>
             <DashboardWeeklyCalendar
@@ -14699,8 +14696,8 @@ function formatRole(role: AuthUser["role"]) {
   return "Field";
 }
 
-function getDefaultViewModeForUser(user: AuthUser): ViewMode {
-  return user.role === "standard" ? "entry" : "dashboard";
+function getDefaultViewModeForUser(): ViewMode {
+  return "dashboard";
 }
 
 function buildSyncStatus(prefix: string, summary: ProcoreSyncSummary | undefined) {
