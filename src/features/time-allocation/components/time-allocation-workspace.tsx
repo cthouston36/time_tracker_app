@@ -6209,6 +6209,10 @@ function DashboardView({
     .filter((row) => row.attentionScore > 0)
     .sort((left, right) => right.attentionScore - left.attentionScore || left.project.name.localeCompare(right.project.name))
     .slice(0, 8);
+  const executiveReviewItems = useMemo(
+    () => buildExecutiveReviewItems(attentionRows, productionAlerts),
+    [attentionRows, productionAlerts]
+  );
   const isProjectManager = currentUser.role === "project_manager";
   const isExecutive = currentUser.role === "executive";
   const canManageFieldAccess = currentUser.role === "admin" || currentUser.role === "project_manager";
@@ -6236,31 +6240,50 @@ function DashboardView({
         : isProjectManager
           ? "My Projects"
           : "Assigned Projects";
+  const dashboardMeta = isExecutive
+    ? [dashboardScope, `${projects.length} project${projects.length === 1 ? "" : "s"}`, `Review week ${formatWeekRange(weekDates)}`]
+    : [dashboardScope, `${projects.length} project${projects.length === 1 ? "" : "s"}`, `Week of ${formatDate(weekStart)}`];
 
   return (
     <section className="allocation-grid dashboard-view">
       <PageHeader
         icon={LayoutDashboard}
         kicker="Dashboard"
-        meta={[dashboardScope, `${projects.length} project${projects.length === 1 ? "" : "s"}`, `Week of ${formatDate(weekStart)}`]}
+        meta={dashboardMeta}
         title={dashboardTitle}
       />
 
-      <div className="dashboard-metrics">
-        <DashboardMetric label="Projects" value={String(projects.length)} />
-        <DashboardMetric label="Submitted Days" value={String(metrics.submittedEntryDays)} tone="success" />
-        <DashboardMetric label="Draft Days" value={String(metrics.draftEntryDays)} tone={metrics.draftEntryDays > 0 ? "warning" : "neutral"} />
-        <DashboardMetric label="Daily Reports" value={String(metrics.savedDailyReports)} tone={metrics.savedDailyReports > 0 ? "success" : "neutral"} />
-        <DashboardMetric
-          label="Procore Issues"
-          value={String(metrics.procoreAttentionCount)}
-          tone={metrics.procoreAttentionCount > 0 ? "error" : "success"}
+      {isExecutive ? (
+        <ExecutiveSummaryStrip
+          fieldAssignmentGapCount={fieldAssignmentRows.filter((row) => row.assignedUsers.length === 0).length}
+          issueProjectCount={attentionRows.length}
+          openIssueCount={attentionRows.reduce((total, row) => total + row.issues.length, 0)}
+          pmIssueCount={pmComplianceRows.length}
+          productionAlertCount={productionAlerts.length}
+          projectCount={projects.length}
         />
-      </div>
+      ) : (
+        <div className="dashboard-metrics">
+          <DashboardMetric label="Projects" value={String(projects.length)} />
+          <DashboardMetric label="Submitted Days" value={String(metrics.submittedEntryDays)} tone="success" />
+          <DashboardMetric label="Draft Days" value={String(metrics.draftEntryDays)} tone={metrics.draftEntryDays > 0 ? "warning" : "neutral"} />
+          <DashboardMetric label="Daily Reports" value={String(metrics.savedDailyReports)} tone={metrics.savedDailyReports > 0 ? "success" : "neutral"} />
+          <DashboardMetric
+            label="Procore Issues"
+            value={String(metrics.procoreAttentionCount)}
+            tone={metrics.procoreAttentionCount > 0 ? "error" : "success"}
+          />
+        </div>
+      )}
 
       {isExecutive ? (
-        <div className="dashboard-main-grid executive">
-          <div className="dashboard-main-column">
+        <div className="executive-dashboard-layout">
+          <div className="executive-dashboard-primary">
+            <ExecutiveReviewQueue items={executiveReviewItems} onOpenDay={onOpenDay} />
+            <PmComplianceRanking rows={pmComplianceRows} onOpenDay={onOpenDay} />
+          </div>
+
+          <div className="executive-dashboard-secondary">
             <ExecutiveProjectNavigator
               onOpenDay={onOpenDay}
               onQueryChange={setDashboardProjectQuery}
@@ -6268,29 +6291,16 @@ function DashboardView({
               rows={filteredDashboardProjectNavigationRows}
               totalRows={dashboardProjectNavigationRows.length}
             />
-            <ProductionPerformanceAlerts alerts={productionAlerts} onOpenDay={onOpenDay} />
-            <PmComplianceRanking rows={pmComplianceRows} onOpenDay={onOpenDay} />
-          </div>
-
-          <div className="dashboard-main-column">
-            <div className="panel dashboard-projects-panel">
-              <div className="panel-heading">
-                <h2>Dashboard Drilldowns</h2>
-                <span className="dashboard-panel-meta">{attentionRows.length} issue set{attentionRows.length === 1 ? "" : "s"}</span>
-              </div>
-              <DashboardAttentionList rows={attentionRows} onOpenDay={onOpenDay} />
-            </div>
-
-            <FieldAssignmentVisibilityPanel rows={fieldAssignmentRows} onOpenDay={onOpenDay} />
-
-            <FieldProjectAssignmentPanel
+            <ExecutiveFieldAccessTools
               currentUser={currentUser}
+              fieldAssignmentNotice={fieldAssignmentNotice}
+              fieldAssignmentRows={fieldAssignmentRows}
               fieldUsers={fieldUsers}
               myJobsByUser={myJobsByUser}
-              notice={fieldAssignmentNotice}
-              onSaveAssignments={onSaveFieldAssignments}
+              onOpenDay={onOpenDay}
+              onSaveFieldAssignments={onSaveFieldAssignments}
               projects={sortedProjects}
-              savingProjectId={savingFieldAssignmentProjectId}
+              savingFieldAssignmentProjectId={savingFieldAssignmentProjectId}
             />
           </div>
         </div>
@@ -6368,6 +6378,100 @@ function DashboardMetric({
   );
 }
 
+function ExecutiveSummaryStrip({
+  fieldAssignmentGapCount,
+  issueProjectCount,
+  openIssueCount,
+  pmIssueCount,
+  productionAlertCount,
+  projectCount
+}: {
+  fieldAssignmentGapCount: number;
+  issueProjectCount: number;
+  openIssueCount: number;
+  pmIssueCount: number;
+  productionAlertCount: number;
+  projectCount: number;
+}) {
+  return (
+    <div className="executive-summary-strip">
+      <div className="executive-summary-card primary">
+        <span>Needs Review</span>
+        <strong>{openIssueCount + productionAlertCount}</strong>
+        <small>
+          {issueProjectCount} project{issueProjectCount === 1 ? "" : "s"} with status issues
+        </small>
+      </div>
+      <div className={productionAlertCount > 0 ? "executive-summary-card warning" : "executive-summary-card success"}>
+        <span>Production Alerts</span>
+        <strong>{productionAlertCount}</strong>
+        <small>Recent performance and quantity checks</small>
+      </div>
+      <div className={pmIssueCount > 0 ? "executive-summary-card warning" : "executive-summary-card success"}>
+        <span>PM Follow-up</span>
+        <strong>{pmIssueCount}</strong>
+        <small>PMs with open issue-driven items</small>
+      </div>
+      <div className={fieldAssignmentGapCount > 0 ? "executive-summary-card warning" : "executive-summary-card success"}>
+        <span>Field Access Gaps</span>
+        <strong>{fieldAssignmentGapCount}</strong>
+        <small>
+          {projectCount} active project{projectCount === 1 ? "" : "s"} reviewed
+        </small>
+      </div>
+    </div>
+  );
+}
+
+function ExecutiveReviewQueue({
+  items,
+  onOpenDay
+}: {
+  items: ExecutiveReviewItem[];
+  onOpenDay: (projectId: string, date: string) => void;
+}) {
+  const visibleItems = items.slice(0, 12);
+
+  return (
+    <div className="panel executive-review-panel">
+      <div className="panel-heading">
+        <span>
+          <h2>Executive Review Queue</h2>
+          <small>Prioritized exceptions across production, daily reports, entries, and Procore uploads.</small>
+        </span>
+        <span className="dashboard-panel-meta">{items.length} item{items.length === 1 ? "" : "s"}</span>
+      </div>
+      {visibleItems.length === 0 ? (
+        <EmptyState icon={CheckCircle2} title="No open review items">
+          Current week status and recent production checks are clear.
+        </EmptyState>
+      ) : (
+        <div className="executive-review-list">
+          {visibleItems.map((item) => (
+            <div className={`executive-review-row ${item.tone}`} key={item.id}>
+              <span className="executive-review-type">{item.type}</span>
+              <span className="dashboard-row-heading">
+                <strong>{item.title}</strong>
+                <small>{item.detail}</small>
+              </span>
+              <span className="dashboard-row-meta">
+                <strong>{item.projectName}</strong>
+                <small>{item.meta}</small>
+              </span>
+              <button className="secondary-button compact-button" onClick={() => onOpenDay(item.projectId, item.openDate)} type="button">
+                Review
+              </button>
+            </div>
+          ))}
+          {items.length > visibleItems.length ? (
+            <span className="dashboard-list-note">Showing the highest-priority review items first.</span>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ExecutiveProjectNavigator({
   onOpenDay,
   onQueryChange,
@@ -6381,12 +6485,12 @@ function ExecutiveProjectNavigator({
   rows: DashboardProjectNavigationRow[];
   totalRows: number;
 }) {
-  const visibleRows = rows.slice(0, 12);
+  const visibleRows = rows.slice(0, 8);
 
   return (
-    <div className="panel dashboard-executive-panel">
+    <div className="panel dashboard-executive-panel executive-project-navigator">
       <div className="panel-heading">
-        <h2>Project Navigator</h2>
+        <h2>Find a Job</h2>
         <span className="dashboard-panel-meta">
           {rows.length} of {totalRows} project{totalRows === 1 ? "" : "s"}
         </span>
@@ -6433,43 +6537,53 @@ function ExecutiveProjectNavigator({
   );
 }
 
-function ProductionPerformanceAlerts({
-  alerts,
-  onOpenDay
+function ExecutiveFieldAccessTools({
+  currentUser,
+  fieldAssignmentNotice,
+  fieldAssignmentRows,
+  fieldUsers,
+  myJobsByUser,
+  onOpenDay,
+  onSaveFieldAssignments,
+  projects,
+  savingFieldAssignmentProjectId
 }: {
-  alerts: ProductionPerformanceAlert[];
+  currentUser: AuthUser;
+  fieldAssignmentNotice: { message: string; status: "success" | "error" } | null;
+  fieldAssignmentRows: FieldAssignmentVisibilityRow[];
+  fieldUsers: AuthUser[];
+  myJobsByUser: MyJobsByUser;
   onOpenDay: (projectId: string, date: string) => void;
+  onSaveFieldAssignments: (projectId: string, fieldUserIds: string[]) => Promise<void>;
+  projects: Project[];
+  savingFieldAssignmentProjectId: string;
 }) {
+  const missingAssignmentCount = fieldAssignmentRows.filter((row) => row.assignedUsers.length === 0).length;
+
   return (
-    <div className="panel dashboard-executive-panel">
-      <div className="panel-heading">
-        <h2>Production Performance Alerts</h2>
-        <span className="dashboard-panel-meta">{alerts.length} alert{alerts.length === 1 ? "" : "s"}</span>
+    <details className="panel executive-field-tools-panel">
+      <summary className="executive-section-summary">
+        <span>
+          <strong>Field Access Tools</strong>
+          <small>
+            {missingAssignmentCount} project{missingAssignmentCount === 1 ? "" : "s"} with no Field users assigned
+          </small>
+        </span>
+        <ChevronDown aria-hidden="true" size={18} />
+      </summary>
+      <div className="executive-field-tools-body">
+        <FieldAssignmentVisibilityPanel rows={fieldAssignmentRows} onOpenDay={onOpenDay} />
+        <FieldProjectAssignmentPanel
+          currentUser={currentUser}
+          fieldUsers={fieldUsers}
+          myJobsByUser={myJobsByUser}
+          notice={fieldAssignmentNotice}
+          onSaveAssignments={onSaveFieldAssignments}
+          projects={projects}
+          savingProjectId={savingFieldAssignmentProjectId}
+        />
       </div>
-      {alerts.length === 0 ? (
-        <EmptyState icon={CheckCircle2} title="No production alerts">
-          Recent pay item performance and quantity overrun checks are clear.
-        </EmptyState>
-      ) : (
-        <div className="dashboard-section-list">
-          {alerts.map((alert) => (
-            <div className={`dashboard-list-row ${alert.tone}`} key={alert.id}>
-              <span className="dashboard-row-heading">
-                <strong>{alert.projectName}</strong>
-                <small>{alert.payItemLabel}</small>
-              </span>
-              <span className="dashboard-row-meta">
-                <strong>{alert.message}</strong>
-                <small>{alert.detail}</small>
-              </span>
-              <button className="secondary-button compact-button" onClick={() => onOpenDay(alert.projectId, alert.openDate)} type="button">
-                Review
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+    </details>
   );
 }
 
@@ -6940,6 +7054,18 @@ type DashboardProjectNavigationRow = {
   project: Project;
 };
 
+type ExecutiveReviewItem = {
+  detail: string;
+  id: string;
+  meta: string;
+  openDate: string;
+  projectId: string;
+  projectName: string;
+  title: string;
+  tone: "error" | "neutral" | "warning";
+  type: "Production" | "Status";
+};
+
 type FieldAssignmentVisibilityRow = {
   assignedUsers: AuthUser[];
   project: Project;
@@ -7109,6 +7235,54 @@ function buildDashboardMetrics(rows: DashboardProjectWeekRow[]) {
       submittedEntryDays: 0
     }
   );
+}
+
+function buildExecutiveReviewItems(
+  attentionRows: DashboardProjectWeekRow[],
+  productionAlerts: ProductionPerformanceAlert[]
+): ExecutiveReviewItem[] {
+  const statusItems = attentionRows.flatMap((row) =>
+    row.issues.map((issue) => ({
+      detail: issue.detail,
+      id: `status-${issue.id}`,
+      meta: formatDate(issue.date),
+      openDate: issue.date,
+      projectId: row.project.id,
+      projectName: row.project.name,
+      title: issue.label,
+      tone: issue.tone,
+      type: "Status" as const
+    }))
+  );
+  const productionItems = productionAlerts.map((alert) => ({
+    detail: alert.payItemLabel,
+    id: `production-${alert.id}`,
+    meta: alert.detail,
+    openDate: alert.openDate,
+    projectId: alert.projectId,
+    projectName: alert.projectName,
+    title: alert.message,
+    tone: alert.tone,
+    type: "Production" as const
+  }));
+
+  return [...productionItems, ...statusItems].sort((left, right) => {
+    const toneOrder = getExecutiveReviewToneRank(right.tone) - getExecutiveReviewToneRank(left.tone);
+
+    return toneOrder || left.projectName.localeCompare(right.projectName) || left.title.localeCompare(right.title);
+  });
+}
+
+function getExecutiveReviewToneRank(tone: ExecutiveReviewItem["tone"]) {
+  if (tone === "error") {
+    return 2;
+  }
+
+  if (tone === "warning") {
+    return 1;
+  }
+
+  return 0;
 }
 
 function buildDashboardProjectNavigationRows(
