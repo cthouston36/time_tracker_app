@@ -1766,6 +1766,7 @@ export function TimeAllocationWorkspace() {
     }
 
     setCurrentUser(data.user);
+    setViewMode(getDefaultViewModeForUser(data.user));
     setLoginPassword("");
   }
 
@@ -1902,7 +1903,7 @@ export function TimeAllocationWorkspace() {
     setMergeSourceCrewMemberId("");
     setMergeTargetCrewMemberId("");
     setEditingCrewMember(null);
-    setViewMode("entry");
+    setViewMode("dashboard");
   }
 
   async function loadAdminUsers() {
@@ -4680,13 +4681,13 @@ export function TimeAllocationWorkspace() {
       <div
         className={[
           "workspace",
-          viewMode === "dashboard" ? "dashboard-workspace" : "",
-          jobSetupCollapsed && viewMode !== "dashboard" ? "job-setup-collapsed" : ""
+          viewMode !== "entry" ? "dashboard-workspace" : "",
+          jobSetupCollapsed && viewMode === "entry" ? "job-setup-collapsed" : ""
         ]
           .filter(Boolean)
           .join(" ")}
       >
-        {viewMode !== "dashboard" ? (
+        {viewMode === "entry" ? (
         <aside
           className={[
             "panel",
@@ -14391,6 +14392,10 @@ function formatRole(role: AuthUser["role"]) {
   }
 
   return "Field";
+}
+
+function getDefaultViewModeForUser(user: AuthUser): ViewMode {
+  return user.role === "standard" ? "entry" : "dashboard";
 }
 
 function buildSyncStatus(prefix: string, summary: ProcoreSyncSummary | undefined) {
