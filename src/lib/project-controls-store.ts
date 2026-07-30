@@ -216,6 +216,52 @@ export async function replaceMyJobsForUser(userId: string, projectIds: string[])
   return true;
 }
 
+export async function replaceFieldProjectAssignments(projectId: string, assignedUserIds: string[], managedUserIds: string[]) {
+  const sql = getSql();
+
+  if (!sql) {
+    return null;
+  }
+
+  await ensureProjectControlTables();
+
+  const normalizedProjectId = readString(projectId);
+  const normalizedAssignedUserIds = normalizeUserIds(assignedUserIds);
+  const normalizedManagedUserIds = normalizeUserIds(managedUserIds);
+
+  if (!normalizedProjectId) {
+    return false;
+  }
+
+  const queries = [];
+
+  if (normalizedManagedUserIds.length > 0) {
+    queries.push(sql`
+      delete from my_jobs
+      where project_id = ${normalizedProjectId}
+        and user_id in (
+          select value
+          from jsonb_array_elements_text(${JSON.stringify(normalizedManagedUserIds)}::jsonb)
+        )
+    `);
+  }
+
+  for (const userId of normalizedAssignedUserIds.filter((userId) => normalizedManagedUserIds.includes(userId))) {
+    queries.push(sql`
+      insert into my_jobs (user_id, project_id, updated_at)
+      values (${userId}, ${normalizedProjectId}, now())
+      on conflict (user_id, project_id) do update
+      set updated_at = now()
+    `);
+  }
+
+  if (queries.length > 0) {
+    await sql.transaction(queries);
+  }
+
+  return true;
+}
+
 export async function setProjectBlacklist(projectId: string, blacklisted: boolean) {
   const sql = getSql();
 
@@ -451,6 +497,10 @@ function normalizeProjectArchive(projectArchiveById: StoredProjectArchiveById) {
 
 function normalizeProjectIds(projectIds: string[]) {
   return Array.from(new Set(projectIds.map(readString).filter(Boolean)));
+}
+
+function normalizeUserIds(userIds: string[]) {
+  return Array.from(new Set(userIds.map((userId) => readString(userId).toLowerCase()).filter(Boolean)));
 }
 
 function normalizeSyncLog(syncLog: StoredSyncLogEntry[]) {

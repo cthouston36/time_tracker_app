@@ -6,6 +6,7 @@ import { getAuditRequestMetadata, recordAuditLog } from "@/lib/audit-log";
 import {
   insertSyncLogEntry,
   readProjectControls,
+  replaceFieldProjectAssignments,
   replaceMyJobsForUser,
   replaceProjectControls,
   setProjectArchive,
@@ -146,6 +147,7 @@ export async function PATCH(request: NextRequest) {
     action?: string;
     archived?: boolean;
     blacklisted?: boolean;
+    fieldUserIds?: unknown;
     projectId?: string;
     projectIds?: unknown;
     syncLogEntry?: StoredSyncLogEntry;
@@ -170,6 +172,77 @@ export async function PATCH(request: NextRequest) {
     }
 
     result = await replaceMyJobsForUser(userId, body.projectIds.filter((projectId) => typeof projectId === "string"));
+  } else if (body.action === "assign_project_field_users") {
+    const projectId = body.projectId?.trim() ?? "";
+
+    if (user.role !== "admin" && user.role !== "executive" && user.role !== "project_manager") {
+      return NextResponse.json({ error: "Only PM, Executive, or Admin users can assign Field projects." }, { status: 403 });
+    }
+
+    if (!projectId || !Array.isArray(body.fieldUserIds)) {
+      return NextResponse.json({ error: "Provide projectId and fieldUserIds." }, { status: 400 });
+    }
+
+    const users = await listAppUsers();
+    const activeFieldUsers = (users ?? []).filter((candidate) => candidate.role === "standard" && candidate.active !== false);
+    const activeFieldUserIds = new Set(activeFieldUsers.map((candidate) => candidate.id));
+    const requestedFieldUserIds = Array.from(
+      new Set(
+        body.fieldUserIds
+          .filter((fieldUserId) => typeof fieldUserId === "string")
+          .map((fieldUserId) => fieldUserId.trim().toLowerCase())
+          .filter(Boolean)
+      )
+    );
+
+    if (requestedFieldUserIds.some((fieldUserId) => !activeFieldUserIds.has(fieldUserId))) {
+      return NextResponse.json({ error: "Select only active Field users." }, { status: 400 });
+    }
+
+    const projectControls = await readProjectControls();
+    const assignedProjectIdsByUser = projectControls?.myJobsByUser ?? {};
+    const allProjects = await getProjects();
+    const accessibleProjectIds = new Set(
+      getAccessibleProjectsForUser(user, allProjects, { assignedProjectIdsByUser }).map((project) => project.id)
+    );
+
+    if (!accessibleProjectIds.has(projectId)) {
+      return NextResponse.json({ error: "You can only assign projects you can access." }, { status: 403 });
+    }
+
+    result = await replaceFieldProjectAssignments(
+      projectId,
+      requestedFieldUserIds,
+      activeFieldUsers.map((fieldUser) => fieldUser.id)
+    );
+
+    if (result === null) {
+      return NextResponse.json({
+        databaseConfigured: false,
+        ok: true
+      });
+    }
+
+    if (!result) {
+      return NextResponse.json({ error: "Invalid field assignment payload." }, { status: 400 });
+    }
+
+    await recordAuditLog({
+      action: "project.field_users_assigned",
+      actor: user,
+      metadata: {
+        fieldUserCount: requestedFieldUserIds.length
+      },
+      targetId: projectId,
+      targetType: "project",
+      ...getAuditRequestMetadata(request.headers)
+    });
+
+    return NextResponse.json({
+      assignedFieldUserIds: requestedFieldUserIds,
+      databaseConfigured: true,
+      ok: true
+    });
   } else if (body.action === "assign_field_projects") {
     const userId = body.userId?.trim().toLowerCase() ?? "";
 

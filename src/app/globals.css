@@ -3643,6 +3643,7 @@ a.daily-report-procore-status:hover {
 .report-table {
   border: 1px solid var(--line);
   border-radius: 8px;
+  font-size: 0.86rem;
   overflow: hidden;
 }
 
@@ -3870,6 +3871,7 @@ a.daily-report-procore-status:hover {
 .weekly-calendar {
   border: 1px solid var(--line);
   border-radius: 8px;
+  font-size: 0.86rem;
   overflow: auto;
 }
 
@@ -3906,7 +3908,7 @@ a.daily-report-procore-status:hover {
 .weekly-calendar-header {
   background: var(--field);
   color: var(--muted);
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-weight: 700;
   text-transform: uppercase;
 }
@@ -3917,7 +3919,9 @@ a.daily-report-procore-status:hover {
 }
 
 .status-badge {
+  font-size: 0.82rem;
   justify-content: center;
+  line-height: 1.25;
   text-align: center;
 }
 
@@ -3981,6 +3985,7 @@ a.daily-report-procore-status:hover {
 .report-controls {
   align-items: end;
   display: grid;
+  font-size: 0.88rem;
   gap: 12px;
   grid-template-columns: minmax(220px, 1.2fr) repeat(3, minmax(140px, 0.7fr)) minmax(190px, 1fr) minmax(150px, 0.7fr) auto;
   margin-bottom: 14px;
@@ -4043,6 +4048,7 @@ a.daily-report-procore-status:hover {
 .report-detail-controls {
   align-items: end;
   display: grid;
+  font-size: 0.88rem;
   gap: 12px;
   grid-template-columns: minmax(220px, 1.1fr) minmax(220px, 1.1fr) repeat(2, minmax(170px, 0.8fr)) auto;
   margin-bottom: 14px;
@@ -4093,14 +4099,19 @@ a.daily-report-procore-status:hover {
 .report-header {
   background: var(--field);
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   font-weight: 700;
   text-transform: uppercase;
 }
 
 .report-row span {
+  font-size: 0.84rem;
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.report-header span {
+  font-size: inherit;
 }
 
 .report-drilldown-button {
