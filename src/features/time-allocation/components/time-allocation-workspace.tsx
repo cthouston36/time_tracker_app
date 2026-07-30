@@ -6486,82 +6486,92 @@ function FieldProjectAssignmentPanel({
   }
 
   return (
-    <div className="panel dashboard-field-access-panel">
-      <div className="panel-heading">
-        <div>
-          <h2>Field Access</h2>
+    <details className="panel dashboard-field-access-panel">
+      <summary className="field-access-summary">
+        <span>
+          <strong>Field Access</strong>
+          <small>Assign Field users by project</small>
+        </span>
+        <span className="field-access-summary-meta">
+          {selectedProject ? `${draftFieldUserIds.length} assigned` : `${projects.length} projects`}
+          <ChevronDown aria-hidden="true" size={18} />
+        </span>
+      </summary>
+
+      <div className="field-access-body">
+        <div className="field-access-intro">
           <span className="dashboard-panel-meta">Choose a job, then assign the Field users who can enter and upload against it.</span>
-        </div>
-        {selectedProject ? (
-          <span className="dashboard-panel-meta">
-            {draftFieldUserIds.length} Field user{draftFieldUserIds.length === 1 ? "" : "s"} assigned
-          </span>
-        ) : null}
-      </div>
-
-      {notice ? <div className={notice.status === "error" ? "inline-alert" : "success-alert"}>{notice.message}</div> : null}
-
-      {fieldUsers.length === 0 ? (
-        <EmptyState icon={Users} title="No Field users available">
-          Create active Field users before assigning project access.
-        </EmptyState>
-      ) : projects.length === 0 ? (
-        <EmptyState icon={Inbox} title="No assignable projects">
-          Projects you can assign will appear here after sync and access setup.
-        </EmptyState>
-      ) : (
-        <div className="field-access-layout">
-          <div className="field-access-controls">
-            <label className="field-group">
-              <span>Project</span>
-              <select value={selectedProject?.id ?? ""} onChange={(event) => setSelectedProjectId(event.target.value)}>
-                {projects.map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {project.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field-group">
-              <span>Find Field User</span>
-              <input
-                placeholder="Search name or user ID"
-                value={fieldUserSearch}
-                onChange={(event) => setFieldUserSearch(event.target.value)}
-              />
-            </label>
-          </div>
-
-          <div className="field-access-project-list">
-            {filteredFieldUsers.map((user) => (
-              <label className="field-access-project-row" key={user.id}>
-                <input checked={draftFieldUserIdSet.has(user.id)} onChange={() => toggleFieldUser(user.id)} type="checkbox" />
-                <span>
-                  <strong>{formatUserName(user)}</strong>
-                  <small>{user.id} - {draftFieldUserIdSet.has(user.id) ? "Attached" : "Not assigned"}</small>
-                </span>
-              </label>
-            ))}
-            {filteredFieldUsers.length === 0 ? <EmptyState title="No matching Field users" /> : null}
-          </div>
-
-          <div className="field-access-actions">
-            <span className="field-note">
-              PMs can only assign projects tied to their NetSuite Project Manager record.
+          {selectedProject ? (
+            <span className="dashboard-panel-meta">
+              {draftFieldUserIds.length} Field user{draftFieldUserIds.length === 1 ? "" : "s"} assigned
             </span>
-            <button
-              className="primary-button prominent-action"
-              disabled={!selectedProject || !hasChanges || savingProjectId === selectedProject.id}
-              onClick={() => selectedProject && void onSaveAssignments(selectedProject.id, draftFieldUserIds)}
-              type="button"
-            >
-              {savingProjectId === selectedProject?.id ? <InlineSpinner /> : <Save aria-hidden="true" size={18} />}
-              {savingProjectId === selectedProject?.id ? "Saving..." : "Save Field Access"}
-            </button>
-          </div>
+          ) : null}
         </div>
-      )}
-    </div>
+
+        {notice ? <div className={notice.status === "error" ? "inline-alert" : "success-alert"}>{notice.message}</div> : null}
+
+        {fieldUsers.length === 0 ? (
+          <EmptyState icon={Users} title="No Field users available">
+            Create active Field users before assigning project access.
+          </EmptyState>
+        ) : projects.length === 0 ? (
+          <EmptyState icon={Inbox} title="No assignable projects">
+            Projects you can assign will appear here after sync and access setup.
+          </EmptyState>
+        ) : (
+          <div className="field-access-layout">
+            <div className="field-access-controls">
+              <label className="field-group">
+                <span>Project</span>
+                <select value={selectedProject?.id ?? ""} onChange={(event) => setSelectedProjectId(event.target.value)}>
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field-group">
+                <span>Find Field User</span>
+                <input
+                  placeholder="Search name or user ID"
+                  value={fieldUserSearch}
+                  onChange={(event) => setFieldUserSearch(event.target.value)}
+                />
+              </label>
+            </div>
+
+            <div className="field-access-project-list">
+              {filteredFieldUsers.map((user) => (
+                <label className="field-access-project-row" key={user.id}>
+                  <input checked={draftFieldUserIdSet.has(user.id)} onChange={() => toggleFieldUser(user.id)} type="checkbox" />
+                  <span>
+                    <strong>{formatUserName(user)}</strong>
+                    <small>{user.id} - {draftFieldUserIdSet.has(user.id) ? "Attached" : "Not assigned"}</small>
+                  </span>
+                </label>
+              ))}
+              {filteredFieldUsers.length === 0 ? <EmptyState title="No matching Field users" /> : null}
+            </div>
+
+            <div className="field-access-actions">
+              <span className="field-note">
+                PMs can only assign projects tied to their NetSuite Project Manager record.
+              </span>
+              <button
+                className="primary-button prominent-action"
+                disabled={!selectedProject || !hasChanges || savingProjectId === selectedProject.id}
+                onClick={() => selectedProject && void onSaveAssignments(selectedProject.id, draftFieldUserIds)}
+                type="button"
+              >
+                {savingProjectId === selectedProject?.id ? <InlineSpinner /> : <Save aria-hidden="true" size={18} />}
+                {savingProjectId === selectedProject?.id ? "Saving..." : "Save Field Access"}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </details>
   );
 }
 

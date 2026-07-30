@@ -2248,8 +2248,82 @@ a.daily-report-procore-status:hover {
 }
 
 .dashboard-field-access-panel {
+  padding: 0;
+}
+
+.dashboard-field-access-panel[open] {
+  padding: 0;
+}
+
+.field-access-summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  list-style: none;
+  min-height: 56px;
+  padding: 14px 16px;
+}
+
+.field-access-summary::-webkit-details-marker {
+  display: none;
+}
+
+.field-access-summary span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.field-access-summary strong,
+.field-access-summary small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.field-access-summary strong {
+  color: var(--foreground);
+  font-size: 0.95rem;
+}
+
+.field-access-summary small,
+.field-access-summary-meta {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.field-access-summary-meta {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  font-weight: 700;
+  gap: 8px;
+}
+
+.field-access-summary-meta svg {
+  transition: transform 0.16s ease;
+}
+
+.dashboard-field-access-panel[open] .field-access-summary-meta svg {
+  transform: rotate(180deg);
+}
+
+.field-access-body {
+  border-top: 1px solid var(--line);
   display: grid;
   gap: 12px;
+  padding: 16px;
+}
+
+.field-access-intro {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
 }
 
 .field-access-layout {
