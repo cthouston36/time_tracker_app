@@ -2172,6 +2172,11 @@ a.daily-report-procore-status:hover {
   grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
 }
 
+.dashboard-main-grid.executive {
+  align-items: start;
+  grid-template-columns: minmax(0, 1.05fr) minmax(340px, 0.95fr);
+}
+
 .dashboard-main-column {
   display: grid;
   gap: 16px;
@@ -2230,6 +2235,158 @@ a.daily-report-procore-status:hover {
   padding: 10px;
 }
 
+.dashboard-executive-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.dashboard-search-field {
+  display: grid;
+  gap: 6px;
+}
+
+.dashboard-search-field span {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.dashboard-section-list {
+  display: grid;
+  gap: 8px;
+}
+
+.dashboard-list-row {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1.1fr) minmax(190px, 0.9fr) auto;
+  padding: 10px;
+}
+
+.dashboard-list-row.warning,
+.dashboard-issue-row.warning {
+  background: var(--warning-bg);
+  border-color: var(--warning-line);
+}
+
+.dashboard-list-row.error,
+.dashboard-issue-row.error {
+  background: #fff1f2;
+  border-color: #f0a9b2;
+}
+
+.dashboard-row-heading,
+.dashboard-row-meta {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.dashboard-row-heading strong,
+.dashboard-row-heading small,
+.dashboard-row-meta strong,
+.dashboard-row-meta small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.dashboard-row-heading small,
+.dashboard-row-meta small,
+.dashboard-list-note {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.dashboard-chip-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.dashboard-chip {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text);
+  display: inline-flex;
+  font-size: 0.75rem;
+  font-weight: 800;
+  line-height: 1;
+  padding: 5px 8px;
+  white-space: nowrap;
+}
+
+.dashboard-chip.success {
+  background: #dcfce7;
+  border-color: #86efac;
+  color: #166534;
+}
+
+.dashboard-chip.warning {
+  background: var(--warning-bg);
+  border-color: var(--warning-line);
+  color: var(--warning-text);
+}
+
+.dashboard-drilldown-row {
+  display: block;
+}
+
+.dashboard-drilldown-row > summary {
+  align-items: center;
+  cursor: pointer;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  list-style: none;
+}
+
+.dashboard-drilldown-row > summary::-webkit-details-marker {
+  display: none;
+}
+
+.dashboard-row-action {
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.dashboard-issue-list {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+}
+
+.dashboard-issue-row {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 9px;
+}
+
+.dashboard-issue-row > span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.dashboard-issue-row small {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
 .dashboard-attention-row > div {
   display: grid;
   gap: 3px;
@@ -2237,12 +2394,13 @@ a.daily-report-procore-status:hover {
 }
 
 .dashboard-attention-row strong,
-.dashboard-attention-row span {
+.dashboard-attention-row span,
+.dashboard-attention-row small {
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
-.dashboard-attention-row span {
+.dashboard-attention-row > div > span {
   color: var(--muted);
   font-size: 0.84rem;
 }
@@ -4370,7 +4528,8 @@ a.daily-report-procore-status:hover {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .dashboard-main-grid.admin {
+  .dashboard-main-grid.admin,
+  .dashboard-main-grid.executive {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -5358,7 +5517,8 @@ a.daily-report-procore-status:hover {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .dashboard-main-grid.admin {
+  .dashboard-main-grid.admin,
+  .dashboard-main-grid.executive {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -5376,12 +5536,16 @@ a.daily-report-procore-status:hover {
     width: 100%;
   }
 
-  .dashboard-attention-row {
+  .dashboard-attention-row,
+  .dashboard-list-row,
+  .dashboard-issue-row {
     align-items: stretch;
     grid-template-columns: 1fr;
   }
 
-  .dashboard-attention-row .secondary-button {
+  .dashboard-attention-row .secondary-button,
+  .dashboard-list-row .secondary-button,
+  .dashboard-issue-row .secondary-button {
     width: 100%;
   }
 

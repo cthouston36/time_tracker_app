@@ -5261,7 +5261,7 @@ export function TimeAllocationWorkspace() {
               meta={[
                 selectedProject?.name ?? "No job selected",
                 formatDate(workDate),
-                selectedProjectUsesPayItems ? "Pay items" : "Daily report only"
+                getProjectWorkTypeLabel(selectedProject)
               ]}
               title="Daily Entry"
               titleOnly
@@ -6153,8 +6153,12 @@ function DashboardView({
   const [statusMode, setStatusMode] = useState<CalendarStatusMode>(
     currentUser.role === "project_manager" || currentUser.role === "standard" ? "entry_status" : "daily_reports"
   );
+  const [dashboardProjectQuery, setDashboardProjectQuery] = useState("");
+  const today = todayInputValue();
+  const productionAlertStartDate = addDaysToInputDate(today, -45);
   const weekDates = getWeekDates(weekStart);
   const entryDayKeys = useMemo(() => buildEntryDayKeySet(entries), [entries]);
+  const sortedProjects = useMemo(() => sortProjectsByName(projects), [projects]);
   const projectRows = useMemo(
     () =>
       buildDashboardProjectRows({
@@ -6168,15 +6172,39 @@ function DashboardView({
     [dailyReportUploadsByKey, dailyReportsByKey, daySubmissions, entryDayKeys, projects, weekDates]
   );
   const metrics = buildDashboardMetrics(projectRows);
+  const fieldAssignmentRows = useMemo(
+    () => buildFieldAssignmentVisibilityRows(sortedProjects, fieldUsers, myJobsByUser),
+    [fieldUsers, myJobsByUser, sortedProjects]
+  );
+  const productionAlerts = useMemo(
+    () =>
+      buildProductionPerformanceAlerts({
+        endDate: today,
+        entries,
+        projects: sortedProjects,
+        startDate: productionAlertStartDate
+      }),
+    [entries, productionAlertStartDate, sortedProjects, today]
+  );
+  const pmComplianceRows = useMemo(() => buildPmComplianceRows(projectRows), [projectRows]);
+  const dashboardProjectNavigationRows = useMemo(
+    () => buildDashboardProjectNavigationRows(projectRows, fieldAssignmentRows),
+    [fieldAssignmentRows, projectRows]
+  );
+  const filteredDashboardProjectNavigationRows = useMemo(
+    () => filterDashboardProjectNavigationRows(dashboardProjectNavigationRows, dashboardProjectQuery),
+    [dashboardProjectNavigationRows, dashboardProjectQuery]
+  );
   const attentionRows = [...projectRows]
     .filter((row) => row.attentionScore > 0)
     .sort((left, right) => right.attentionScore - left.attentionScore || left.project.name.localeCompare(right.project.name))
     .slice(0, 8);
   const isProjectManager = currentUser.role === "project_manager";
+  const isExecutive = currentUser.role === "executive";
   const dashboardTitle =
     currentUser.role === "admin"
       ? "Admin Dashboard"
-      : currentUser.role === "executive"
+      : isExecutive
         ? "Executive Dashboard"
         : isProjectManager
           ? "Project Manager Dashboard"
@@ -6213,6 +6241,43 @@ function DashboardView({
         />
       </div>
 
+      {isExecutive ? (
+        <div className="dashboard-main-grid executive">
+          <div className="dashboard-main-column">
+            <ExecutiveProjectNavigator
+              onOpenDay={onOpenDay}
+              onQueryChange={setDashboardProjectQuery}
+              query={dashboardProjectQuery}
+              rows={filteredDashboardProjectNavigationRows}
+              totalRows={dashboardProjectNavigationRows.length}
+            />
+            <ProductionPerformanceAlerts alerts={productionAlerts} onOpenDay={onOpenDay} />
+            <PmComplianceRanking rows={pmComplianceRows} onOpenDay={onOpenDay} />
+          </div>
+
+          <div className="dashboard-main-column">
+            <div className="panel dashboard-projects-panel">
+              <div className="panel-heading">
+                <h2>Dashboard Drilldowns</h2>
+                <span className="dashboard-panel-meta">{attentionRows.length} issue set{attentionRows.length === 1 ? "" : "s"}</span>
+              </div>
+              <DashboardAttentionList rows={attentionRows} onOpenDay={onOpenDay} />
+            </div>
+
+            <FieldAssignmentVisibilityPanel rows={fieldAssignmentRows} onOpenDay={onOpenDay} />
+
+            <FieldProjectAssignmentPanel
+              currentUser={currentUser}
+              fieldUsers={fieldUsers}
+              myJobsByUser={myJobsByUser}
+              notice={fieldAssignmentNotice}
+              onSaveAssignments={onSaveFieldAssignments}
+              projects={sortedProjects}
+              savingProjectId={savingFieldAssignmentProjectId}
+            />
+          </div>
+        </div>
+      ) : (
       <div className={currentUser.role === "admin" ? "dashboard-main-grid admin" : "dashboard-main-grid"}>
         <div className="dashboard-main-column">
           <div className="panel dashboard-calendar-panel">
@@ -6226,7 +6291,7 @@ function DashboardView({
               daySubmissions={daySubmissions}
               entryDayKeys={entryDayKeys}
               onOpenDay={onOpenDay}
-              projects={sortProjectsByName(projects)}
+              projects={sortedProjects}
               setStatusMode={setStatusMode}
               setWeekStart={setWeekStart}
               statusMode={statusMode}
@@ -6249,7 +6314,7 @@ function DashboardView({
             myJobsByUser={myJobsByUser}
             notice={fieldAssignmentNotice}
             onSaveAssignments={onSaveFieldAssignments}
-            projects={sortProjectsByName(projects)}
+            projects={sortedProjects}
             savingProjectId={savingFieldAssignmentProjectId}
           />
         </div>
@@ -6260,6 +6325,7 @@ function DashboardView({
           </div>
         ) : null}
       </div>
+      )}
     </section>
   );
 }
@@ -6277,6 +6343,211 @@ function DashboardMetric({
     <div className={`dashboard-metric-card ${tone}`}>
       <span>{label}</span>
       <strong>{value}</strong>
+    </div>
+  );
+}
+
+function ExecutiveProjectNavigator({
+  onOpenDay,
+  onQueryChange,
+  query,
+  rows,
+  totalRows
+}: {
+  onOpenDay: (projectId: string, date: string) => void;
+  onQueryChange: (query: string) => void;
+  query: string;
+  rows: DashboardProjectNavigationRow[];
+  totalRows: number;
+}) {
+  const visibleRows = rows.slice(0, 12);
+
+  return (
+    <div className="panel dashboard-executive-panel">
+      <div className="panel-heading">
+        <h2>Project Navigator</h2>
+        <span className="dashboard-panel-meta">
+          {rows.length} of {totalRows} project{totalRows === 1 ? "" : "s"}
+        </span>
+      </div>
+      <label className="dashboard-search-field">
+        <span>Find Job</span>
+        <input
+          placeholder="Search job, PM, type, or assigned Field user"
+          value={query}
+          onChange={(event) => onQueryChange(event.target.value)}
+        />
+      </label>
+      {visibleRows.length === 0 ? (
+        <EmptyState icon={Inbox} title="No matching projects" />
+      ) : (
+        <div className="dashboard-section-list">
+          {visibleRows.map((row) => (
+            <div className="dashboard-list-row" key={row.project.id}>
+              <span className="dashboard-row-heading">
+                <strong>{row.project.name}</strong>
+                <small>
+                  {getProjectWorkTypeLabel(row.project)} | {row.project.netSuiteProjectManagerName || "No PM mapped"}
+                </small>
+              </span>
+              <span className="dashboard-chip-row">
+                <span className={row.issueCount > 0 ? "dashboard-chip warning" : "dashboard-chip success"}>
+                  {row.issueCount} issue{row.issueCount === 1 ? "" : "s"}
+                </span>
+                <span className="dashboard-chip">
+                  {row.assignedFieldCount} Field user{row.assignedFieldCount === 1 ? "" : "s"}
+                </span>
+              </span>
+              <button className="secondary-button compact-button" onClick={() => onOpenDay(row.project.id, row.openDate)} type="button">
+                Review
+              </button>
+            </div>
+          ))}
+          {rows.length > visibleRows.length ? (
+            <span className="dashboard-list-note">Narrow the search to see more matching jobs.</span>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProductionPerformanceAlerts({
+  alerts,
+  onOpenDay
+}: {
+  alerts: ProductionPerformanceAlert[];
+  onOpenDay: (projectId: string, date: string) => void;
+}) {
+  return (
+    <div className="panel dashboard-executive-panel">
+      <div className="panel-heading">
+        <h2>Production Performance Alerts</h2>
+        <span className="dashboard-panel-meta">{alerts.length} alert{alerts.length === 1 ? "" : "s"}</span>
+      </div>
+      {alerts.length === 0 ? (
+        <EmptyState icon={CheckCircle2} title="No production alerts">
+          Recent pay item performance and quantity overrun checks are clear.
+        </EmptyState>
+      ) : (
+        <div className="dashboard-section-list">
+          {alerts.map((alert) => (
+            <div className={`dashboard-list-row ${alert.tone}`} key={alert.id}>
+              <span className="dashboard-row-heading">
+                <strong>{alert.projectName}</strong>
+                <small>{alert.payItemLabel}</small>
+              </span>
+              <span className="dashboard-row-meta">
+                <strong>{alert.message}</strong>
+                <small>{alert.detail}</small>
+              </span>
+              <button className="secondary-button compact-button" onClick={() => onOpenDay(alert.projectId, alert.openDate)} type="button">
+                Review
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PmComplianceRanking({
+  onOpenDay,
+  rows
+}: {
+  onOpenDay: (projectId: string, date: string) => void;
+  rows: PmComplianceRow[];
+}) {
+  return (
+    <div className="panel dashboard-executive-panel">
+      <div className="panel-heading">
+        <h2>PM Compliance Ranking</h2>
+        <span className="dashboard-panel-meta">Issue-driven</span>
+      </div>
+      {rows.length === 0 ? (
+        <EmptyState icon={CheckCircle2} title="No PM compliance issues">
+          Drafts, missing dailies after entry activity, and Procore upload issues will appear here.
+        </EmptyState>
+      ) : (
+        <div className="dashboard-section-list">
+          {rows.map((row) => (
+            <details className="dashboard-list-row dashboard-drilldown-row" key={row.id}>
+              <summary>
+                <span className="dashboard-row-heading">
+                  <strong>{row.name}</strong>
+                  <small>
+                    {row.issueProjectCount} of {row.projectCount} project{row.projectCount === 1 ? "" : "s"} need attention
+                  </small>
+                </span>
+                <span className="dashboard-chip warning">
+                  {row.issueCount} issue{row.issueCount === 1 ? "" : "s"}
+                </span>
+              </summary>
+              <div className="dashboard-issue-list">
+                {row.projects.map((project) => (
+                  <div className="dashboard-issue-row warning" key={project.projectId}>
+                    <span>
+                      <strong>{project.projectName}</strong>
+                      <small>{project.summary}</small>
+                    </span>
+                    {project.openDate ? (
+                      <button className="secondary-button compact-button" onClick={() => onOpenDay(project.projectId, project.openDate)} type="button">
+                        Open
+                      </button>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </details>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FieldAssignmentVisibilityPanel({
+  onOpenDay,
+  rows
+}: {
+  onOpenDay: (projectId: string, date: string) => void;
+  rows: FieldAssignmentVisibilityRow[];
+}) {
+  const visibleRows = rows.slice(0, 14);
+
+  return (
+    <div className="panel dashboard-executive-panel">
+      <div className="panel-heading">
+        <h2>Field User Assignment Visibility</h2>
+        <span className="dashboard-panel-meta">{rows.length} project{rows.length === 1 ? "" : "s"}</span>
+      </div>
+      {visibleRows.length === 0 ? (
+        <EmptyState icon={Users} title="No projects available" />
+      ) : (
+        <div className="dashboard-section-list">
+          {visibleRows.map((row) => (
+            <div className={row.assignedUsers.length > 0 ? "dashboard-list-row" : "dashboard-list-row warning"} key={row.project.id}>
+              <span className="dashboard-row-heading">
+                <strong>{row.project.name}</strong>
+                <small>{row.project.netSuiteProjectManagerName || "No PM mapped"}</small>
+              </span>
+              <span className="dashboard-row-meta">
+                <strong>
+                  {row.assignedUsers.length} Field user{row.assignedUsers.length === 1 ? "" : "s"}
+                </strong>
+                <small>{row.assignedUsers.length > 0 ? row.assignedUsers.map(formatUserName).join(", ") : "No Field users assigned"}</small>
+              </span>
+              <button className="secondary-button compact-button" onClick={() => onOpenDay(row.project.id, todayInputValue())} type="button">
+                Open
+              </button>
+            </div>
+          ))}
+          {rows.length > visibleRows.length ? (
+            <span className="dashboard-list-note">Showing projects with missing assignments first.</span>
+          ) : null}
+        </div>
+      )}
     </div>
   );
 }
@@ -6415,17 +6686,35 @@ function DashboardAttentionList({
   return (
     <div className="dashboard-attention-list">
       {rows.map((row) => (
-        <div className="dashboard-attention-row" key={row.project.id}>
-          <div>
-            <strong>{row.project.name}</strong>
-            <span>{formatDashboardAttentionSummary(row)}</span>
+        <details className="dashboard-attention-row dashboard-drilldown-row" key={row.project.id}>
+          <summary>
+            <span className="dashboard-row-heading">
+              <strong>{row.project.name}</strong>
+              <small>{formatDashboardAttentionSummary(row)}</small>
+            </span>
+            <span className="dashboard-row-action">Drill down</span>
+          </summary>
+          <div className="dashboard-issue-list">
+            {row.issues.map((issue) => (
+              <div className={`dashboard-issue-row ${issue.tone}`} key={issue.id}>
+                <span>
+                  <strong>{formatDate(issue.date)}</strong>
+                  <small>
+                    {issue.label}: {issue.detail}
+                  </small>
+                </span>
+                <button className="secondary-button compact-button" onClick={() => onOpenDay(row.project.id, issue.date)} type="button">
+                  Open
+                </button>
+              </div>
+            ))}
+            {row.issues.length === 0 && row.openDate ? (
+              <button className="secondary-button compact-button" onClick={() => onOpenDay(row.project.id, row.openDate)} type="button">
+                Open {formatDate(row.openDate)}
+              </button>
+            ) : null}
           </div>
-          {row.openDate ? (
-            <button className="secondary-button compact-button" onClick={() => onOpenDay(row.project.id, row.openDate ?? "")} type="button">
-              Open {formatDate(row.openDate)}
-            </button>
-          ) : null}
-        </div>
+        </details>
       ))}
     </div>
   );
@@ -6574,12 +6863,62 @@ function FieldProjectAssignmentPanel({
   );
 }
 
+type DashboardIssue = {
+  date: string;
+  detail: string;
+  id: string;
+  label: string;
+  tone: "error" | "neutral" | "warning";
+};
+
+type DashboardProjectNavigationRow = {
+  assignedFieldCount: number;
+  assignedFieldNames: string[];
+  issueCount: number;
+  openDate: string;
+  project: Project;
+};
+
+type FieldAssignmentVisibilityRow = {
+  assignedUsers: AuthUser[];
+  project: Project;
+};
+
+type PmComplianceProjectRow = {
+  openDate: string;
+  projectId: string;
+  projectName: string;
+  summary: string;
+};
+
+type PmComplianceRow = {
+  id: string;
+  issueCount: number;
+  issueProjectCount: number;
+  name: string;
+  projectCount: number;
+  projects: PmComplianceProjectRow[];
+  score: number;
+};
+
+type ProductionPerformanceAlert = {
+  detail: string;
+  id: string;
+  message: string;
+  openDate: string;
+  payItemLabel: string;
+  projectId: string;
+  projectName: string;
+  tone: "error" | "warning";
+};
+
 type DashboardProjectWeekRow = {
   attentionScore: number;
   dailyFailedCount: number;
   dailyPendingCount: number;
   dailySavedCount: number;
   draftEntryCount: number;
+  issues: DashboardIssue[];
   missingPastDailyReportCount: number;
   openDate: string;
   project: Project;
@@ -6611,6 +6950,7 @@ function buildDashboardProjectRows({
     let missingPastDailyReportCount = 0;
     let openDate = "";
     let submittedEntryCount = 0;
+    const issues: DashboardIssue[] = [];
 
     for (const date of weekDates) {
       const dayKey = getDayKey(project.id, date);
@@ -6628,6 +6968,13 @@ function buildDashboardProjectRows({
       if (entryStatus.className === "draft") {
         draftEntryCount += 1;
         openDate ||= date;
+        issues.push({
+          date,
+          detail: "Entry activity has been saved but the day has not been submitted.",
+          id: `${project.id}-${date}-entry-draft`,
+          label: "Draft entry",
+          tone: "warning"
+        });
       }
 
       if (dailyStatus.className !== "missing" && dailyStatus.className !== "not-started") {
@@ -6637,16 +6984,37 @@ function buildDashboardProjectRows({
       if (dailyStatus.className === "failed") {
         dailyFailedCount += 1;
         openDate ||= date;
+        issues.push({
+          date,
+          detail: "Daily report upload failed and needs retry or review.",
+          id: `${project.id}-${date}-daily-upload-failed`,
+          label: "Failed upload",
+          tone: "error"
+        });
       }
 
       if (dailyStatus.className === "created") {
         dailyPendingCount += 1;
         openDate ||= date;
+        issues.push({
+          date,
+          detail: "Daily report has been saved but has not been uploaded to Procore.",
+          id: `${project.id}-${date}-daily-upload-pending`,
+          label: "Pending upload",
+          tone: "warning"
+        });
       }
 
       if (dailyStatus.className === "missing" && date <= today) {
         missingPastDailyReportCount += 1;
         openDate ||= date;
+        issues.push({
+          date,
+          detail: "Entry activity exists, but no daily report has been saved.",
+          id: `${project.id}-${date}-daily-missing`,
+          label: "Missing daily",
+          tone: "error"
+        });
       }
     }
 
@@ -6656,6 +7024,7 @@ function buildDashboardProjectRows({
       dailyPendingCount,
       dailySavedCount,
       draftEntryCount,
+      issues,
       missingPastDailyReportCount,
       openDate,
       project,
@@ -6679,6 +7048,218 @@ function buildDashboardMetrics(rows: DashboardProjectWeekRow[]) {
       submittedEntryDays: 0
     }
   );
+}
+
+function buildDashboardProjectNavigationRows(
+  projectRows: DashboardProjectWeekRow[],
+  assignmentRows: FieldAssignmentVisibilityRow[]
+): DashboardProjectNavigationRow[] {
+  const assignmentsByProjectId = new Map(assignmentRows.map((row) => [row.project.id, row]));
+  const today = todayInputValue();
+
+  return projectRows
+    .map((row) => {
+      const assignment = assignmentsByProjectId.get(row.project.id);
+      const assignedFieldNames = assignment?.assignedUsers.map(formatUserName).sort((a, b) => a.localeCompare(b)) ?? [];
+
+      return {
+        assignedFieldCount: assignedFieldNames.length,
+        assignedFieldNames,
+        issueCount: row.issues.length,
+        openDate: row.openDate || today,
+        project: row.project
+      };
+    })
+    .sort((left, right) => right.issueCount - left.issueCount || left.project.name.localeCompare(right.project.name));
+}
+
+function filterDashboardProjectNavigationRows(rows: DashboardProjectNavigationRow[], query: string) {
+  const normalizedQuery = query.trim().toLowerCase();
+
+  if (!normalizedQuery) {
+    return rows;
+  }
+
+  return rows.filter((row) => {
+    const searchableText = [
+      row.project.name,
+      getProjectWorkTypeLabel(row.project),
+      row.project.netSuiteProjectManagerName ?? "",
+      ...row.assignedFieldNames
+    ]
+      .join(" ")
+      .toLowerCase();
+
+    return searchableText.includes(normalizedQuery);
+  });
+}
+
+function buildFieldAssignmentVisibilityRows(
+  projects: Project[],
+  fieldUsers: AuthUser[],
+  myJobsByUser: MyJobsByUser
+): FieldAssignmentVisibilityRow[] {
+  return projects
+    .map((project) => {
+      const assignedUserIds = new Set(getFieldUserIdsAssignedToProject(fieldUsers, myJobsByUser, project.id));
+
+      return {
+        assignedUsers: fieldUsers
+          .filter((user) => assignedUserIds.has(user.id))
+          .sort((left, right) => formatUserName(left).localeCompare(formatUserName(right))),
+        project
+      };
+    })
+    .sort(
+      (left, right) =>
+        Number(left.assignedUsers.length > 0) - Number(right.assignedUsers.length > 0) ||
+        left.project.name.localeCompare(right.project.name)
+    );
+}
+
+function buildPmComplianceRows(projectRows: DashboardProjectWeekRow[]): PmComplianceRow[] {
+  const rowsByPm = new Map<string, PmComplianceRow>();
+
+  for (const row of projectRows) {
+    const pmId = row.project.netSuiteProjectManagerId || "unassigned";
+    const pmName = row.project.netSuiteProjectManagerName || "Unassigned PM";
+    const current = rowsByPm.get(pmId) ?? {
+      id: pmId,
+      issueCount: 0,
+      issueProjectCount: 0,
+      name: pmName,
+      projectCount: 0,
+      projects: [],
+      score: 0
+    };
+    const projectIssueCount = row.issues.length;
+
+    current.projectCount += 1;
+    current.issueCount += projectIssueCount;
+    current.score += row.attentionScore;
+
+    if (projectIssueCount > 0) {
+      current.issueProjectCount += 1;
+      current.projects.push({
+        openDate: row.openDate,
+        projectId: row.project.id,
+        projectName: row.project.name,
+        summary: formatDashboardAttentionSummary(row)
+      });
+    }
+
+    rowsByPm.set(pmId, current);
+  }
+
+  return Array.from(rowsByPm.values())
+    .filter((row) => row.issueCount > 0)
+    .map((row) => ({
+      ...row,
+      projects: row.projects.sort((left, right) => left.projectName.localeCompare(right.projectName))
+    }))
+    .sort((left, right) => right.score - left.score || right.issueCount - left.issueCount || left.name.localeCompare(right.name));
+}
+
+function buildProductionPerformanceAlerts({
+  endDate,
+  entries,
+  projects,
+  startDate
+}: {
+  endDate: string;
+  entries: AllocationEntry[];
+  projects: Project[];
+  startDate: string;
+}): ProductionPerformanceAlert[] {
+  const projectsById = new Map(projects.map((project) => [project.id, project]));
+  const filteredEntries = entries.filter(
+    (entry) =>
+      entry.date >= startDate &&
+      entry.date <= endDate &&
+      entry.hours > 0 &&
+      entry.quantityCompleted > 0 &&
+      projectsById.has(entry.projectId)
+  );
+  const alerts: ProductionPerformanceAlert[] = [];
+  const reportRows = buildPayItemReport(filteredEntries, projects, {
+    excludeOutliers: true,
+    metric: "median"
+  });
+
+  for (const payItemRow of reportRows) {
+    if (payItemRow.hoursPerUnit <= 0 || payItemRow.sampleSize < 3) {
+      continue;
+    }
+
+    for (const jobRow of payItemRow.jobRollupRows ?? []) {
+      const project = projectsById.get(jobRow.id);
+
+      if (!project || jobRow.hoursPerUnit <= 0 || jobRow.sampleSize < 2) {
+        continue;
+      }
+
+      const variance = (jobRow.hoursPerUnit - payItemRow.hoursPerUnit) / payItemRow.hoursPerUnit;
+
+      if (variance < 0.25) {
+        continue;
+      }
+
+      alerts.push({
+        detail: `${formatHoursPerUnit(jobRow.hoursPerUnit)} vs company ${formatHoursPerUnit(payItemRow.hoursPerUnit)} across ${jobRow.sampleSize} row${jobRow.sampleSize === 1 ? "" : "s"}.`,
+        id: `performance-${jobRow.id}-${payItemRow.key}`,
+        message: `${formatVariance(variance)} than company median`,
+        openDate: endDate,
+        payItemLabel: `${payItemRow.code} - ${payItemRow.name}`,
+        projectId: project.id,
+        projectName: project.name,
+        tone: "warning"
+      });
+    }
+  }
+
+  const completedQuantityByProjectPayItemKey = new Map<string, number>();
+
+  for (const entry of entries) {
+    const projectPayItemKey = `${entry.projectId}|${entry.payItemId}`;
+
+    completedQuantityByProjectPayItemKey.set(
+      projectPayItemKey,
+      (completedQuantityByProjectPayItemKey.get(projectPayItemKey) ?? 0) + entry.quantityCompleted
+    );
+  }
+
+  for (const project of projects.filter((candidate) => !isTwoSeriesProject(candidate))) {
+    for (const payItem of project.payItems) {
+      const completedQuantity = completedQuantityByProjectPayItemKey.get(`${project.id}|${payItem.id}`) ?? 0;
+
+      if (payItem.budgetedQuantity <= 0 || completedQuantity <= payItem.budgetedQuantity) {
+        continue;
+      }
+
+      alerts.push({
+        detail: `${formatPayItemQuantity(completedQuantity)} completed vs ${formatPayItemQuantity(payItem.budgetedQuantity)} budgeted.`,
+        id: `quantity-overrun-${project.id}-${payItem.id}`,
+        message: "Quantity over budget",
+        openDate: endDate,
+        payItemLabel: `${payItem.code} - ${payItem.name}`,
+        projectId: project.id,
+        projectName: project.name,
+        tone: "error"
+      });
+    }
+  }
+
+  return alerts
+    .sort((left, right) => {
+      const toneOrder = Number(right.tone === "error") - Number(left.tone === "error");
+
+      return toneOrder || left.projectName.localeCompare(right.projectName) || left.payItemLabel.localeCompare(right.payItemLabel);
+    })
+    .slice(0, 10);
+}
+
+function formatHoursPerUnit(value: number) {
+  return `${value.toFixed(3)} hrs/unit`;
 }
 
 function formatDashboardAttentionSummary(row: DashboardProjectWeekRow) {
@@ -9165,6 +9746,14 @@ function getProjectEntryCalendarStatus(project: Project, daySubmission: DaySubmi
   return getEntryCalendarStatus(daySubmission, hasSavedEntries);
 }
 
+function getProjectWorkTypeLabel(project: Project | null | undefined) {
+  if (!project) {
+    return "No job type";
+  }
+
+  return isTwoSeriesProject(project) ? "Electrical" : "Signal";
+}
+
 function buildEntryDayKeySet(entries: AllocationEntry[]) {
   return new Set(entries.map((entry) => getDayKey(entry.projectId, entry.date)));
 }
@@ -9904,8 +10493,8 @@ function SyncSummaryCard({ summary }: { summary: ProcoreSyncSummary }) {
       ) : null}
       {summary.payItemProjects !== undefined || summary.dailyReportOnlyProjects !== undefined ? (
         <span>
-          Eligible mix: {payItemProjects} pay-item project{payItemProjects === 1 ? "" : "s"},{" "}
-          {dailyReportOnlyProjects} daily-report-only 2-series project{dailyReportOnlyProjects === 1 ? "" : "s"}.
+          Eligible mix: {payItemProjects} Signal project{payItemProjects === 1 ? "" : "s"},{" "}
+          {dailyReportOnlyProjects} Electrical project{dailyReportOnlyProjects === 1 ? "" : "s"}.
         </span>
       ) : null}
       {summary.inactiveNetSuiteProjects !== undefined ||
@@ -14553,7 +15142,7 @@ function buildDataQualityIssues({
 
   if (noPayItemProjects.length > 0) {
     issues.push({
-      detail: `${noPayItemProjects.length} non-2-series project${noPayItemProjects.length === 1 ? "" : "s"} have no pay items. Examples: ${formatDataQualitySamples(noPayItemProjects.map((project) => project.name))}.`,
+      detail: `${noPayItemProjects.length} Signal project${noPayItemProjects.length === 1 ? "" : "s"} have no pay items. Examples: ${formatDataQualitySamples(noPayItemProjects.map((project) => project.name))}.`,
       id: "projects-without-pay-items",
       severity: "error",
       title: "Projects without pay items"
@@ -14724,7 +15313,7 @@ function buildSyncStatus(prefix: string, summary: ProcoreSyncSummary | undefined
   }
 
   const dailyReportOnlyText =
-    summary.dailyReportOnlyProjects !== undefined ? `, ${summary.dailyReportOnlyProjects} daily-report-only` : "";
+    summary.dailyReportOnlyProjects !== undefined ? `, ${summary.dailyReportOnlyProjects} Electrical` : "";
   const remainingNewProjects = summary.remainingNewProjects ?? 0;
   const queuedText = remainingNewProjects > 0 ? `, ${remainingNewProjects} queued` : "";
   const autoArchivedProjects = summary.autoArchivedProjects ?? 0;
@@ -14758,7 +15347,7 @@ function formatSyncSummaryLine(summary: ProcoreSyncSummary) {
       : "";
   const sourceDetails =
     summary.payItemProjects !== undefined || summary.dailyReportOnlyProjects !== undefined
-      ? `, ${summary.payItemProjects ?? 0} pay-item, ${summary.dailyReportOnlyProjects ?? 0} 2-series`
+      ? `, ${summary.payItemProjects ?? 0} Signal, ${summary.dailyReportOnlyProjects ?? 0} Electrical`
       : "";
 
   return `${summary.synced} synced, ${summary.skippedExisting} existing skipped, ${summary.failed} failed${eligibleText}${sourceDetails}${skippedDetails}${inactiveText}${queuedText}`;
