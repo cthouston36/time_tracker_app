@@ -1214,7 +1214,7 @@ export function TimeAllocationWorkspace() {
   useEffect(() => {
     async function loadCurrentUser() {
       const response = await fetch("/api/auth/me");
-      const data = (await response.json()) as AuthResponse;
+      const data = (await readApiJson(response)) as AuthResponse;
 
       setCurrentUser(data.user);
       setAuthChecked(true);
@@ -1240,7 +1240,7 @@ export function TimeAllocationWorkspace() {
     async function loadProcoreConnectionStatus() {
       try {
         const response = await fetch("/api/procore/status");
-        const data = (await response.json()) as ProcoreStatusResponse;
+        const data = (await readApiJson(response)) as ProcoreStatusResponse;
 
         if (data.connected && data.connectedBy) {
           setConnectionStatus(`Procore configured by ${data.connectedBy}`);
@@ -1253,7 +1253,7 @@ export function TimeAllocationWorkspace() {
     async function loadProjects() {
       try {
         const response = await fetch("/api/procore/projects");
-        const data = (await response.json()) as ProjectsResponse;
+        const data = (await readApiJson(response)) as ProjectsResponse;
 
         if (!response.ok) {
           throw new Error(data.error ?? "Unable to load projects.");
@@ -1742,7 +1742,7 @@ export function TimeAllocationWorkspace() {
         password: loginPassword
       })
     });
-    const data = (await response.json()) as AuthResponse;
+    const data = (await readApiJson(response)) as AuthResponse;
 
     if (!response.ok || !data.user) {
       setLoginError(data.error ?? "Unable to sign in.");
@@ -1813,7 +1813,7 @@ export function TimeAllocationWorkspace() {
         },
         method: "POST"
       });
-      const data = (await response.json()) as PasswordResetResponse;
+      const data = (await readApiJson(response)) as PasswordResetResponse;
 
       if (!response.ok || data.ok === false) {
         throw new Error(data.error ?? "Unable to reset password.");
@@ -1897,7 +1897,7 @@ export function TimeAllocationWorkspace() {
       const response = await fetch("/api/admin/users", {
         cache: "no-store"
       });
-      const data = (await response.json()) as AdminUsersResponse;
+      const data = (await readApiJson(response)) as AdminUsersResponse;
 
       if (!response.ok || data.databaseConfigured === false) {
         throw new Error(data.error ?? "User management requires the database.");
@@ -1984,7 +1984,7 @@ export function TimeAllocationWorkspace() {
         },
         method: "POST"
       });
-      const data = (await response.json()) as AdminUsersResponse & { ok?: boolean };
+      const data = (await readApiJson(response)) as AdminUsersResponse & { ok?: boolean };
 
       if (!response.ok || data.ok === false) {
         throw new Error(data.error ?? "Unable to save user.");
@@ -2024,7 +2024,7 @@ export function TimeAllocationWorkspace() {
         },
         method: "POST"
       });
-      const data = (await response.json()) as AdminUsersResponse & { ok?: boolean };
+      const data = (await readApiJson(response)) as AdminUsersResponse & { ok?: boolean };
 
       if (!response.ok || data.ok === false) {
         throw new Error(data.error ?? "Unable to update user.");
@@ -2058,7 +2058,7 @@ export function TimeAllocationWorkspace() {
         },
         method: "POST"
       });
-      const data = (await response.json()) as PasswordResetResponse;
+      const data = (await readApiJson(response)) as PasswordResetResponse;
 
       if (!response.ok || data.ok === false || !data.token) {
         throw new Error(data.error ?? "Unable to create reset code.");
@@ -2296,7 +2296,7 @@ export function TimeAllocationWorkspace() {
         },
         method: "POST"
       });
-      const data = (await response.json()) as ChangePasswordResponse;
+      const data = (await readApiJson(response)) as ChangePasswordResponse;
 
       if (!response.ok || data.ok === false) {
         throw new Error(data.error ?? "Unable to change password.");
@@ -2911,7 +2911,7 @@ export function TimeAllocationWorkspace() {
         },
         method: "POST"
       });
-      const data = (await response.json()) as DailyReportUploadResponse;
+      const data = (await readApiJson(response)) as DailyReportUploadResponse;
 
       if (!response.ok) {
         throw new Error(data.error ?? "Unable to upload daily report to Procore.");
@@ -3216,7 +3216,7 @@ export function TimeAllocationWorkspace() {
             body: formData,
             method: "POST"
           });
-          const data = (await response.json()) as JobImageUploadResponse;
+          const data = (await readApiJson(response)) as JobImageUploadResponse;
 
           if (!response.ok) {
             throw new Error(data.error ?? "Unable to upload job images to Procore.");
@@ -3899,7 +3899,7 @@ export function TimeAllocationWorkspace() {
       const response = await fetch(`/api/procore/projects/${encodeURIComponent(trimmedProjectId)}/sync`, {
         method: "POST"
       });
-      const data = (await response.json()) as ProjectsResponse;
+      const data = (await readApiJson(response)) as ProjectsResponse;
 
       if (!response.ok) {
         throw new Error(data.error ?? "Unable to add or update project.");
@@ -4218,7 +4218,7 @@ export function TimeAllocationWorkspace() {
         return;
       }
 
-      if (!window.confirm(`Submit ${selectedProject.name} for ${formatDate(workDate)}? This will lock the day for standard edits.`)) {
+      if (!window.confirm(`Submit ${selectedProject.name} for ${formatDate(workDate)}? This will lock the day for field edits.`)) {
         return;
       }
 
@@ -7432,7 +7432,7 @@ type ReportResponse = {
   page?: number;
   pageSize?: number;
   payItemOptions?: ReportPayItemOption[];
-  rows?: Array<PayItemReportRow | PayItemDetailAnalysisRow | CrewPerformanceRow | DailyWorkReportRow>;
+  rows?: Array<PayItemReportRow | PayItemDetailAnalysisRow | CrewPerformanceRow | EmployeeHoursReportRow | DailyWorkReportRow>;
   totalRows?: number;
 };
 
@@ -7496,19 +7496,25 @@ function ReportsView({
   const allowedReportProjectIds = useMemo(() => reportProjectOptions.map((project) => project.id), [reportProjectOptions]);
   const reportUsesDailyReports = reportMode === "employee_hours" || reportMode === "daily_work";
   const canManageMyJobs = currentUser.role === "admin";
-  const canUseMyJobsReportFilter =
-    (currentUser.role === "project_manager" || currentUser.role === "admin") && myJobIds.length > 0;
   const automaticMyJobIds = useMemo(() => getDefaultMyJobIdsForUser(currentUser, projects), [currentUser, projects]);
+  const reportMyJobIds = currentUser.role === "project_manager" ? automaticMyJobIds : myJobIds;
+  const canUseMyJobsReportFilter =
+    (currentUser.role === "project_manager" || currentUser.role === "admin") && reportMyJobIds.length > 0;
+  const allJobsReportLabel = currentUser.role === "project_manager"
+    ? "All Company Jobs"
+    : reportUsesDailyReports
+      ? "All Jobs With Daily Reports"
+      : "All Jobs";
   const reportJobPickerOptions = [
     {
       value: "all",
-      label: reportUsesDailyReports ? "All Jobs With Daily Reports" : "All Jobs"
+      label: allJobsReportLabel
     },
     ...(canUseMyJobsReportFilter
       ? [
           {
             value: "my-jobs",
-            label: `My Projects (${myJobIds.length})`
+            label: `My Projects (${reportMyJobIds.length})`
           }
         ]
       : []),
@@ -7519,7 +7525,7 @@ function ReportsView({
   ];
   const selectedReportJobLabel =
     reportJobPickerOptions.find((option) => option.value === reportProjectId)?.label ??
-    (reportUsesDailyReports ? "All Jobs With Daily Reports" : "All Jobs");
+    allJobsReportLabel;
   const reportDateRangeLabel =
     reportStartDate || reportEndDate
       ? `${reportStartDate ? formatDate(reportStartDate) : "Any start"} - ${reportEndDate ? formatDate(reportEndDate) : "Any end"}`
@@ -7529,13 +7535,13 @@ function ReportsView({
       entries.filter((entry) => {
         const matchesProject =
           reportProjectId === "all" ||
-          (reportProjectId === "my-jobs" ? myJobIds.includes(entry.projectId) : entry.projectId === reportProjectId);
+          (reportProjectId === "my-jobs" ? reportMyJobIds.includes(entry.projectId) : entry.projectId === reportProjectId);
         const matchesStart = !reportStartDate || entry.date >= reportStartDate;
         const matchesEnd = !reportEndDate || entry.date <= reportEndDate;
 
         return matchesProject && matchesStart && matchesEnd;
       }),
-    [entries, myJobIds, reportEndDate, reportProjectId, reportStartDate]
+    [entries, reportEndDate, reportMyJobIds, reportProjectId, reportStartDate]
   );
   const laborFilteredEntries = useMemo(
     () => filterEntriesByCrewLaborTypes(filteredEntries, reportCrewLaborTypes),
@@ -7570,12 +7576,12 @@ function ReportsView({
         dailyReportsByKey,
         endDate: reportEndDate,
         grouping: employeeHoursGrouping,
-        myJobIds,
+        myJobIds: reportMyJobIds,
         projectId: reportProjectId,
         projects,
         startDate: reportStartDate
       }),
-    [dailyReportsByKey, employeeHoursGrouping, myJobIds, projects, reportEndDate, reportProjectId, reportStartDate]
+    [dailyReportsByKey, employeeHoursGrouping, projects, reportEndDate, reportMyJobIds, reportProjectId, reportStartDate]
   );
   const localDailyWorkRows = useMemo(
     () =>
@@ -7583,13 +7589,13 @@ function ReportsView({
         getFilteredDailyWorkReportSourceRows({
           dailyReportsByKey,
           endDate: reportEndDate,
-          myJobIds,
+          myJobIds: reportMyJobIds,
           projectId: reportProjectId,
           startDate: reportStartDate
         }),
         projects
       ),
-    [dailyReportsByKey, myJobIds, projects, reportEndDate, reportProjectId, reportStartDate]
+    [dailyReportsByKey, projects, reportEndDate, reportMyJobIds, reportProjectId, reportStartDate]
   );
   const serverReportAvailable = Boolean(reportsUseServerData && reportData?.databaseConfigured && reportData.mode === reportMode);
   const payItemRows =
@@ -7599,6 +7605,10 @@ function ReportsView({
   const detailPayItemOptions =
     serverReportAvailable && reportMode === "detail" ? reportData?.payItemOptions ?? [] : localDetailPayItemOptions;
   const crewRows = serverReportAvailable && reportMode === "crew" ? (reportData?.rows ?? []) as CrewPerformanceRow[] : localCrewRows;
+  const employeeHoursRows =
+    serverReportAvailable && reportMode === "employee_hours"
+      ? (reportData?.rows ?? []) as EmployeeHoursReportRow[]
+      : localEmployeeHoursRows;
   const dailyWorkRows =
     serverReportAvailable && reportMode === "daily_work" ? (reportData?.rows ?? []) as DailyWorkReportRow[] : localDailyWorkRows;
   const reportPagination = serverReportAvailable
@@ -7621,17 +7631,12 @@ function ReportsView({
     reportEndDate,
     reportMetric,
     reportMode,
+    reportMyJobIds,
     reportProjectId,
     reportStartDate
   ]);
 
   useEffect(() => {
-    if (reportMode === "employee_hours") {
-      setReportLoading(false);
-      setReportError("");
-      return;
-    }
-
     const controller = new AbortController();
 
     setReportLoading(true);
@@ -7643,11 +7648,12 @@ function ReportsView({
         detailGrouping,
         detailPayItemQuery,
         detailSort,
+        employeeHoursGrouping,
         endDate: reportEndDate,
         excludeOutliers: excludeReportOutliers,
         crewLaborTypes: reportCrewLaborTypes,
         mode: reportMode,
-        myJobIds,
+        myJobIds: reportMyJobIds,
         page: reportPage,
         pageSize: reportPageSize,
         projectId: reportProjectId,
@@ -7661,7 +7667,7 @@ function ReportsView({
       signal: controller.signal
     })
       .then(async (response) => {
-        const data = (await response.json()) as ReportResponse;
+        const data = (await readApiJson(response)) as ReportResponse;
 
         if (!response.ok) {
           throw new Error(data.error ?? "Unable to load report.");
@@ -7690,9 +7696,10 @@ function ReportsView({
     detailGrouping,
     detailPayItemQuery,
     detailSort,
+    employeeHoursGrouping,
     excludeReportOutliers,
     reportCrewLaborTypes,
-    myJobIds,
+    reportMyJobIds,
     reportEndDate,
     reportMetric,
     reportMode,
@@ -7724,7 +7731,7 @@ function ReportsView({
           endDate: reportEndDate,
           excludeOutliers: excludeReportOutliers,
           mode: reportMode === "daily_work" ? "daily_work" : "summary",
-          myJobIds,
+          myJobIds: reportMyJobIds,
           projectId: reportProjectId,
           reportMetric,
           startDate: reportStartDate
@@ -8064,7 +8071,18 @@ function ReportsView({
             ) : null}
           </>
         ) : (
-          <EmployeeHoursReport grouping={employeeHoursGrouping} rows={localEmployeeHoursRows} />
+          <>
+            <EmployeeHoursReport grouping={employeeHoursGrouping} rows={employeeHoursRows} />
+            {reportPagination ? (
+              <ReportPaginationControls
+                loading={reportLoading}
+                page={reportPagination.page}
+                pageSize={reportPagination.pageSize}
+                totalRows={reportPagination.totalRows}
+                onPageChange={setReportPage}
+              />
+            ) : null}
+          </>
         )}
       </div>
     </section>
@@ -9886,7 +9904,7 @@ function AdminUsersPanel({
               }}
               value={form.role}
             >
-              <option value="standard">Standard User</option>
+              <option value="standard">Field</option>
               <option value="project_manager">Project Manager</option>
               <option value="executive">Executive</option>
               <option value="admin">Admin</option>
@@ -11280,7 +11298,7 @@ async function loadDatabaseEntries() {
     const response = await fetch("/api/entries", {
       cache: "no-store"
     });
-    const data = (await response.json()) as EntriesResponse;
+    const data = (await readApiJson(response)) as EntriesResponse;
 
     if (!response.ok || !data.databaseConfigured) {
       return null;
@@ -11300,7 +11318,7 @@ async function saveDatabaseEntries(entries: AllocationEntry[]) {
     },
     method: "POST"
   });
-  const data = (await response.json()) as { error?: string };
+  const data = (await readApiJson(response)) as { error?: string };
 
   if (!response.ok) {
     throw new Error(data.error ?? "Unable to save entries.");
@@ -11311,7 +11329,7 @@ async function deleteDatabaseEntry(entryId: string) {
   const response = await fetch(`/api/entries?entryId=${encodeURIComponent(entryId)}`, {
     method: "DELETE"
   });
-  const data = (await response.json()) as { error?: string };
+  const data = (await readApiJson(response)) as { error?: string };
 
   if (!response.ok) {
     throw new Error(data.error ?? "Unable to delete entry.");
@@ -11325,7 +11343,7 @@ async function deleteDatabaseDayEntries(projectId: string, date: string) {
       method: "DELETE"
     }
   );
-  const data = (await response.json()) as { error?: string };
+  const data = (await readApiJson(response)) as { error?: string };
 
   if (!response.ok) {
     throw new Error(data.error ?? "Unable to delete day entries.");
@@ -11337,7 +11355,7 @@ async function loadDatabaseCrewData() {
     const response = await fetch("/api/crew", {
       cache: "no-store"
     });
-    const data = (await response.json()) as CrewDataResponse;
+    const data = (await readApiJson(response)) as CrewDataResponse;
 
     if (!response.ok || !data.databaseConfigured) {
       return null;
@@ -11364,7 +11382,7 @@ async function addDatabaseCrewMemberToProject(projectId: string, crewMember: Cre
     },
     method: "POST"
   });
-  const data = (await response.json()) as { error?: string; ok?: boolean };
+  const data = (await readApiJson(response)) as { error?: string; ok?: boolean };
 
   if (!response.ok || data.ok === false) {
     throw new Error(data.error ?? "Unable to save crew member.");
@@ -11382,7 +11400,7 @@ async function updateDatabaseCrewMember(crewMember: CrewMember) {
     },
     method: "PATCH"
   });
-  const data = (await response.json()) as { error?: string; ok?: boolean };
+  const data = (await readApiJson(response)) as { error?: string; ok?: boolean };
 
   if (!response.ok || data.ok === false) {
     throw new Error(data.error ?? "Unable to update crew member.");
@@ -11396,7 +11414,7 @@ async function removeDatabaseCrewMemberFromProject(projectId: string, crewMember
       method: "DELETE"
     }
   );
-  const data = (await response.json()) as { error?: string; ok?: boolean };
+  const data = (await readApiJson(response)) as { error?: string; ok?: boolean };
 
   if (!response.ok || data.ok === false) {
     throw new Error(data.error ?? "Unable to remove crew member from project.");
@@ -11415,7 +11433,7 @@ async function mergeDatabaseCrewMembers(sourceCrewMemberId: string, targetCrewMe
     },
     method: "PATCH"
   });
-  const data = (await response.json()) as { error?: string; ok?: boolean };
+  const data = (await readApiJson(response)) as { error?: string; ok?: boolean };
 
   if (!response.ok || data.ok === false) {
     throw new Error(data.error ?? "Unable to merge crew members.");
@@ -11427,7 +11445,7 @@ async function loadDatabaseDailyReportData() {
     const response = await fetch("/api/daily-reports", {
       cache: "no-store"
     });
-    const data = (await response.json()) as DailyReportsResponse;
+    const data = (await readApiJson(response)) as DailyReportsResponse;
 
     if (!response.ok || !data.databaseConfigured) {
       return null;
@@ -11455,7 +11473,7 @@ async function saveDatabaseDailyReport(projectId: string, date: string, dailyRep
     },
     method: "PATCH"
   });
-  const data = (await response.json()) as { error?: string; ok?: boolean };
+  const data = (await readApiJson(response)) as { error?: string; ok?: boolean };
 
   if (!response.ok || data.ok === false) {
     throw new Error(data.error ?? "Unable to save daily report.");
@@ -11475,7 +11493,7 @@ async function saveDatabaseDailyReportUpload(projectId: string, date: string, da
     },
     method: "PATCH"
   });
-  const data = (await response.json()) as { error?: string; ok?: boolean };
+  const data = (await readApiJson(response)) as { error?: string; ok?: boolean };
 
   if (!response.ok || data.ok === false) {
     throw new Error(data.error ?? "Unable to save daily report upload status.");
@@ -11489,7 +11507,7 @@ async function deleteDatabaseDailyReportUpload(projectId: string, date: string) 
       method: "DELETE"
     }
   );
-  const data = (await response.json()) as { error?: string; ok?: boolean };
+  const data = (await readApiJson(response)) as { error?: string; ok?: boolean };
 
   if (!response.ok || data.ok === false) {
     throw new Error(data.error ?? "Unable to clear daily report upload status.");
@@ -11504,7 +11522,7 @@ async function loadDatabaseJobImageUploads(projectId: string, date: string) {
         cache: "no-store"
       }
     );
-    const data = (await response.json()) as JobImagesResponse;
+    const data = (await readApiJson(response)) as JobImagesResponse;
 
     if (!response.ok || !data.databaseConfigured) {
       return null;
@@ -11521,7 +11539,7 @@ async function loadDatabaseDayRecords() {
     const response = await fetch("/api/day-records", {
       cache: "no-store"
     });
-    const data = (await response.json()) as DayRecordsResponse;
+    const data = (await readApiJson(response)) as DayRecordsResponse;
 
     if (!response.ok || !data.databaseConfigured) {
       return null;
@@ -11549,7 +11567,7 @@ async function saveDatabaseDaySubmission(projectId: string, date: string, daySub
     },
     method: "PATCH"
   });
-  const data = (await response.json()) as { error?: string; ok?: boolean };
+  const data = (await readApiJson(response)) as { error?: string; ok?: boolean };
 
   if (!response.ok || data.ok === false) {
     throw new Error(data.error ?? "Unable to save day status.");
@@ -11563,7 +11581,7 @@ async function deleteDatabaseDaySubmission(projectId: string, date: string) {
       method: "DELETE"
     }
   );
-  const data = (await response.json()) as { error?: string; ok?: boolean };
+  const data = (await readApiJson(response)) as { error?: string; ok?: boolean };
 
   if (!response.ok || data.ok === false) {
     throw new Error(data.error ?? "Unable to delete day status.");
@@ -11575,7 +11593,7 @@ async function loadDatabaseProjectControls() {
     const response = await fetch("/api/project-controls", {
       cache: "no-store"
     });
-    const data = (await response.json()) as ProjectControlsResponse;
+    const data = (await readApiJson(response)) as ProjectControlsResponse;
 
     if (!response.ok || !data.databaseConfigured) {
       return null;
@@ -11596,7 +11614,7 @@ async function loadAdminFailedUploads() {
   const response = await fetch("/api/admin/failed-uploads", {
     cache: "no-store"
   });
-  const data = (await response.json()) as AdminFailedUploadsResponse;
+  const data = (await readApiJson(response)) as AdminFailedUploadsResponse;
 
   if (!response.ok) {
     throw new Error(data.error ?? "Unable to load unresolved failed uploads.");
@@ -11623,7 +11641,7 @@ async function loadAdminAuditLog(filters: AuditLogFilters) {
   const response = await fetch(`/api/admin/audit-log?${params.toString()}`, {
     cache: "no-store"
   });
-  const data = (await response.json()) as AuditLogResponse;
+  const data = (await readApiJson(response)) as AuditLogResponse;
 
   if (!response.ok) {
     throw new Error(data.error ?? "Unable to load audit log.");
@@ -11637,7 +11655,7 @@ async function loadDatabaseNetSuiteVendors() {
     const response = await fetch("/api/netsuite/vendors", {
       cache: "no-store"
     });
-    const data = (await response.json()) as NetSuiteVendorsResponse;
+    const data = (await readApiJson(response)) as NetSuiteVendorsResponse;
 
     if (!response.ok || !data.databaseConfigured) {
       return null;
@@ -11658,7 +11676,7 @@ async function syncDatabaseNetSuiteVendors() {
   const response = await fetch("/api/netsuite/vendors", {
     method: "POST"
   });
-  const data = (await response.json()) as NetSuiteVendorsResponse;
+  const data = (await readApiJson(response)) as NetSuiteVendorsResponse;
 
   if (!response.ok || data.ok === false) {
     throw new Error(data.error ?? "Unable to sync NetSuite vendors.");
@@ -11683,7 +11701,7 @@ async function saveDatabaseNetSuiteVendorBlacklist(vendorId: string, blacklisted
     },
     method: "PATCH"
   });
-  const data = (await response.json()) as NetSuiteVendorsResponse;
+  const data = (await readApiJson(response)) as NetSuiteVendorsResponse;
 
   if (!response.ok || data.ok === false) {
     throw new Error(data.error ?? "Unable to save NetSuite vendor blacklist.");
@@ -11711,7 +11729,7 @@ async function saveDatabaseMyJobs(userId: string, projectIds: string[]) {
     },
     method: "PATCH"
   });
-  const data = (await response.json()) as { error?: string; ok?: boolean };
+  const data = (await readApiJson(response)) as { error?: string; ok?: boolean };
 
   if (!response.ok || data.ok === false) {
     throw new Error(data.error ?? "Unable to save My Projects.");
@@ -11730,7 +11748,7 @@ async function saveDatabaseProjectBlacklist(projectId: string, blacklisted: bool
     },
     method: "PATCH"
   });
-  const data = (await response.json()) as { error?: string; ok?: boolean };
+  const data = (await readApiJson(response)) as { error?: string; ok?: boolean };
 
   if (!response.ok || data.ok === false) {
     throw new Error(data.error ?? "Unable to save project blacklist.");
@@ -11749,7 +11767,7 @@ async function saveDatabaseProjectArchive(projectId: string, archived: boolean) 
     },
     method: "PATCH"
   });
-  const data = (await response.json()) as { error?: string; ok?: boolean };
+  const data = (await readApiJson(response)) as { error?: string; ok?: boolean };
 
   if (!response.ok || data.ok === false) {
     throw new Error(data.error ?? "Unable to save project archive.");
@@ -11767,7 +11785,7 @@ async function saveDatabaseSyncLogEntry(syncLogEntry: SyncLogEntry) {
     },
     method: "PATCH"
   });
-  const data = (await response.json()) as { error?: string; ok?: boolean };
+  const data = (await readApiJson(response)) as { error?: string; ok?: boolean };
 
   if (!response.ok || data.ok === false) {
     throw new Error(data.error ?? "Unable to save sync log.");
@@ -11784,7 +11802,7 @@ async function clearDatabaseStagingOperationalData() {
     },
     method: "POST"
   });
-  const data = (await response.json()) as AdminClearStagingDataResponse;
+  const data = (await readApiJson(response)) as AdminClearStagingDataResponse;
 
   if (!response.ok || data.ok === false) {
     throw new Error(data.error ?? "Unable to clear staging data.");
@@ -11803,7 +11821,7 @@ async function clearDatabaseProjectCache() {
     },
     method: "POST"
   });
-  const data = (await response.json()) as AdminClearProjectCacheResponse;
+  const data = (await readApiJson(response)) as AdminClearProjectCacheResponse;
 
   if (!response.ok || data.ok === false) {
     throw new Error(data.error ?? "Unable to clear cached project data.");
@@ -13884,7 +13902,7 @@ function formatRole(role: AuthUser["role"]) {
     return "Executive";
   }
 
-  return "Standard User";
+  return "Field";
 }
 
 function buildSyncStatus(prefix: string, summary: ProcoreSyncSummary | undefined) {
@@ -13963,7 +13981,7 @@ async function postProjectsWithTimeout(path: string, timeoutMessage: string) {
       method: "POST",
       signal: controller.signal
     });
-    const data = (await response.json()) as ProjectsResponse;
+    const data = (await readApiJson(response)) as ProjectsResponse;
 
     return { data, response };
   } catch (error) {
@@ -14237,11 +14255,33 @@ function downloadBlob(blob: Blob, fileName: string) {
 
 async function readApiError(response: Response, fallbackMessage: string) {
   try {
-    const data = (await response.json()) as { error?: string };
+    const data = (await readApiJson(response)) as { error?: string };
 
     return data.error ?? fallbackMessage;
   } catch {
     return fallbackMessage;
+  }
+}
+
+async function readApiJson(response: Response) {
+  const text = await response.text();
+
+  if (!text.trim()) {
+    if (response.ok) {
+      return {};
+    }
+
+    throw new Error(`${response.status} ${response.statusText || "Request failed"}`.trim());
+  }
+
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    if (response.ok) {
+      throw new Error("The server returned an unreadable response.");
+    }
+
+    throw new Error(text.slice(0, 300) || `${response.status} ${response.statusText || "Request failed"}`.trim());
   }
 }
 

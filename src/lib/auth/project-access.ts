@@ -5,6 +5,10 @@ export function canAccessReports(user: AuthUser) {
   return user.role === "admin" || user.role === "executive" || user.role === "project_manager";
 }
 
+export function getReportProjectsForUser(user: AuthUser, projects: Project[]) {
+  return canAccessReports(user) ? projects : [];
+}
+
 export function getProjectAccessScopeForUser(user: AuthUser, projects: Project[]) {
   if (user.role !== "project_manager") {
     return null;

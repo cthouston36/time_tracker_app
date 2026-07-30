@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { canAccessReports, getAccessibleProjectsForUser } from "@/lib/auth/project-access";
+import { canAccessReports, getProjectAccessScopeForUser, getReportProjectsForUser } from "@/lib/auth/project-access";
 import { getCurrentUser } from "@/lib/auth/session";
+import type { AuthUser } from "@/lib/auth/types";
 import { readAllocationEntriesForReport } from "@/lib/allocation-entries-store";
 import {
   buildCrewPerformanceRows,
@@ -29,7 +30,7 @@ export async function POST(request: NextRequest) {
   }
 
   if (!canAccessReports(user)) {
-    return NextResponse.json({ error: "Project manager access is required to export reports." }, { status: 403 });
+    return NextResponse.json({ error: "Report access is required to export reports." }, { status: 403 });
   }
 
   const body = (await request.json()) as ReportExportRequestBody;
@@ -38,8 +39,13 @@ export async function POST(request: NextRequest) {
     excludeOutliers: body.excludeOutliers === true,
     metric: parseReportMetric(body.reportMetric)
   };
-  const projects = getAccessibleProjectsForUser(user, await getProjects());
-  const projectIds = resolveProjectIds(body, projects.map((project) => project.id));
+  const allProjects = await getProjects();
+  const projects = getReportProjectsForUser(user, allProjects);
+  const projectIds = resolveProjectIds(
+    body,
+    projects.map((project) => project.id),
+    getMyReportProjectIds(user, allProjects, body)
+  );
   const baseFilters = {
     endDate: parseIsoDate(body.endDate),
     projectIds,
@@ -279,22 +285,29 @@ function escapeCsvCell(value: string) {
   return safeValue;
 }
 
-function resolveProjectIds(body: ReportExportRequestBody, cachedProjectIds: string[]) {
+function resolveProjectIds(body: ReportExportRequestBody, cachedProjectIds: string[], myProjectIds: string[]) {
   const cachedProjectIdSet = new Set(cachedProjectIds);
-  const allowedProjectIds = normalizeStringList(body.allowedProjectIds).filter((projectId) => cachedProjectIdSet.has(projectId));
-  const allowedIds = Array.isArray(body.allowedProjectIds) ? allowedProjectIds : cachedProjectIds;
-  const allowedIdSet = new Set(allowedIds);
   const projectId = readString(body.projectId);
 
   if (projectId === "my-jobs") {
-    return normalizeStringList(body.myJobIds).filter((candidateProjectId) => allowedIdSet.has(candidateProjectId));
+    return myProjectIds.filter((candidateProjectId) => cachedProjectIdSet.has(candidateProjectId));
   }
 
   if (projectId && projectId !== "all") {
-    return allowedIdSet.has(projectId) ? [projectId] : [];
+    return cachedProjectIdSet.has(projectId) ? [projectId] : [];
   }
 
-  return allowedIds;
+  return cachedProjectIds;
+}
+
+function getMyReportProjectIds(user: AuthUser, projects: Project[], body: ReportExportRequestBody) {
+  const projectAccessScope = getProjectAccessScopeForUser(user, projects);
+
+  if (projectAccessScope !== null) {
+    return projectAccessScope;
+  }
+
+  return normalizeStringList(body.myJobIds);
 }
 
 function parseReportMode(value: unknown): ReportMode {

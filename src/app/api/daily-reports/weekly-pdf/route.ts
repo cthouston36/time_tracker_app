@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
   }
 
   if (!canAccessReports(user)) {
-    return NextResponse.json({ error: "Project manager access is required to export weekly daily reports." }, { status: 403 });
+    return NextResponse.json({ error: "Report access is required to export weekly daily reports." }, { status: 403 });
   }
 
   try {

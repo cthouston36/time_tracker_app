@@ -1,9 +1,10 @@
 import type { AllocationEntry, CrewLaborType, Project } from "@/lib/procore/types";
 
-export type ReportMode = "summary" | "detail" | "crew" | "daily_work";
+export type ReportMode = "summary" | "detail" | "crew" | "employee_hours" | "daily_work";
 export type DetailGrouping = "crew_day" | "crew_project" | "job_day";
 export type DetailSort = "worst_average" | "best_average" | "most_hours" | "most_quantity";
 export type ReportMetric = "mean" | "median";
+export type EmployeeHoursGrouping = "employee" | "job";
 
 export type ReportOptions = {
   excludeOutliers?: boolean;
@@ -144,6 +145,49 @@ export type DailyWorkReportSourceRow = {
       payItemId?: unknown;
       quantity?: unknown;
     }>;
+  };
+};
+
+export type EmployeeHoursDetailRow = {
+  id: string;
+  date: string;
+  employeeName: string;
+  hours: number;
+  jobName: string;
+  projectId: string;
+  truckNumber: string;
+};
+
+export type EmployeeHoursReportRow = {
+  id: string;
+  daysWorked: number;
+  detailRows: EmployeeHoursDetailRow[];
+  employeeCount: number;
+  employeeName?: string;
+  jobCount: number;
+  jobName?: string;
+  totalHours: number;
+};
+
+export type EmployeeHoursSourceEmployeeRow = {
+  employeeClassification?: unknown;
+  lunchIn?: unknown;
+  lunchOut?: unknown;
+  productionCode1?: unknown;
+  productionCode2?: unknown;
+  productionHours1?: unknown;
+  productionHours2?: unknown;
+  timeIn?: unknown;
+  timeOut?: unknown;
+  totalHours?: unknown;
+  truckNumber?: unknown;
+};
+
+export type EmployeeHoursReportSourceRow = {
+  date: string;
+  projectId: string;
+  report: {
+    employeeRows?: EmployeeHoursSourceEmployeeRow[];
   };
 };
 
@@ -671,6 +715,103 @@ export function buildDailyWorkReportRows(reportRows: DailyWorkReportSourceRow[],
     });
 }
 
+export function buildEmployeeHoursReportRows(
+  reportRows: EmployeeHoursReportSourceRow[],
+  projects: Project[],
+  grouping: EmployeeHoursGrouping
+): EmployeeHoursReportRow[] {
+  const projectNameById = new Map(projects.map((project) => [project.id, project.name]));
+  const groups = new Map<
+    string,
+    EmployeeHoursReportRow & {
+      dateKeys: Set<string>;
+      employeeKeys: Set<string>;
+      jobKeys: Set<string>;
+    }
+  >();
+
+  for (const sourceRow of reportRows) {
+    const jobName = projectNameById.get(sourceRow.projectId) ?? `Unknown job (${sourceRow.projectId})`;
+
+    for (const [index, employeeRow] of (sourceRow.report.employeeRows ?? []).entries()) {
+      if (!dailyReportEmployeeRowHasContent(employeeRow)) {
+        continue;
+      }
+
+      const employeeName = normalizeEmployeeHoursName(readString(employeeRow.employeeClassification));
+      const hours = Number(readString(employeeRow.totalHours) || calculateDailyReportTotalHours(employeeRow));
+
+      if (!employeeName || !Number.isFinite(hours) || hours <= 0) {
+        continue;
+      }
+
+      const groupKey = grouping === "job" ? sourceRow.projectId : employeeName.toLowerCase();
+      const current = groups.get(groupKey) ?? {
+        id: groupKey,
+        daysWorked: 0,
+        detailRows: [],
+        employeeCount: 0,
+        employeeName: grouping === "employee" ? employeeName : undefined,
+        jobCount: 0,
+        jobName: grouping === "job" ? jobName : undefined,
+        totalHours: 0,
+        dateKeys: new Set<string>(),
+        employeeKeys: new Set<string>(),
+        jobKeys: new Set<string>()
+      };
+
+      current.totalHours += hours;
+      current.detailRows.push({
+        id: `${sourceRow.projectId}-${sourceRow.date}-${index}`,
+        date: sourceRow.date,
+        employeeName,
+        hours,
+        jobName,
+        projectId: sourceRow.projectId,
+        truckNumber: readString(employeeRow.truckNumber)
+      });
+      current.dateKeys.add(sourceRow.date);
+      current.employeeKeys.add(employeeName.toLowerCase());
+      current.jobKeys.add(sourceRow.projectId);
+      current.daysWorked = current.dateKeys.size;
+      current.employeeCount = current.employeeKeys.size;
+      current.jobCount = current.jobKeys.size;
+      groups.set(groupKey, current);
+    }
+  }
+
+  return Array.from(groups.values())
+    .map((row) => ({
+      id: row.id,
+      daysWorked: row.daysWorked,
+      detailRows: [...row.detailRows].sort((a, b) => {
+        const dateComparison = a.date.localeCompare(b.date);
+
+        if (dateComparison !== 0) {
+          return dateComparison;
+        }
+
+        return grouping === "job"
+          ? a.employeeName.localeCompare(b.employeeName, undefined, { numeric: true, sensitivity: "base" })
+          : a.jobName.localeCompare(b.jobName, undefined, { numeric: true, sensitivity: "base" });
+      }),
+      employeeCount: row.employeeCount,
+      employeeName: row.employeeName,
+      jobCount: row.jobCount,
+      jobName: row.jobName,
+      totalHours: row.totalHours
+    }))
+    .sort((a, b) => {
+      const firstLabel = grouping === "job" ? a.jobName ?? "" : a.employeeName ?? "";
+      const secondLabel = grouping === "job" ? b.jobName ?? "" : b.employeeName ?? "";
+
+      return firstLabel.localeCompare(secondLabel, undefined, {
+        numeric: true,
+        sensitivity: "base"
+      });
+    });
+}
+
 export function paginateRows<TRow>(rows: TRow[], page: number, pageSize: number) {
   const safePageSize = Math.max(1, pageSize);
   const totalRows = rows.length;
@@ -886,6 +1027,120 @@ function parseReportQuantity(value: unknown) {
   const numberValue = Number(normalizedValue);
 
   return Number.isFinite(numberValue) ? numberValue : 0;
+}
+
+function dailyReportEmployeeRowHasContent(row: EmployeeHoursSourceEmployeeRow) {
+  return (
+    Boolean(readString(row.employeeClassification)) ||
+    Boolean(readString(row.truckNumber)) ||
+    Boolean(readString(row.timeIn)) ||
+    Boolean(readString(row.lunchOut)) ||
+    Boolean(readString(row.lunchIn)) ||
+    Boolean(readString(row.timeOut)) ||
+    Boolean(readString(row.productionCode1)) ||
+    Boolean(readString(row.productionHours1)) ||
+    Boolean(readString(row.productionCode2)) ||
+    Boolean(readString(row.productionHours2)) ||
+    Boolean(readString(row.totalHours))
+  );
+}
+
+function normalizeEmployeeHoursName(value: string) {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+function normalizeDailyReportTimeInput(value: unknown) {
+  const rawValue = readString(value);
+
+  if (!rawValue) {
+    return "";
+  }
+
+  if (/^\d{1,2}:\d{2}$/.test(rawValue)) {
+    const [hourText, minuteText] = rawValue.split(":");
+    const hour = Number(hourText);
+    const minute = Number(minuteText);
+
+    return Number.isInteger(hour) && Number.isInteger(minute) && hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59
+      ? `${hour}:${String(minute).padStart(2, "0")}`
+      : "";
+  }
+
+  const cleaned = rawValue.replace(/\D/g, "");
+
+  if (!cleaned) {
+    return "";
+  }
+
+  const hourText = cleaned.length <= 2 ? cleaned : cleaned.slice(0, cleaned.length - 2);
+  const minuteText = cleaned.length <= 2 ? "00" : cleaned.slice(-2);
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+
+  if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+    return "";
+  }
+
+  return `${hour}:${String(minute).padStart(2, "0")}`;
+}
+
+function parseDailyReportTimeToMinutes(value: unknown) {
+  const normalized = normalizeDailyReportTimeInput(value);
+
+  if (!normalized) {
+    return null;
+  }
+
+  const [hours, minutes] = normalized.split(":").map(Number);
+
+  return hours * 60 + minutes;
+}
+
+function calculateDailyReportDurationMinutes(start: number, end: number) {
+  let duration = end - start;
+
+  if (duration < 0) {
+    duration += 12 * 60;
+  }
+
+  return duration > 12 * 60 ? null : duration;
+}
+
+function calculateDailyReportTotalHours(row: EmployeeHoursSourceEmployeeRow) {
+  const timeIn = parseDailyReportTimeToMinutes(row.timeIn);
+  const timeOut = parseDailyReportTimeToMinutes(row.timeOut);
+
+  if (timeIn === null || timeOut === null) {
+    return "";
+  }
+
+  const workMinutes = calculateDailyReportDurationMinutes(timeIn, timeOut);
+
+  if (workMinutes === null) {
+    return "";
+  }
+
+  const lunchOut = parseDailyReportTimeToMinutes(row.lunchOut);
+  const lunchIn = parseDailyReportTimeToMinutes(row.lunchIn);
+  let lunchMinutes = 0;
+
+  if (lunchOut !== null && lunchIn !== null) {
+    const calculatedLunchMinutes = calculateDailyReportDurationMinutes(lunchOut, lunchIn);
+
+    if (calculatedLunchMinutes === null) {
+      return "";
+    }
+
+    lunchMinutes = calculatedLunchMinutes;
+  }
+
+  const totalMinutes = workMinutes - lunchMinutes;
+
+  if (totalMinutes < 0 || totalMinutes > 12 * 60) {
+    return "";
+  }
+
+  return (totalMinutes / 60).toFixed(2);
 }
 
 function readString(value: unknown) {
