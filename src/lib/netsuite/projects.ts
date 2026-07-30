@@ -24,6 +24,7 @@ export type NetSuiteSyncSummary = {
   eligibleProjects?: number;
   inactiveNetSuiteProjects?: number;
   autoArchivedProjects?: number;
+  autoUnarchivedProjects?: number;
   payItemProjects?: number;
   remainingNewProjects?: number;
   skippedMissingProcoreProjectId?: number;
@@ -72,7 +73,10 @@ type EligibleNetSuiteProjectsResult = {
 
 export async function syncProjectsFromNetSuite(): Promise<NetSuiteSyncResult> {
   const sourceProjects = await fetchEligibleNetSuiteProjects();
-  const autoArchivedProjects = (await archiveInactiveNetSuiteProjects(sourceProjects.inactiveNetSuiteProjectIds)) ?? 0;
+  const archiveState = await syncNetSuiteProjectArchiveState(
+    sourceProjects.projects.map((project) => project.id),
+    sourceProjects.inactiveNetSuiteProjectIds
+  );
   const cachedProjects = await readProcoreCache();
   const cachedProjectIds = new Set((cachedProjects?.projects ?? []).map((project) => project.id));
   const newProjects = sourceProjects.projects.filter((project) => !cachedProjectIds.has(project.id));
@@ -82,7 +86,8 @@ export async function syncProjectsFromNetSuite(): Promise<NetSuiteSyncResult> {
     projects: cache.projects,
     summary: {
       attempted: newProjects.length,
-      autoArchivedProjects,
+      autoArchivedProjects: archiveState.autoArchivedProjects,
+      autoUnarchivedProjects: archiveState.autoUnarchivedProjects,
       dailyReportOnlyProjects: sourceProjects.dailyReportOnlyProjects,
       eligibleProjects: sourceProjects.projects.length,
       failed: sourceProjects.failedProjects.length,
@@ -100,7 +105,10 @@ export async function syncProjectsFromNetSuite(): Promise<NetSuiteSyncResult> {
 
 export async function syncAllProjectsFromNetSuite(): Promise<NetSuiteSyncResult> {
   const sourceProjects = await fetchEligibleNetSuiteProjects();
-  const autoArchivedProjects = (await archiveInactiveNetSuiteProjects(sourceProjects.inactiveNetSuiteProjectIds)) ?? 0;
+  const archiveState = await syncNetSuiteProjectArchiveState(
+    sourceProjects.projects.map((project) => project.id),
+    sourceProjects.inactiveNetSuiteProjectIds
+  );
   const existingCache = await readProcoreCache();
   const activeProjectIds = new Set(sourceProjects.projects.map((project) => project.id));
   const inactiveProjectIds = new Set(sourceProjects.inactiveNetSuiteProjectIds);
@@ -113,7 +121,8 @@ export async function syncAllProjectsFromNetSuite(): Promise<NetSuiteSyncResult>
     projects: cache.projects,
     summary: {
       attempted: sourceProjects.projects.length,
-      autoArchivedProjects,
+      autoArchivedProjects: archiveState.autoArchivedProjects,
+      autoUnarchivedProjects: archiveState.autoUnarchivedProjects,
       dailyReportOnlyProjects: sourceProjects.dailyReportOnlyProjects,
       eligibleProjects: sourceProjects.projects.length,
       failed: sourceProjects.failedProjects.length,
@@ -162,6 +171,8 @@ export async function addOrUpdateProjectFromNetSuite(projectIdentifier: string) 
   if (!mappedProject) {
     throw new Error("The matching NetSuite project is missing a Procore project ID or project title.");
   }
+
+  await unarchiveActiveNetSuiteProjects([mappedProject.id]);
 
   if (!isTwoSeriesProject && mappedProject.payItems.length === 0) {
     throw new Error("NetSuite returned no budget pay items for the selected project.");
@@ -310,6 +321,20 @@ function buildProjectQuery() {
 
 async function archiveInactiveNetSuiteProjects(projectIds: string[]) {
   return setProjectArchiveForProjects(projectIds, true);
+}
+
+async function unarchiveActiveNetSuiteProjects(projectIds: string[]) {
+  return setProjectArchiveForProjects(projectIds, false);
+}
+
+async function syncNetSuiteProjectArchiveState(activeProjectIds: string[], inactiveProjectIds: string[]) {
+  const autoArchivedProjects = (await archiveInactiveNetSuiteProjects(inactiveProjectIds)) ?? 0;
+  const autoUnarchivedProjects = (await unarchiveActiveNetSuiteProjects(activeProjectIds)) ?? 0;
+
+  return {
+    autoArchivedProjects,
+    autoUnarchivedProjects
+  };
 }
 
 function buildBudgetLineQuery() {

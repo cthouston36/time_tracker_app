@@ -339,20 +339,24 @@ export async function setProjectArchiveForProjects(projectIds: string[], archive
     return 0;
   }
 
-  const queries = archived
-    ? normalizedProjectIds.map((projectId) => sql`
+  const changedRows = archived
+    ? await sql`
         insert into project_archive (project_id, archived_at)
-        values (${projectId}, now())
+        select value, now()
+        from jsonb_array_elements_text(${JSON.stringify(normalizedProjectIds)}::jsonb)
         on conflict (project_id) do nothing
-      `)
-    : normalizedProjectIds.map((projectId) => sql`
+        returning project_id
+      `
+    : await sql`
         delete from project_archive
-        where project_id = ${projectId}
-      `);
+        where project_id in (
+          select value
+          from jsonb_array_elements_text(${JSON.stringify(normalizedProjectIds)}::jsonb)
+        )
+        returning project_id
+      `;
 
-  await sql.transaction(queries);
-
-  return normalizedProjectIds.length;
+  return changedRows.length;
 }
 
 export async function insertSyncLogEntry(entry: StoredSyncLogEntry) {

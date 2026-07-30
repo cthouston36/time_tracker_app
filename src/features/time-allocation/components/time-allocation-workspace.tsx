@@ -100,6 +100,7 @@ type ProcoreSyncSummary = {
   skippedExisting: number;
   failedProjects: string[];
   autoArchivedProjects?: number;
+  autoUnarchivedProjects?: number;
   dailyReportOnlyProjects?: number;
   eligibleProjects?: number;
   inactiveNetSuiteProjects?: number;
@@ -6373,9 +6374,7 @@ function DashboardWeeklyCalendar({
                         dailyReportUploadsByKey[dayKey],
                         hasDailyEntryActivity
                       )
-                    : isTwoSeriesProject(project)
-                      ? getNotApplicableCalendarStatus()
-                      : getEntryCalendarStatus(daySubmissions[dayKey], entryDayKeys.has(dayKey));
+                    : getProjectEntryCalendarStatus(project, daySubmissions[dayKey], entryDayKeys.has(dayKey));
 
                 return (
                   <button
@@ -6615,9 +6614,7 @@ function buildDashboardProjectRows({
 
     for (const date of weekDates) {
       const dayKey = getDayKey(project.id, date);
-      const entryStatus = isTwoSeriesProject(project)
-        ? getNotApplicableCalendarStatus()
-        : getEntryCalendarStatus(daySubmissions[dayKey], entryDayKeys.has(dayKey));
+      const entryStatus = getProjectEntryCalendarStatus(project, daySubmissions[dayKey], entryDayKeys.has(dayKey));
       const dailyStatus = getDailyReportCalendarStatus(
         dailyReportsByKey[dayKey],
         dailyReportUploadsByKey[dayKey],
@@ -9116,9 +9113,7 @@ function WeeklyStatusReport({
                         dailyReportUploadsByKey[dayKey],
                         hasDailyEntryActivity
                       )
-                    : isTwoSeriesProject(project)
-                      ? getNotApplicableCalendarStatus()
-                      : getEntryCalendarStatus(daySubmissions[dayKey], entryDayKeys.has(dayKey));
+                    : getProjectEntryCalendarStatus(project, daySubmissions[dayKey], entryDayKeys.has(dayKey));
 
                 return (
                   <button
@@ -9160,6 +9155,14 @@ function getEntryCalendarStatus(daySubmission: DaySubmission | undefined, hasSav
     className: "draft",
     label: "Draft"
   };
+}
+
+function getProjectEntryCalendarStatus(project: Project, daySubmission: DaySubmission | undefined, hasSavedEntries: boolean) {
+  if (isTwoSeriesProject(project)) {
+    return getNotApplicableCalendarStatus();
+  }
+
+  return getEntryCalendarStatus(daySubmission, hasSavedEntries);
 }
 
 function buildEntryDayKeySet(entries: AllocationEntry[]) {
@@ -9882,6 +9885,7 @@ function SyncSummaryCard({ summary }: { summary: ProcoreSyncSummary }) {
   const eligibleProjects = summary.eligibleProjects ?? summary.attempted + summary.skippedExisting;
   const inactiveNetSuiteProjects = summary.inactiveNetSuiteProjects ?? 0;
   const autoArchivedProjects = summary.autoArchivedProjects ?? 0;
+  const autoUnarchivedProjects = summary.autoUnarchivedProjects ?? 0;
   const payItemProjects = summary.payItemProjects ?? 0;
   const remainingNewProjects = summary.remainingNewProjects ?? 0;
   const skippedMissingProcoreProjectId = summary.skippedMissingProcoreProjectId ?? 0;
@@ -9904,10 +9908,13 @@ function SyncSummaryCard({ summary }: { summary: ProcoreSyncSummary }) {
           {dailyReportOnlyProjects} daily-report-only 2-series project{dailyReportOnlyProjects === 1 ? "" : "s"}.
         </span>
       ) : null}
-      {summary.inactiveNetSuiteProjects !== undefined || summary.autoArchivedProjects !== undefined ? (
+      {summary.inactiveNetSuiteProjects !== undefined ||
+      summary.autoArchivedProjects !== undefined ||
+      summary.autoUnarchivedProjects !== undefined ? (
         <span>
           Inactive NetSuite jobs: {inactiveNetSuiteProjects}. Auto-archived {autoArchivedProjects} cached project
-          {autoArchivedProjects === 1 ? "" : "s"}.
+          {autoArchivedProjects === 1 ? "" : "s"}. Auto-unarchived {autoUnarchivedProjects} active project
+          {autoUnarchivedProjects === 1 ? "" : "s"}.
         </span>
       ) : null}
       <span>{summary.skippedExisting} existing project{summary.skippedExisting === 1 ? "" : "s"} skipped.</span>
@@ -11839,6 +11846,7 @@ function normalizeSyncSummary(value: unknown): ProcoreSyncSummary | undefined {
 
   const optionalFields: Array<keyof Omit<ProcoreSyncSummary, "attempted" | "failed" | "failedProjects" | "skippedExisting" | "synced">> = [
     "autoArchivedProjects",
+    "autoUnarchivedProjects",
     "dailyReportOnlyProjects",
     "eligibleProjects",
     "inactiveNetSuiteProjects",
@@ -14720,9 +14728,11 @@ function buildSyncStatus(prefix: string, summary: ProcoreSyncSummary | undefined
   const remainingNewProjects = summary.remainingNewProjects ?? 0;
   const queuedText = remainingNewProjects > 0 ? `, ${remainingNewProjects} queued` : "";
   const autoArchivedProjects = summary.autoArchivedProjects ?? 0;
+  const autoUnarchivedProjects = summary.autoUnarchivedProjects ?? 0;
   const archivedText = autoArchivedProjects > 0 ? `, ${autoArchivedProjects} archived inactive` : "";
+  const unarchivedText = autoUnarchivedProjects > 0 ? `, ${autoUnarchivedProjects} unarchived active` : "";
 
-  return `${prefix}: ${summary.synced} synced, ${summary.failed} failed${dailyReportOnlyText}${queuedText}${archivedText}`;
+  return `${prefix}: ${summary.synced} synced, ${summary.failed} failed${dailyReportOnlyText}${queuedText}${archivedText}${unarchivedText}`;
 }
 
 function hasSyncWarnings(summary: ProcoreSyncSummary | undefined) {
@@ -14738,7 +14748,9 @@ function formatSyncSummaryLine(summary: ProcoreSyncSummary) {
   const queuedText = remainingNewProjects > 0 ? `, ${remainingNewProjects} queued` : "";
   const inactiveText =
     summary.inactiveNetSuiteProjects !== undefined
-      ? `, ${summary.inactiveNetSuiteProjects} inactive, ${summary.autoArchivedProjects ?? 0} archived`
+      ? `, ${summary.inactiveNetSuiteProjects} inactive, ${summary.autoArchivedProjects ?? 0} archived, ${
+          summary.autoUnarchivedProjects ?? 0
+        } unarchived`
       : "";
   const skippedDetails =
     summary.skippedMissingProcoreProjectId !== undefined || summary.skippedNoPayItems !== undefined
