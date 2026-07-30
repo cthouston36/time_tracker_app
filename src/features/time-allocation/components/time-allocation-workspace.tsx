@@ -18,6 +18,7 @@ import {
   Info,
   Inbox,
   KeyRound,
+  LayoutDashboard,
   LoaderCircle,
   ListChecks,
   LogOut,
@@ -629,7 +630,7 @@ type EditingCrewMember = {
   subcontractorCompany: string;
 };
 
-type ViewMode = "entry" | "calendar" | "reports";
+type ViewMode = "dashboard" | "entry" | "calendar" | "reports";
 
 type CalendarStatusMode = "entry_status" | "daily_reports";
 
@@ -957,6 +958,12 @@ export function TimeAllocationWorkspace() {
 
   saveDailyReportRef.current = saveDailyReport;
   saveAllocationEntriesRef.current = saveAllocationEntries;
+
+  useEffect(() => {
+    if (currentUser?.role === "standard" && viewMode === "dashboard") {
+      setViewMode("entry");
+    }
+  }, [currentUser, viewMode]);
 
   useEffect(() => {
     if (!currentUser) {
@@ -4385,6 +4392,104 @@ export function TimeAllocationWorkspace() {
     );
   }
 
+  const userCanAccessDashboard = currentUser.role !== "standard";
+
+  const renderAdminToolsDrawer = () => (
+    <details className="admin-tools-drawer">
+      <summary>
+        <span>Admin Tools</span>
+        <span className="admin-tools-meta">Sync, users, controls</span>
+      </summary>
+      <div className="admin-tools-body">
+        <div className="admin-tool-actions">
+          <button className="secondary-button" disabled={syncing} onClick={syncProcoreData} type="button">
+            <RefreshCw aria-hidden="true" size={18} />
+            {syncing ? "Syncing..." : "Sync New Projects"}
+          </button>
+          <button className="secondary-button" disabled={syncingAll} onClick={syncAllProcoreData} type="button">
+            <RefreshCw aria-hidden="true" size={18} />
+            {syncingAll ? "Syncing All..." : "Sync All Projects"}
+          </button>
+          <button className="secondary-button" disabled={updatingProject} onClick={addOrUpdateProject} type="button">
+            <RefreshCw aria-hidden="true" size={18} />
+            {updatingProject ? "Updating..." : "Add/Update Project"}
+          </button>
+          <button className="secondary-button" disabled={entries.length === 0} onClick={exportAllEntryDetails} type="button">
+            <Download aria-hidden="true" size={18} />
+            Export CSV
+          </button>
+          <button className="secondary-button" onClick={() => connectProcore("connect")} type="button">
+            <PlugZap aria-hidden="true" size={18} />
+            Configure Procore Upload
+          </button>
+        </div>
+        {syncSummary ? <SyncSummaryCard summary={syncSummary} /> : null}
+        <SyncLogPanel entries={syncLog} />
+        <AdminFailedUploadCenter
+          onOpenDay={openDailyEntry}
+          onRetryDailyReport={retryDailyReportUpload}
+          projects={allProjects}
+          retryingDailyReportUploadKey={retryingDailyReportUploadKey}
+        />
+        <AdminAuditLogPanel projects={allProjects} users={adminUsers} />
+        <AdminDataQualityPanel
+          crewDirectory={crewDirectory}
+          crewMembersByProject={crewMembersByProject}
+          projectArchiveById={projectArchiveById}
+          projectBlacklistById={projectBlacklistById}
+          projects={allProjects}
+          users={adminUsers}
+          vendorBlacklistById={netSuiteVendorBlacklistById}
+          vendors={allNetSuiteVendors}
+        />
+        <ProjectBlacklistPanel
+          onToggleProject={toggleProjectBlacklist}
+          projectBlacklistById={projectBlacklistById}
+          projects={allProjects}
+        />
+        <ProjectArchivePanel
+          onToggleProject={toggleProjectArchive}
+          projectArchiveById={projectArchiveById}
+          projects={allProjects}
+        />
+        <VendorBlacklistPanel
+          onToggleVendor={toggleVendorBlacklist}
+          vendorBlacklistById={netSuiteVendorBlacklistById}
+          vendors={allNetSuiteVendors}
+        />
+        <AdminUsersPanel
+          currentUserId={currentUser.id}
+          editingUserId={editingAdminUserId}
+          form={adminUserForm}
+          loading={loadingAdminUsers}
+          netSuiteProjectManagerOptions={netSuiteProjectManagerOptions}
+          notice={adminUsersNotice}
+          onCancelEdit={resetAdminUserForm}
+          onCreatePasswordResetToken={createAdminPasswordResetToken}
+          onEditUser={startEditingAdminUser}
+          onRefresh={loadAdminUsers}
+          onSaveUser={saveAdminUser}
+          onSetUserActive={setAdminUserActive}
+          onUpdateForm={updateAdminUserForm}
+          resetToken={adminPasswordResetToken}
+          saving={savingAdminUser}
+          users={adminUsers}
+        />
+        <AdminMaintenancePanel
+          clearing={clearingStagingData}
+          clearingProjectCache={clearingProjectCache}
+          netSuiteVendorCount={allNetSuiteVendors.length}
+          netSuiteVendorsSyncedAt={netSuiteVendorsSyncedAt}
+          notice={adminMaintenanceNotice}
+          onClearProjectCache={clearCachedProjectData}
+          onClearStagingData={clearStagingOperationalData}
+          onSyncNetSuiteVendors={syncNetSuiteVendorDirectory}
+          syncingNetSuiteVendors={syncingNetSuiteVendors}
+        />
+      </div>
+    </details>
+  );
+
   return (
     <main className="app-shell">
       <header className="top-bar">
@@ -4402,6 +4507,16 @@ export function TimeAllocationWorkspace() {
           </div>
         </div>
         <nav className="primary-nav" aria-label="Primary navigation">
+          {userCanAccessDashboard ? (
+            <button
+              className={viewMode === "dashboard" ? "tab-button active" : "tab-button"}
+              onClick={() => changeViewMode("dashboard")}
+              type="button"
+            >
+              <LayoutDashboard aria-hidden="true" size={16} />
+              Dashboard
+            </button>
+          ) : null}
           <button
             className={viewMode === "entry" ? "tab-button active" : "tab-button"}
             onClick={() => changeViewMode("entry")}
@@ -4561,7 +4676,16 @@ export function TimeAllocationWorkspace() {
         </div>
       ) : null}
 
-      <div className={jobSetupCollapsed ? "workspace job-setup-collapsed" : "workspace"}>
+      <div
+        className={[
+          "workspace",
+          viewMode === "dashboard" ? "dashboard-workspace" : "",
+          jobSetupCollapsed && viewMode !== "dashboard" ? "job-setup-collapsed" : ""
+        ]
+          .filter(Boolean)
+          .join(" ")}
+      >
+        {viewMode !== "dashboard" ? (
         <aside
           className={[
             "panel",
@@ -5027,105 +5151,23 @@ export function TimeAllocationWorkspace() {
               </div>
             ) : null}
           </div>
-          {currentUser.role === "admin" ? (
-            <details className="admin-tools-drawer">
-              <summary>
-                <span>Admin Tools</span>
-                <span className="admin-tools-meta">Sync, users, controls</span>
-              </summary>
-              <div className="admin-tools-body">
-                <div className="admin-tool-actions">
-                  <button className="secondary-button" disabled={syncing} onClick={syncProcoreData} type="button">
-                    <RefreshCw aria-hidden="true" size={18} />
-                    {syncing ? "Syncing..." : "Sync New Projects"}
-                  </button>
-                  <button className="secondary-button" disabled={syncingAll} onClick={syncAllProcoreData} type="button">
-                    <RefreshCw aria-hidden="true" size={18} />
-                    {syncingAll ? "Syncing All..." : "Sync All Projects"}
-                  </button>
-                  <button className="secondary-button" disabled={updatingProject} onClick={addOrUpdateProject} type="button">
-                    <RefreshCw aria-hidden="true" size={18} />
-                    {updatingProject ? "Updating..." : "Add/Update Project"}
-                  </button>
-                  <button className="secondary-button" disabled={entries.length === 0} onClick={exportAllEntryDetails} type="button">
-                    <Download aria-hidden="true" size={18} />
-                    Export CSV
-                  </button>
-                  <button className="secondary-button" onClick={() => connectProcore("connect")} type="button">
-                    <PlugZap aria-hidden="true" size={18} />
-                    Configure Procore Upload
-                  </button>
-                </div>
-                {syncSummary ? <SyncSummaryCard summary={syncSummary} /> : null}
-                <SyncLogPanel entries={syncLog} />
-                <AdminFailedUploadCenter
-                  onOpenDay={openDailyEntry}
-                  onRetryDailyReport={retryDailyReportUpload}
-                  projects={allProjects}
-                  retryingDailyReportUploadKey={retryingDailyReportUploadKey}
-                />
-                <AdminAuditLogPanel projects={allProjects} users={adminUsers} />
-                <AdminDataQualityPanel
-                  crewDirectory={crewDirectory}
-                  crewMembersByProject={crewMembersByProject}
-                  projectArchiveById={projectArchiveById}
-                  projectBlacklistById={projectBlacklistById}
-                  projects={allProjects}
-                  users={adminUsers}
-                  vendorBlacklistById={netSuiteVendorBlacklistById}
-                  vendors={allNetSuiteVendors}
-                />
-                <ProjectBlacklistPanel
-                  onToggleProject={toggleProjectBlacklist}
-                  projectBlacklistById={projectBlacklistById}
-                  projects={allProjects}
-                />
-                <ProjectArchivePanel
-                  onToggleProject={toggleProjectArchive}
-                  projectArchiveById={projectArchiveById}
-                  projects={allProjects}
-                />
-                <VendorBlacklistPanel
-                  onToggleVendor={toggleVendorBlacklist}
-                  vendorBlacklistById={netSuiteVendorBlacklistById}
-                  vendors={allNetSuiteVendors}
-                />
-                <AdminUsersPanel
-                  currentUserId={currentUser.id}
-                  editingUserId={editingAdminUserId}
-                  form={adminUserForm}
-                  loading={loadingAdminUsers}
-                  netSuiteProjectManagerOptions={netSuiteProjectManagerOptions}
-                  notice={adminUsersNotice}
-                  onCancelEdit={resetAdminUserForm}
-                  onCreatePasswordResetToken={createAdminPasswordResetToken}
-                  onEditUser={startEditingAdminUser}
-                  onRefresh={loadAdminUsers}
-                  onSaveUser={saveAdminUser}
-                  onSetUserActive={setAdminUserActive}
-                  onUpdateForm={updateAdminUserForm}
-                  resetToken={adminPasswordResetToken}
-                  saving={savingAdminUser}
-                  users={adminUsers}
-                />
-                <AdminMaintenancePanel
-                  clearing={clearingStagingData}
-                  clearingProjectCache={clearingProjectCache}
-                  netSuiteVendorCount={allNetSuiteVendors.length}
-                  netSuiteVendorsSyncedAt={netSuiteVendorsSyncedAt}
-                  notice={adminMaintenanceNotice}
-                  onClearProjectCache={clearCachedProjectData}
-                  onClearStagingData={clearStagingOperationalData}
-                  onSyncNetSuiteVendors={syncNetSuiteVendorDirectory}
-                  syncingNetSuiteVendors={syncingNetSuiteVendors}
-                />
-              </div>
-            </details>
-          ) : null}
+          {currentUser.role === "admin" ? renderAdminToolsDrawer() : null}
           </div>
         </aside>
+        ) : null}
 
-        {viewMode === "entry" ? (
+        {viewMode === "dashboard" ? (
+          <DashboardView
+            adminTools={currentUser.role === "admin" ? renderAdminToolsDrawer() : null}
+            currentUser={currentUser}
+            dailyReportUploadsByKey={dailyReportUploadsByKey}
+            dailyReportsByKey={dailyReportsByKey}
+            daySubmissions={daySubmissions}
+            entries={entries}
+            onOpenDay={openDailyEntry}
+            projects={projects}
+          />
+        ) : viewMode === "entry" ? (
           <section className="allocation-grid entry-allocation-grid">
             <PageHeader
               icon={Edit3}
@@ -5990,6 +6032,410 @@ function PageHeader({
       </div>
     </div>
   );
+}
+
+function DashboardView({
+  adminTools,
+  currentUser,
+  dailyReportUploadsByKey,
+  dailyReportsByKey,
+  daySubmissions,
+  entries,
+  onOpenDay,
+  projects
+}: {
+  adminTools?: ReactNode;
+  currentUser: AuthUser;
+  dailyReportUploadsByKey: DailyReportUploadsByKey;
+  dailyReportsByKey: DailyReportsByKey;
+  daySubmissions: DaySubmissionsByKey;
+  entries: AllocationEntry[];
+  onOpenDay: (projectId: string, date: string) => void;
+  projects: Project[];
+}) {
+  const [weekStart, setWeekStart] = useState(getWeekStart(todayInputValue()));
+  const [statusMode, setStatusMode] = useState<CalendarStatusMode>(
+    currentUser.role === "project_manager" ? "entry_status" : "daily_reports"
+  );
+  const weekDates = getWeekDates(weekStart);
+  const entryDayKeys = useMemo(() => buildEntryDayKeySet(entries), [entries]);
+  const projectRows = useMemo(
+    () =>
+      buildDashboardProjectRows({
+        dailyReportUploadsByKey,
+        dailyReportsByKey,
+        daySubmissions,
+        entryDayKeys,
+        projects,
+        weekDates
+      }),
+    [dailyReportUploadsByKey, dailyReportsByKey, daySubmissions, entryDayKeys, projects, weekDates]
+  );
+  const metrics = buildDashboardMetrics(projectRows);
+  const attentionRows = [...projectRows]
+    .filter((row) => row.attentionScore > 0)
+    .sort((left, right) => right.attentionScore - left.attentionScore || left.project.name.localeCompare(right.project.name))
+    .slice(0, 8);
+  const isProjectManager = currentUser.role === "project_manager";
+  const dashboardTitle =
+    currentUser.role === "admin"
+      ? "Admin Dashboard"
+      : currentUser.role === "executive"
+        ? "Executive Dashboard"
+        : isProjectManager
+          ? "Project Manager Dashboard"
+          : "Dashboard";
+  const dashboardScope =
+    currentUser.role === "admin"
+      ? "Company"
+      : currentUser.role === "executive"
+        ? "Company"
+        : isProjectManager
+          ? "My Projects"
+          : "Assigned Projects";
+
+  return (
+    <section className="allocation-grid dashboard-view">
+      <PageHeader
+        icon={LayoutDashboard}
+        kicker="Dashboard"
+        meta={[dashboardScope, `${projects.length} project${projects.length === 1 ? "" : "s"}`, `Week of ${formatDate(weekStart)}`]}
+        title={dashboardTitle}
+      />
+
+      <div className="dashboard-metrics">
+        <DashboardMetric label="Projects" value={String(projects.length)} />
+        <DashboardMetric label="Submitted Days" value={String(metrics.submittedEntryDays)} tone="success" />
+        <DashboardMetric label="Draft Days" value={String(metrics.draftEntryDays)} tone={metrics.draftEntryDays > 0 ? "warning" : "neutral"} />
+        <DashboardMetric label="Daily Reports" value={String(metrics.savedDailyReports)} tone={metrics.savedDailyReports > 0 ? "success" : "neutral"} />
+        <DashboardMetric
+          label="Procore Issues"
+          value={String(metrics.procoreAttentionCount)}
+          tone={metrics.procoreAttentionCount > 0 ? "error" : "success"}
+        />
+      </div>
+
+      <div className={currentUser.role === "admin" ? "dashboard-main-grid admin" : "dashboard-main-grid"}>
+        <div className="dashboard-main-column">
+          <div className="panel dashboard-calendar-panel">
+            <div className="panel-heading">
+              <h2>{isProjectManager ? "My Project Calendar" : "Weekly Project Status"}</h2>
+              <span className="dashboard-panel-meta">{formatWeekRange(weekDates)}</span>
+            </div>
+            <DashboardWeeklyCalendar
+              dailyReportUploadsByKey={dailyReportUploadsByKey}
+              dailyReportsByKey={dailyReportsByKey}
+              daySubmissions={daySubmissions}
+              entryDayKeys={entryDayKeys}
+              onOpenDay={onOpenDay}
+              projects={sortProjectsByName(projects)}
+              setStatusMode={setStatusMode}
+              setWeekStart={setWeekStart}
+              statusMode={statusMode}
+              weekDates={weekDates}
+              weekStart={weekStart}
+            />
+          </div>
+
+          <div className="panel dashboard-projects-panel">
+            <div className="panel-heading">
+              <h2>Projects Needing Attention</h2>
+              <span className="dashboard-panel-meta">{attentionRows.length} shown</span>
+            </div>
+            <DashboardAttentionList rows={attentionRows} onOpenDay={onOpenDay} />
+          </div>
+        </div>
+
+        {currentUser.role === "admin" && adminTools ? (
+          <div className="dashboard-admin-column">
+            <div className="panel dashboard-admin-panel">{adminTools}</div>
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function DashboardMetric({
+  label,
+  tone = "neutral",
+  value
+}: {
+  label: string;
+  tone?: "error" | "neutral" | "success" | "warning";
+  value: string;
+}) {
+  return (
+    <div className={`dashboard-metric-card ${tone}`}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function DashboardWeeklyCalendar({
+  dailyReportUploadsByKey,
+  dailyReportsByKey,
+  daySubmissions,
+  entryDayKeys,
+  onOpenDay,
+  projects,
+  setStatusMode,
+  setWeekStart,
+  statusMode,
+  weekDates,
+  weekStart
+}: {
+  dailyReportUploadsByKey: DailyReportUploadsByKey;
+  dailyReportsByKey: DailyReportsByKey;
+  daySubmissions: DaySubmissionsByKey;
+  entryDayKeys: Set<string>;
+  onOpenDay: (projectId: string, date: string) => void;
+  projects: Project[];
+  setStatusMode: (mode: CalendarStatusMode) => void;
+  setWeekStart: (weekStart: string) => void;
+  statusMode: CalendarStatusMode;
+  weekDates: string[];
+  weekStart: string;
+}) {
+  return (
+    <div className="dashboard-calendar">
+      <div className="dashboard-calendar-controls">
+        <div className="week-nav">
+          <button
+            aria-label="Previous week"
+            className="icon-button"
+            onClick={() => setWeekStart(addDaysToInputDate(weekStart, -7))}
+            type="button"
+          >
+            <ChevronLeft aria-hidden="true" size={18} />
+          </button>
+          <div className="week-range">
+            <span>Week</span>
+            <strong>{formatWeekRange(weekDates)}</strong>
+          </div>
+          <button
+            aria-label="Next week"
+            className="icon-button"
+            onClick={() => setWeekStart(addDaysToInputDate(weekStart, 7))}
+            type="button"
+          >
+            <ChevronRight aria-hidden="true" size={18} />
+          </button>
+        </div>
+        <div className="calendar-status-toggle" aria-label="Dashboard status type">
+          <button
+            className={statusMode === "entry_status" ? "active" : ""}
+            onClick={() => setStatusMode("entry_status")}
+            type="button"
+          >
+            Entry Status
+          </button>
+          <button
+            className={statusMode === "daily_reports" ? "active" : ""}
+            onClick={() => setStatusMode("daily_reports")}
+            type="button"
+          >
+            Daily Reports
+          </button>
+        </div>
+      </div>
+
+      {projects.length === 0 ? (
+        <EmptyState icon={CalendarDays} title="No projects available">
+          Projects will appear here after they are available to your account.
+        </EmptyState>
+      ) : (
+        <div className="weekly-calendar dashboard-weekly-calendar">
+          <div className="weekly-calendar-row weekly-calendar-header">
+            <span>Job</span>
+            {weekDates.map((date) => (
+              <span key={date}>{formatWeekDayLabel(date)}</span>
+            ))}
+          </div>
+          {projects.map((project) => (
+            <div className="weekly-calendar-row" key={project.id}>
+              <span className="weekly-calendar-job">{project.name}</span>
+              {weekDates.map((date) => {
+                const dayKey = getDayKey(project.id, date);
+                const status =
+                  statusMode === "daily_reports"
+                    ? getDailyReportCalendarStatus(dailyReportsByKey[dayKey], dailyReportUploadsByKey[dayKey])
+                    : isTwoSeriesProject(project)
+                      ? getNotApplicableCalendarStatus()
+                      : getEntryCalendarStatus(daySubmissions[dayKey], entryDayKeys.has(dayKey));
+
+                return (
+                  <button
+                    aria-label={`Open ${project.name} entry for ${formatWeekDayLabel(date)}. Status: ${status.label}`}
+                    className={`status-badge ${status.className}`}
+                    data-label={formatWeekDayLabel(date)}
+                    key={date}
+                    onClick={() => onOpenDay(project.id, date)}
+                    type="button"
+                  >
+                    {status.label}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DashboardAttentionList({
+  onOpenDay,
+  rows
+}: {
+  onOpenDay: (projectId: string, date: string) => void;
+  rows: DashboardProjectWeekRow[];
+}) {
+  if (rows.length === 0) {
+    return (
+      <EmptyState icon={CheckCircle2} title="No projects need attention">
+        Drafts, failed uploads, and pending Procore uploads for the selected week will appear here.
+      </EmptyState>
+    );
+  }
+
+  return (
+    <div className="dashboard-attention-list">
+      {rows.map((row) => (
+        <div className="dashboard-attention-row" key={row.project.id}>
+          <div>
+            <strong>{row.project.name}</strong>
+            <span>{formatDashboardAttentionSummary(row)}</span>
+          </div>
+          {row.openDate ? (
+            <button className="secondary-button compact-button" onClick={() => onOpenDay(row.project.id, row.openDate ?? "")} type="button">
+              Open {formatDate(row.openDate)}
+            </button>
+          ) : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+type DashboardProjectWeekRow = {
+  attentionScore: number;
+  dailyFailedCount: number;
+  dailyPendingCount: number;
+  dailySavedCount: number;
+  draftEntryCount: number;
+  missingPastDailyReportCount: number;
+  openDate: string;
+  project: Project;
+  submittedEntryCount: number;
+};
+
+function buildDashboardProjectRows({
+  dailyReportUploadsByKey,
+  dailyReportsByKey,
+  daySubmissions,
+  entryDayKeys,
+  projects,
+  weekDates
+}: {
+  dailyReportUploadsByKey: DailyReportUploadsByKey;
+  dailyReportsByKey: DailyReportsByKey;
+  daySubmissions: DaySubmissionsByKey;
+  entryDayKeys: Set<string>;
+  projects: Project[];
+  weekDates: string[];
+}): DashboardProjectWeekRow[] {
+  const today = todayInputValue();
+
+  return projects.map((project) => {
+    let dailyFailedCount = 0;
+    let dailyPendingCount = 0;
+    let dailySavedCount = 0;
+    let draftEntryCount = 0;
+    let missingPastDailyReportCount = 0;
+    let openDate = "";
+    let submittedEntryCount = 0;
+
+    for (const date of weekDates) {
+      const dayKey = getDayKey(project.id, date);
+      const entryStatus = isTwoSeriesProject(project)
+        ? getNotApplicableCalendarStatus()
+        : getEntryCalendarStatus(daySubmissions[dayKey], entryDayKeys.has(dayKey));
+      const dailyStatus = getDailyReportCalendarStatus(dailyReportsByKey[dayKey], dailyReportUploadsByKey[dayKey]);
+
+      if (entryStatus.className === "submitted") {
+        submittedEntryCount += 1;
+      }
+
+      if (entryStatus.className === "draft") {
+        draftEntryCount += 1;
+        openDate ||= date;
+      }
+
+      if (dailyStatus.className !== "missing") {
+        dailySavedCount += 1;
+      }
+
+      if (dailyStatus.className === "failed") {
+        dailyFailedCount += 1;
+        openDate ||= date;
+      }
+
+      if (dailyStatus.className === "created") {
+        dailyPendingCount += 1;
+        openDate ||= date;
+      }
+
+      if (dailyStatus.className === "missing" && date <= today) {
+        missingPastDailyReportCount += 1;
+        openDate ||= date;
+      }
+    }
+
+    return {
+      attentionScore: dailyFailedCount * 5 + dailyPendingCount * 3 + draftEntryCount * 2 + missingPastDailyReportCount,
+      dailyFailedCount,
+      dailyPendingCount,
+      dailySavedCount,
+      draftEntryCount,
+      missingPastDailyReportCount,
+      openDate,
+      project,
+      submittedEntryCount
+    };
+  });
+}
+
+function buildDashboardMetrics(rows: DashboardProjectWeekRow[]) {
+  return rows.reduce(
+    (totals, row) => ({
+      draftEntryDays: totals.draftEntryDays + row.draftEntryCount,
+      procoreAttentionCount: totals.procoreAttentionCount + row.dailyFailedCount + row.dailyPendingCount,
+      savedDailyReports: totals.savedDailyReports + row.dailySavedCount,
+      submittedEntryDays: totals.submittedEntryDays + row.submittedEntryCount
+    }),
+    {
+      draftEntryDays: 0,
+      procoreAttentionCount: 0,
+      savedDailyReports: 0,
+      submittedEntryDays: 0
+    }
+  );
+}
+
+function formatDashboardAttentionSummary(row: DashboardProjectWeekRow) {
+  const parts = [
+    row.dailyFailedCount > 0 ? `${row.dailyFailedCount} failed Procore upload${row.dailyFailedCount === 1 ? "" : "s"}` : "",
+    row.dailyPendingCount > 0 ? `${row.dailyPendingCount} pending Procore upload${row.dailyPendingCount === 1 ? "" : "s"}` : "",
+    row.draftEntryCount > 0 ? `${row.draftEntryCount} draft entr${row.draftEntryCount === 1 ? "y" : "ies"}` : "",
+    row.missingPastDailyReportCount > 0
+      ? `${row.missingPastDailyReportCount} missing daily report${row.missingPastDailyReportCount === 1 ? "" : "s"}`
+      : ""
+  ].filter(Boolean);
+
+  return parts.join(" | ");
 }
 
 function DailyStatusItem({

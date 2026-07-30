@@ -376,6 +376,10 @@ summary:focus-visible,
   grid-template-columns: 56px minmax(0, 1fr);
 }
 
+.workspace.dashboard-workspace {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .panel {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -2096,6 +2100,142 @@ a.daily-report-procore-status:hover {
 
 .daily-status-item.error strong {
   color: #ffc7d1;
+}
+
+.dashboard-view {
+  min-width: 0;
+}
+
+.dashboard-metrics {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.dashboard-metric-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  min-height: 70px;
+  padding: 12px;
+}
+
+.dashboard-metric-card span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.dashboard-metric-card strong {
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.dashboard-metric-card.success {
+  background: #0f2c22;
+  border-color: #245f45;
+  color: #c8f4da;
+}
+
+.dashboard-metric-card.warning {
+  background: var(--warning-bg);
+  border-color: var(--warning-line);
+  color: var(--warning-text);
+}
+
+.dashboard-metric-card.error {
+  background: #2b1218;
+  border-color: #6e2f38;
+  color: #ffc7d1;
+}
+
+.dashboard-main-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.dashboard-main-grid.admin {
+  align-items: start;
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
+}
+
+.dashboard-main-column {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.dashboard-admin-column {
+  min-width: 0;
+}
+
+.dashboard-admin-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.dashboard-admin-panel .admin-tools-drawer {
+  border-top: 0;
+  margin-top: 0;
+  padding-top: 0;
+}
+
+.dashboard-calendar,
+.dashboard-calendar-controls {
+  display: grid;
+  gap: 12px;
+}
+
+.dashboard-calendar-controls {
+  align-items: center;
+  grid-template-columns: auto minmax(260px, 320px);
+  justify-content: space-between;
+}
+
+.dashboard-panel-meta {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.dashboard-weekly-calendar .weekly-calendar-row {
+  grid-template-columns: minmax(220px, 1.4fr) repeat(7, minmax(96px, 0.7fr));
+}
+
+.dashboard-attention-list {
+  display: grid;
+  gap: 8px;
+}
+
+.dashboard-attention-row {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 10px;
+}
+
+.dashboard-attention-row > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.dashboard-attention-row strong,
+.dashboard-attention-row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.dashboard-attention-row span {
+  color: var(--muted);
+  font-size: 0.84rem;
 }
 
 .sync-summary {
@@ -4071,6 +4211,19 @@ a.daily-report-procore-status:hover {
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   }
 
+  .dashboard-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .dashboard-main-grid.admin {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboard-calendar-controls {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
   .daily-status-item {
     min-height: 32px;
   }
@@ -5035,6 +5188,28 @@ a.daily-report-procore-status:hover {
     font-size: 0.68rem;
     font-weight: 700;
     text-transform: uppercase;
+  }
+
+  .dashboard-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-main-grid.admin {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboard-calendar-controls {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-attention-row {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-attention-row .secondary-button {
+    width: 100%;
   }
 
   .report-detail-controls {
