@@ -5703,7 +5703,8 @@ a.daily-report-procore-status:hover {
     display: none;
   }
 
-  .weekly-calendar-row {
+  .weekly-calendar-row,
+  .dashboard-weekly-calendar .weekly-calendar-row {
     border: 1px solid var(--line);
     border-radius: 8px;
     gap: 8px;
@@ -5719,20 +5720,28 @@ a.daily-report-procore-status:hover {
     padding: 8px;
   }
 
-  .weekly-calendar-job {
+  .weekly-calendar-job,
+  .dashboard-weekly-calendar .weekly-calendar-job {
     background: transparent;
     grid-column: 1 / -1;
     padding-left: 0;
     padding-right: 0;
   }
 
-  .status-badge {
+  .dashboard-weekly-calendar-job {
     align-items: flex-start;
+    gap: 10px;
+  }
+
+  .status-badge {
+    align-items: center;
     display: grid;
-    gap: 3px;
+    gap: 3px 8px;
+    grid-template-columns: minmax(58px, auto) minmax(0, 1fr);
     justify-content: stretch;
-    min-height: 54px;
+    min-height: 48px;
     text-align: left;
+    word-break: normal;
   }
 
   .status-badge::before {
