@@ -125,14 +125,9 @@ import {
   getEntryNoticeClassName
 } from "@/features/time-allocation/lib/notice-helpers";
 import {
-  createEmptyChangePasswordForm,
-  createEmptyPasswordResetForm,
   formatRole,
   formatUserName,
-  getDefaultViewModeForUser,
-  type ChangePasswordFormState,
-  type PasswordResetFormState,
-  type PasswordResetResponse
+  getDefaultViewModeForUser
 } from "@/features/time-allocation/lib/auth-ui-helpers";
 import {
   formatFileSize,
@@ -184,7 +179,6 @@ import {
 } from "@/features/time-allocation/lib/sync-status-helpers";
 import type {
   AuthResponse,
-  ChangePasswordResponse,
   ProcoreStatusResponse
 } from "@/features/time-allocation/lib/workspace-api-types";
 import type {
@@ -204,6 +198,7 @@ import type {
 } from "@/features/time-allocation/types";
 import { useNetworkStatus } from "@/features/time-allocation/hooks/use-network-status";
 import { useAdminUserManagement } from "@/features/time-allocation/hooks/use-admin-user-management";
+import { useAuthForms } from "@/features/time-allocation/hooks/use-auth-forms";
 import { useDailyReports } from "@/features/time-allocation/hooks/use-daily-reports";
 import { useFieldProjectAssignments } from "@/features/time-allocation/hooks/use-field-project-assignments";
 import { useJobImages } from "@/features/time-allocation/hooks/use-job-images";
@@ -229,17 +224,6 @@ type EditingCrewMember = {
 export function TimeAllocationWorkspace() {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
-  const [loginUserId, setLoginUserId] = useState("");
-  const [loginPassword, setLoginPassword] = useState("");
-  const [loginError, setLoginError] = useState("");
-  const [passwordResetOpen, setPasswordResetOpen] = useState(false);
-  const [passwordResetForm, setPasswordResetForm] = useState<PasswordResetFormState>(() => createEmptyPasswordResetForm());
-  const [passwordResetNotice, setPasswordResetNotice] = useState<{ message: string; status: "success" | "error" } | null>(null);
-  const [resettingPassword, setResettingPassword] = useState(false);
-  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
-  const [changePasswordForm, setChangePasswordForm] = useState<ChangePasswordFormState>(() => createEmptyChangePasswordForm());
-  const [changePasswordNotice, setChangePasswordNotice] = useState<{ message: string; status: "success" | "error" } | null>(null);
-  const [changingPassword, setChangingPassword] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("dashboard");
   const [reportProjectId, setReportProjectId] = useState("all");
   const [reportStartDate, setReportStartDate] = useState("");
@@ -301,6 +285,38 @@ export function TimeAllocationWorkspace() {
   const myProjectsFilterInitializedRef = useRef(false);
   const saveDailyReportRef = useRef<(() => Promise<void>) | null>(null);
   const saveAllocationEntriesRef = useRef<(() => Promise<void>) | null>(null);
+
+  const handleLoginSuccess = useCallback((user: AuthUser) => {
+    setCurrentUser(user);
+    setViewMode(getDefaultViewModeForUser());
+  }, []);
+  const {
+    changePasswordForm,
+    changePasswordNotice,
+    changePasswordOpen,
+    changingPassword,
+    closeChangePasswordModal,
+    closePasswordReset,
+    login,
+    loginError,
+    loginPassword,
+    loginUserId,
+    openChangePasswordModal,
+    openPasswordReset,
+    passwordResetForm,
+    passwordResetNotice,
+    passwordResetOpen,
+    resettingPassword,
+    resetAuthForms,
+    setLoginPassword,
+    setLoginUserId,
+    submitChangePassword,
+    submitPasswordReset,
+    updateChangePasswordForm,
+    updatePasswordResetForm
+  } = useAuthForms({
+    onLoginSuccess: handleLoginSuccess
+  });
 
   const activeProjects = useMemo(
     () => filterActiveProjects(allProjects, projectBlacklistById, projectArchiveById),
@@ -1119,110 +1135,6 @@ export function TimeAllocationWorkspace() {
     window.localStorage.setItem("procore-sync-log", JSON.stringify(syncLog));
   }, [currentUser, syncLog]);
 
-  async function login() {
-    setLoginError("");
-
-    const response = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        userId: loginUserId,
-        password: loginPassword
-      })
-    });
-    const data = (await readApiJson(response)) as AuthResponse;
-
-    if (!response.ok || !data.user) {
-      setLoginError(data.error ?? "Unable to sign in.");
-      return;
-    }
-
-    setCurrentUser(data.user);
-    setViewMode(getDefaultViewModeForUser());
-    setLoginPassword("");
-  }
-
-  function updatePasswordResetForm(field: keyof PasswordResetFormState, value: string) {
-    setPasswordResetNotice(null);
-    setPasswordResetForm((current) => ({
-      ...current,
-      [field]: value
-    }));
-  }
-
-  function openPasswordReset() {
-    setPasswordResetOpen(true);
-    setPasswordResetNotice(null);
-    setPasswordResetForm((current) => ({
-      ...current,
-      userId: current.userId || loginUserId
-    }));
-  }
-
-  function closePasswordReset() {
-    if (resettingPassword) {
-      return;
-    }
-
-    setPasswordResetOpen(false);
-    setPasswordResetForm(createEmptyPasswordResetForm());
-    setPasswordResetNotice(null);
-  }
-
-  async function submitPasswordReset() {
-    const { confirmPassword, newPassword, token, userId } = passwordResetForm;
-
-    if (!userId.trim() || !token.trim() || !newPassword || !confirmPassword) {
-      setPasswordResetNotice({ message: "Enter user ID, reset code, new password, and confirmation.", status: "error" });
-      return;
-    }
-
-    if (newPassword.length < 8) {
-      setPasswordResetNotice({ message: "New password must be at least 8 characters.", status: "error" });
-      return;
-    }
-
-    if (newPassword !== confirmPassword) {
-      setPasswordResetNotice({ message: "New password and confirmation do not match.", status: "error" });
-      return;
-    }
-
-    setResettingPassword(true);
-    setPasswordResetNotice(null);
-
-    try {
-      const response = await fetch("/api/auth/reset-password", {
-        body: JSON.stringify({
-          newPassword,
-          token,
-          userId
-        }),
-        headers: {
-          "Content-Type": "application/json"
-        },
-        method: "POST"
-      });
-      const data = (await readApiJson(response)) as PasswordResetResponse;
-
-      if (!response.ok || data.ok === false) {
-        throw new Error(data.error ?? "Unable to reset password.");
-      }
-
-      setLoginUserId(userId.trim().toLowerCase());
-      setPasswordResetForm(createEmptyPasswordResetForm());
-      setPasswordResetNotice({ message: "Password reset. Sign in with the new password.", status: "success" });
-    } catch (error) {
-      setPasswordResetNotice({
-        message: error instanceof Error ? error.message : "Unable to reset password.",
-        status: "error"
-      });
-    } finally {
-      setResettingPassword(false);
-    }
-  }
-
   async function logout() {
     if (!confirmDiscardUnsavedChanges("sign out")) {
       return;
@@ -1238,14 +1150,7 @@ export function TimeAllocationWorkspace() {
     setShowOnlyMyProjects(false);
     setMyProjectsEditorOpen(false);
     setCrewSetupExpanded(false);
-    setChangePasswordOpen(false);
-    setChangePasswordForm(createEmptyChangePasswordForm());
-    setChangePasswordNotice(null);
-    setChangingPassword(false);
-    setPasswordResetOpen(false);
-    setPasswordResetForm(createEmptyPasswordResetForm());
-    setPasswordResetNotice(null);
-    setResettingPassword(false);
+    resetAuthForms();
     setEntries([]);
     setDaySubmissions({});
     setDayEntryNotesByKey({});
@@ -1381,73 +1286,6 @@ export function TimeAllocationWorkspace() {
       });
     } finally {
       setClearingProjectCache(false);
-    }
-  }
-
-  function updateChangePasswordForm(field: keyof ChangePasswordFormState, value: string) {
-    setChangePasswordNotice(null);
-    setChangePasswordForm((current) => ({
-      ...current,
-      [field]: value
-    }));
-  }
-
-  function closeChangePasswordModal() {
-    if (changingPassword) {
-      return;
-    }
-
-    setChangePasswordOpen(false);
-    setChangePasswordForm(createEmptyChangePasswordForm());
-    setChangePasswordNotice(null);
-  }
-
-  async function submitChangePassword() {
-    const { confirmPassword, currentPassword, newPassword } = changePasswordForm;
-
-    if (!currentPassword || !newPassword || !confirmPassword) {
-      setChangePasswordNotice({ message: "Enter your current password, new password, and confirmation.", status: "error" });
-      return;
-    }
-
-    if (newPassword.length < 8) {
-      setChangePasswordNotice({ message: "New password must be at least 8 characters.", status: "error" });
-      return;
-    }
-
-    if (newPassword !== confirmPassword) {
-      setChangePasswordNotice({ message: "New password and confirmation do not match.", status: "error" });
-      return;
-    }
-
-    setChangingPassword(true);
-    setChangePasswordNotice(null);
-
-    try {
-      const response = await fetch("/api/auth/change-password", {
-        body: JSON.stringify({
-          currentPassword,
-          newPassword
-        }),
-        headers: {
-          "Content-Type": "application/json"
-        },
-        method: "POST"
-      });
-      const data = (await readApiJson(response)) as ChangePasswordResponse;
-
-      if (!response.ok || data.ok === false) {
-        throw new Error(data.error ?? "Unable to change password.");
-      }
-
-      setChangePasswordForm(createEmptyChangePasswordForm());
-      setChangePasswordNotice({ message: "Password changed.", status: "success" });
-    } catch (error) {
-      setChangePasswordNotice(error instanceof Error
-        ? { message: error.message, status: "error" }
-        : { message: "Unable to change password.", status: "error" });
-    } finally {
-      setChangingPassword(false);
     }
   }
 
@@ -2722,7 +2560,7 @@ export function TimeAllocationWorkspace() {
             </summary>
             <div className="desktop-header-menu-body">
               <IconLabel icon={CheckCircle2} text={connectionStatus} />
-              <button className="secondary-button" onClick={() => setChangePasswordOpen(true)} type="button">
+              <button className="secondary-button" onClick={openChangePasswordModal} type="button">
                 <KeyRound aria-hidden="true" size={18} />
                 Change Password
               </button>
@@ -2743,7 +2581,7 @@ export function TimeAllocationWorkspace() {
           </summary>
           <div className="mobile-header-menu-body">
             <IconLabel icon={CheckCircle2} text={connectionStatus} />
-            <button className="secondary-button" onClick={() => setChangePasswordOpen(true)} type="button">
+            <button className="secondary-button" onClick={openChangePasswordModal} type="button">
               <KeyRound aria-hidden="true" size={18} />
               Change Password
             </button>
