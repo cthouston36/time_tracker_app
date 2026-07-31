@@ -20,6 +20,12 @@ import {
 import { isTwoSeriesProject } from "@/lib/daily-report-templates";
 import type { AuthUser } from "@/lib/auth/types";
 import type { AllocationEntry, Project } from "@/lib/procore/types";
+import {
+  formatRole,
+  formatUserName,
+  type AdminUserFormState,
+  type PasswordResetResponse
+} from "@/features/time-allocation/lib/auth-ui-helpers";
 import { readTextValue, sortProjectsByName } from "@/features/time-allocation/lib/selectors";
 import type {
   CrewMember,
@@ -33,25 +39,6 @@ import type {
   SyncLogEntry,
   VendorBlacklistById
 } from "@/features/time-allocation/types";
-
-export type AdminUserFormState = {
-  active: boolean;
-  firstName: string;
-  lastName: string;
-  netSuiteProjectManagerId: string;
-  netSuiteProjectManagerName: string;
-  password: string;
-  role: AuthUser["role"];
-  userId: string;
-};
-
-export type PasswordResetResponse = {
-  error?: string;
-  expiresAt?: string;
-  ok?: boolean;
-  token?: string;
-  userId?: string;
-};
 
 type AdminFailedUploadDailyReport = {
   attemptedAt?: string;
@@ -1554,26 +1541,6 @@ function formatAuditMetadataValue(value: unknown): string {
   }
 
   return String(value);
-}
-
-function formatUserName(user: AuthUser) {
-  return `${user.firstName} ${user.lastName}`;
-}
-
-function formatRole(role: AuthUser["role"]) {
-  if (role === "admin") {
-    return "Admin";
-  }
-
-  if (role === "project_manager") {
-    return "Project Manager";
-  }
-
-  if (role === "executive") {
-    return "Executive";
-  }
-
-  return "Field";
 }
 
 function getCrewDisplayName(member: CrewMember) {

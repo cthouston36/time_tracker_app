@@ -172,6 +172,18 @@ import {
   getEntryNoticeClassName
 } from "@/features/time-allocation/lib/notice-helpers";
 import {
+  createEmptyAdminUserForm,
+  createEmptyChangePasswordForm,
+  createEmptyPasswordResetForm,
+  formatRole,
+  formatUserName,
+  getDefaultViewModeForUser,
+  type AdminUserFormState,
+  type ChangePasswordFormState,
+  type PasswordResetFormState,
+  type PasswordResetResponse
+} from "@/features/time-allocation/lib/auth-ui-helpers";
+import {
   chunkJobImagesForUpload,
   formatFileSize,
   formatJobImageQueueStatus,
@@ -319,23 +331,6 @@ type AdminUsersResponse = {
   users?: ManagedAppUser[];
 };
 
-type AdminUserFormState = {
-  active: boolean;
-  firstName: string;
-  lastName: string;
-  netSuiteProjectManagerId: string;
-  netSuiteProjectManagerName: string;
-  password: string;
-  role: AuthUser["role"];
-  userId: string;
-};
-
-type ChangePasswordFormState = {
-  confirmPassword: string;
-  currentPassword: string;
-  newPassword: string;
-};
-
 type AuthResponse = {
   user: AuthUser | null;
   error?: string;
@@ -344,21 +339,6 @@ type AuthResponse = {
 type ChangePasswordResponse = {
   error?: string;
   ok?: boolean;
-};
-
-type PasswordResetFormState = {
-  confirmPassword: string;
-  newPassword: string;
-  token: string;
-  userId: string;
-};
-
-type PasswordResetResponse = {
-  error?: string;
-  expiresAt?: string;
-  ok?: boolean;
-  token?: string;
-  userId?: string;
 };
 
 type ProcoreStatusResponse = {
@@ -6784,36 +6764,6 @@ function filterDailyReportsByProjectIds(dailyReportsByKey: DailyReportsByKey, pr
   );
 }
 
-function createEmptyAdminUserForm(): AdminUserFormState {
-  return {
-    active: true,
-    firstName: "",
-    lastName: "",
-    netSuiteProjectManagerId: "",
-    netSuiteProjectManagerName: "",
-    password: "",
-    role: "standard",
-    userId: ""
-  };
-}
-
-function createEmptyChangePasswordForm(): ChangePasswordFormState {
-  return {
-    confirmPassword: "",
-    currentPassword: "",
-    newPassword: ""
-  };
-}
-
-function createEmptyPasswordResetForm(): PasswordResetFormState {
-  return {
-    confirmPassword: "",
-    newPassword: "",
-    token: "",
-    userId: ""
-  };
-}
-
 function getNetworkNotice(status: NetworkStatus): NetworkNotice | null {
   if (!status.checked) {
     return null;
@@ -6842,30 +6792,6 @@ function getNetworkNotice(status: NetworkStatus): NetworkNotice | null {
   }
 
   return null;
-}
-
-function formatUserName(user: AuthUser) {
-  return `${user.firstName} ${user.lastName}`;
-}
-
-function formatRole(role: AuthUser["role"]) {
-  if (role === "admin") {
-    return "Admin";
-  }
-
-  if (role === "project_manager") {
-    return "Project Manager";
-  }
-
-  if (role === "executive") {
-    return "Executive";
-  }
-
-  return "Field";
-}
-
-function getDefaultViewModeForUser(): ViewMode {
-  return "dashboard";
 }
 
 function buildSyncStatus(prefix: string, summary: ProcoreSyncSummary | undefined) {
