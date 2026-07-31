@@ -60,9 +60,6 @@ import {
   addDatabaseCrewMemberToProject,
   clearDatabaseProjectCache,
   clearDatabaseStagingOperationalData,
-  deleteDatabaseDayEntries,
-  deleteDatabaseDaySubmission,
-  deleteDatabaseEntry,
   loadDatabaseCrewData,
   loadDatabaseDailyReportData,
   loadDatabaseDayRecords,
@@ -71,7 +68,6 @@ import {
   mergeDatabaseCrewMembers,
   readApiJson,
   removeDatabaseCrewMemberFromProject,
-  saveDatabaseDaySubmission,
   saveDatabaseEntries,
   saveDatabaseMyJobs,
   saveDatabaseProjectArchive,
@@ -84,10 +80,6 @@ import {
   getDailyReportEmployeeTotalHours
 } from "@/features/time-allocation/lib/daily-report-helpers";
 import { openDatePicker } from "@/features/time-allocation/lib/browser-actions";
-import {
-  buildDaySubmissionConflictSignature,
-  buildEntryConflictSignature
-} from "@/features/time-allocation/lib/conflict-helpers";
 import { exportEntriesToCsv } from "@/features/time-allocation/lib/entry-csv-export";
 import {
   buildCrewDirectoryFromProjects,
@@ -115,7 +107,6 @@ import {
 import { getProjectWorkTypeLabel } from "@/features/time-allocation/lib/status-helpers";
 import {
   buildRemainingQuantitiesByPayItem,
-  formatPayItemQuantity,
   formatPayItemUnitOfMeasure
 } from "@/features/time-allocation/lib/pay-item-helpers";
 import {
@@ -133,23 +124,17 @@ import {
   JOB_IMAGE_DAILY_UPLOAD_LIMIT
 } from "@/features/time-allocation/lib/job-image-helpers";
 import {
-  buildCrewAllocations,
   buildCrewSummary,
-  confirmQuantityOverrun,
   crewMemberHasSavedAllocations,
   DEFAULT_CREW_LABOR_TYPE,
   draftHasAnyInput,
-  draftIsIncomplete,
   draftIsSaveable,
   formatCrewMemberMeta,
   formatCrewMemberOption,
   formatEntryCrew,
   formatNetSuiteVendorOption,
-  getCrewAllocationError,
   getCrewDisplayName,
   getCrewLaborType,
-  getDraftQuantityOverrunWarnings,
-  getDraftTotalHours,
   getExistingDraft,
   getNetSuiteVendorCrewMemberId,
   mergeDraftCrewMembers,
@@ -158,7 +143,6 @@ import {
   normalizeCrewName,
   normalizeDraftCrewHours,
   projectHasCrewMember,
-  scaleCrewAllocations,
   sortCrewMembersByName,
   splitCrewHoursEvenly
 } from "@/features/time-allocation/lib/crew-entry-helpers";
@@ -189,6 +173,7 @@ import { useNetworkStatus } from "@/features/time-allocation/hooks/use-network-s
 import { useAdminUserManagement } from "@/features/time-allocation/hooks/use-admin-user-management";
 import { useAuthForms } from "@/features/time-allocation/hooks/use-auth-forms";
 import { useDailyReports } from "@/features/time-allocation/hooks/use-daily-reports";
+import { useEntryActions } from "@/features/time-allocation/hooks/use-entry-actions";
 import { useFieldProjectAssignments } from "@/features/time-allocation/hooks/use-field-project-assignments";
 import { useJobImages } from "@/features/time-allocation/hooks/use-job-images";
 import { useNetSuiteVendors } from "@/features/time-allocation/hooks/use-netsuite-vendors";
@@ -196,12 +181,6 @@ import { useProjectSync } from "@/features/time-allocation/hooks/use-project-syn
 import { WeeklyStatusReport } from "@/features/time-allocation/components/dashboard/weekly-status-report";
 import { AdminToolsDrawer } from "@/features/time-allocation/components/admin/admin-tools";
 import type { AllocationEntry, CrewLaborType, Project } from "@/lib/procore/types";
-
-type EditingEntry = {
-  entryId: string;
-  hours: string;
-  quantity: string;
-};
 
 type EditingCrewMember = {
   crewMemberId: string;
@@ -247,13 +226,6 @@ export function TimeAllocationWorkspace() {
   const [mergeSourceCrewMemberId, setMergeSourceCrewMemberId] = useState("");
   const [mergeTargetCrewMemberId, setMergeTargetCrewMemberId] = useState("");
   const [draftsByPayItem, setDraftsByPayItem] = useState<DraftsByPayItem>({});
-  const [editingEntry, setEditingEntry] = useState<EditingEntry | null>(null);
-  const [savingEntries, setSavingEntries] = useState(false);
-  const [savingEditedEntry, setSavingEditedEntry] = useState(false);
-  const [submittingDay, setSubmittingDay] = useState(false);
-  const [reopeningDay, setReopeningDay] = useState(false);
-  const [deletingSubmittedDay, setDeletingSubmittedDay] = useState(false);
-  const [removingEntryId, setRemovingEntryId] = useState<string | null>(null);
   const [editingCrewMember, setEditingCrewMember] = useState<EditingCrewMember | null>(null);
   const [connectionStatus, setConnectionStatus] = useState("Mock data active");
   const [projectLoadError, setProjectLoadError] = useState("");
@@ -432,10 +404,47 @@ export function TimeAllocationWorkspace() {
   const currentDaySubmission: DaySubmission = selectedProject
     ? daySubmissions[getDayKey(selectedProject.id, workDate)] ?? { status: "draft" }
     : { status: "draft" };
+  const dayIsSubmitted = currentDaySubmission.status === "submitted";
   const currentDayEntryNotes = selectedProject
     ? dayEntryNotesByKey[getDayKey(selectedProject.id, workDate)] ?? { notes: "", inventory: "" }
     : { notes: "", inventory: "" };
   const currentDayKey = selectedProject ? getDayKey(selectedProject.id, workDate) : "";
+  const {
+    cancelEditingEntry,
+    clearDraftInputs,
+    deleteSubmittedDay,
+    deletingSubmittedDay,
+    editingEntry,
+    removeEntry,
+    removingEntryId,
+    reopenSubmittedDay,
+    reopeningDay,
+    saveAllocationEntries,
+    saveEditedEntry,
+    savingEditedEntry,
+    savingEntries,
+    startEditingEntry,
+    submitDay,
+    submittingDay,
+    updateEditingEntry
+  } = useEntryActions({
+    currentUser,
+    dayIsSubmitted,
+    daySubmissions,
+    draftsByPayItem,
+    entries,
+    remainingQuantitiesByPayItem,
+    selectedProject,
+    selectedProjectCrewMembers,
+    setDayEntryNotesByKey,
+    setDaySubmissions,
+    setDraftsByPayItem,
+    setEntries,
+    setEntryNotice,
+    userIsOffline,
+    visibleEntries,
+    workDate
+  });
   const {
     clearDailyReportDraftForCurrentContext,
     closeDailyReportModal,
@@ -521,7 +530,6 @@ export function TimeAllocationWorkspace() {
       });
     });
   }, []);
-  const dayIsSubmitted = currentDaySubmission.status === "submitted";
   const currentUserAutoMyJobIds = useMemo(
     () => (currentUser ? getDefaultMyJobIdsForUser(currentUser, projects) : []),
     [currentUser, projects]
@@ -673,7 +681,7 @@ export function TimeAllocationWorkspace() {
 
   function clearTransientEntryState() {
     setMobileSelectedPayItemId("");
-    setEditingEntry(null);
+    cancelEditingEntry();
     setEditingCrewMember(null);
     setCrewMemberName("");
     setCrewMemberJobTitle("");
@@ -725,56 +733,6 @@ export function TimeAllocationWorkspace() {
     }
 
     setViewMode(nextViewMode);
-  }
-
-  function replaceEntriesForDay(projectId: string, date: string, dayEntries: AllocationEntry[]) {
-    setEntries((current) => [
-      ...current.filter((entry) => !(entry.projectId === projectId && entry.date === date)),
-      ...dayEntries
-    ]);
-  }
-
-  async function ensureEntriesAreCurrent(projectId: string, date: string) {
-    const databaseEntries = await loadDatabaseEntries();
-
-    if (!databaseEntries) {
-      return true;
-    }
-
-    const databaseDayEntries = databaseEntries.filter((entry) => entry.projectId === projectId && entry.date === date);
-    const currentDayEntries = entries.filter((entry) => entry.projectId === projectId && entry.date === date);
-
-    if (buildEntryConflictSignature(databaseDayEntries) === buildEntryConflictSignature(currentDayEntries)) {
-      return true;
-    }
-
-    replaceEntriesForDay(projectId, date, databaseDayEntries);
-    setEditingEntry(null);
-    setEntryNotice("This job/day was changed by another user. Review the latest entries before saving again.");
-    return false;
-  }
-
-  async function ensureDaySubmissionIsCurrent(projectId: string, date: string) {
-    const databaseDayRecords = await loadDatabaseDayRecords();
-
-    if (!databaseDayRecords) {
-      return true;
-    }
-
-    const dayKey = getDayKey(projectId, date);
-    const databaseSubmission = databaseDayRecords.daySubmissions[dayKey] ?? { status: "draft" };
-    const currentSubmission = daySubmissions[dayKey] ?? { status: "draft" };
-
-    if (buildDaySubmissionConflictSignature(databaseSubmission) === buildDaySubmissionConflictSignature(currentSubmission)) {
-      return true;
-    }
-
-    setDaySubmissions(databaseDayRecords.daySubmissions);
-    setDayEntryNotesByKey(databaseDayRecords.dayEntryNotesByKey);
-    setDraftsByPayItem({});
-    setEditingEntry(null);
-    setEntryNotice("This day status was changed by another user. Review the latest status before trying again.");
-    return false;
   }
 
   useEffect(() => {
@@ -898,7 +856,7 @@ export function TimeAllocationWorkspace() {
       if (selectedProjectId) {
         setSelectedProjectId("");
         setMobileSelectedPayItemId("");
-        setEditingEntry(null);
+        cancelEditingEntry();
         setEditingCrewMember(null);
         setDraftsByPayItem({});
       }
@@ -908,11 +866,11 @@ export function TimeAllocationWorkspace() {
     if (!projects.some((project) => project.id === selectedProjectId)) {
       setSelectedProjectId(projects[0].id);
       setMobileSelectedPayItemId("");
-      setEditingEntry(null);
+      cancelEditingEntry();
       setEditingCrewMember(null);
       setDraftsByPayItem({});
     }
-  }, [currentUser, projects, selectedProjectId]);
+  }, [cancelEditingEntry, currentUser, projects, selectedProjectId]);
 
   useEffect(() => {
     if (!currentUser || jobPickerProjects.length === 0) {
@@ -922,11 +880,11 @@ export function TimeAllocationWorkspace() {
     if (!jobPickerProjects.some((project) => project.id === selectedProjectId)) {
       setSelectedProjectId(jobPickerProjects[0].id);
       setMobileSelectedPayItemId("");
-      setEditingEntry(null);
+      cancelEditingEntry();
       setEditingCrewMember(null);
       setDraftsByPayItem({});
     }
-  }, [currentUser, jobPickerProjects, selectedProjectId]);
+  }, [cancelEditingEntry, currentUser, jobPickerProjects, selectedProjectId]);
 
   useEffect(() => {
     if (currentUserMyJobIds.length === 0 && showOnlyMyProjects) {
@@ -1228,7 +1186,7 @@ export function TimeAllocationWorkspace() {
       setMergeSourceCrewMemberId("");
       setMergeTargetCrewMemberId("");
       setEditingCrewMember(null);
-      setEditingEntry(null);
+      cancelEditingEntry();
       setDraftsByPayItem({});
       setEntryNotice("Staging daily entry, daily report, and crew data cleared.");
       setAdminMaintenanceNotice({
@@ -1358,7 +1316,7 @@ export function TimeAllocationWorkspace() {
 
       setSelectedProjectId(nextProject?.id ?? "");
       setMobileSelectedPayItemId("");
-      setEditingEntry(null);
+      cancelEditingEntry();
       setDraftsByPayItem({});
     }
 
@@ -1383,7 +1341,7 @@ export function TimeAllocationWorkspace() {
     setWorkDate(date);
     setViewMode("entry");
     setMobileSelectedPayItemId("");
-    setEditingEntry(null);
+    cancelEditingEntry();
     setEditingCrewMember(null);
     setDraftsByPayItem({});
   }
@@ -1833,346 +1791,6 @@ export function TimeAllocationWorkspace() {
       projectBlacklistById,
       projects: allProjects
     });
-  }
-
-  async function saveAllocationEntries() {
-    if (!selectedProject || !currentUser || dayIsSubmitted || savingEntries) {
-      return;
-    }
-
-    if (shouldBlockOfflineAction(setEntryNotice)) {
-      return;
-    }
-
-    const incompleteCount = selectedProject.payItems.filter((payItem) =>
-      draftIsIncomplete(draftsByPayItem[payItem.id])
-    ).length;
-
-    if (incompleteCount > 0) {
-      setEntryNotice("Allocate crew hours and enter quantity before saving a row.");
-      return;
-    }
-
-    const crewAllocationError = selectedProject.payItems
-      .map((payItem) => getCrewAllocationError(draftsByPayItem[payItem.id], selectedProjectCrewMembers))
-      .find(Boolean);
-
-    if (crewAllocationError) {
-      setEntryNotice(crewAllocationError);
-      return;
-    }
-
-    const overrunWarnings = getDraftQuantityOverrunWarnings(
-      selectedProject.payItems,
-      draftsByPayItem,
-      visibleEntries,
-      remainingQuantitiesByPayItem
-    );
-
-    if (overrunWarnings.length > 0 && !confirmQuantityOverrun(overrunWarnings)) {
-      setEntryNotice("Save cancelled. Adjust quantities or save again to confirm the overrun.");
-      return;
-    }
-
-    setSavingEntries(true);
-    setEntryNotice("Saving entries...");
-
-    try {
-      if (!(await ensureEntriesAreCurrent(selectedProject.id, workDate))) {
-        return;
-      }
-
-      const nextEntries = selectedProject.payItems.flatMap((payItem) => {
-        const draft = draftsByPayItem[payItem.id];
-        const existingEntry = visibleEntries.find((entry) => entry.payItemId === payItem.id);
-
-        if (!draftIsSaveable(draft)) {
-          return [];
-        }
-
-        const hours = getDraftTotalHours(draft, existingEntry);
-        const quantity = draft?.quantity ? Number(draft.quantity) : existingEntry?.quantityCompleted ?? 0;
-
-        return [
-          {
-            id: existingEntry?.id ?? crypto.randomUUID(),
-            projectId: selectedProject.id,
-            projectName: existingEntry?.projectName ?? selectedProject.name,
-            date: workDate,
-            payItemId: payItem.id,
-            payItemCode: existingEntry?.payItemCode ?? payItem.code,
-            payItemName: existingEntry?.payItemName ?? payItem.name,
-            payItemBudgetedQuantity: existingEntry?.payItemBudgetedQuantity ?? payItem.budgetedQuantity,
-            payItemUnitOfMeasure: existingEntry?.payItemUnitOfMeasure ?? formatPayItemUnitOfMeasure(payItem),
-            hours,
-            quantityCompleted: quantity,
-            crewAllocations: buildCrewAllocations(draft, selectedProjectCrewMembers, hours),
-            savedByUserId: currentUser.id,
-            savedByName: formatUserName(currentUser),
-            savedAt: new Date().toISOString()
-          }
-        ];
-      });
-
-      if (nextEntries.length === 0) {
-        return;
-      }
-
-      setEntries((current) => {
-        const upsertIds = new Set(nextEntries.map((entry) => entry.id));
-        return [...current.filter((entry) => !upsertIds.has(entry.id)), ...nextEntries];
-      });
-      try {
-        await saveDatabaseEntries(nextEntries);
-      } catch (error) {
-        setEntryNotice(error instanceof Error ? error.message : "Rows saved locally, but did not sync to the database.");
-        return;
-      }
-
-      setDraftsByPayItem({});
-      setEntryNotice(`${nextEntries.length} row${nextEntries.length === 1 ? "" : "s"} saved for ${formatDate(workDate)}.`);
-    } finally {
-      setSavingEntries(false);
-    }
-  }
-
-  function clearDraftInputs() {
-    setDraftsByPayItem({});
-    setEntryNotice("Draft inputs cleared.");
-  }
-
-  async function removeEntry(entryId: string) {
-    if (dayIsSubmitted || removingEntryId) {
-      return;
-    }
-
-    const entryToRemove = entries.find((entry) => entry.id === entryId);
-
-    setRemovingEntryId(entryId);
-    setEntryNotice("Removing entry...");
-
-    try {
-      if (!entryToRemove || !(await ensureEntriesAreCurrent(entryToRemove.projectId, entryToRemove.date))) {
-        return;
-      }
-
-      setEntries((current) => current.filter((entry) => entry.id !== entryId));
-      try {
-        await deleteDatabaseEntry(entryId);
-        setEntryNotice("Entry removed.");
-      } catch (error) {
-        setEntryNotice(error instanceof Error ? error.message : "Entry deleted locally, but did not sync to the database.");
-      }
-    } finally {
-      setRemovingEntryId(null);
-    }
-  }
-
-  async function deleteSubmittedDay() {
-    if (currentUser?.role !== "admin" || !selectedProject || deletingSubmittedDay) {
-      return;
-    }
-
-    setDeletingSubmittedDay(true);
-    setEntryNotice("Deleting submitted day...");
-
-    try {
-      if (
-        !(await ensureEntriesAreCurrent(selectedProject.id, workDate)) ||
-        !(await ensureDaySubmissionIsCurrent(selectedProject.id, workDate))
-      ) {
-        return;
-      }
-
-      const dayKey = getDayKey(selectedProject.id, workDate);
-
-      setEntries((current) =>
-        current.filter((entry) => !(entry.projectId === selectedProject.id && entry.date === workDate))
-      );
-      try {
-        await deleteDatabaseDayEntries(selectedProject.id, workDate);
-      } catch (error) {
-        setEntryNotice(error instanceof Error ? error.message : "Submitted day deleted locally, but entries did not sync.");
-        return;
-      }
-      setDaySubmissions((current) => {
-        const next = { ...current };
-        delete next[dayKey];
-        return next;
-      });
-      try {
-        await deleteDatabaseDaySubmission(selectedProject.id, workDate);
-      } catch (error) {
-        setEntryNotice(error instanceof Error ? error.message : "Submitted day deleted locally, but day status did not sync.");
-        return;
-      }
-      setEditingEntry(null);
-      setDraftsByPayItem({});
-      setEntryNotice("Submitted day deleted.");
-    } finally {
-      setDeletingSubmittedDay(false);
-    }
-  }
-
-  function startEditingEntry(entry: AllocationEntry) {
-    setEditingEntry({
-      entryId: entry.id,
-      hours: String(entry.hours),
-      quantity: String(entry.quantityCompleted)
-    });
-  }
-
-  async function saveEditedEntry() {
-    if (!editingEntry || dayIsSubmitted || !currentUser || savingEditedEntry) {
-      return;
-    }
-
-    const entryToEdit = entries.find((entry) => entry.id === editingEntry.entryId);
-
-    setSavingEditedEntry(true);
-    setEntryNotice("Saving edited row...");
-
-    try {
-      if (!entryToEdit || !(await ensureEntriesAreCurrent(entryToEdit.projectId, entryToEdit.date))) {
-        return;
-      }
-
-      const hours = Number(editingEntry.hours);
-      const quantity = Number(editingEntry.quantity);
-
-      if (hours < 0 || quantity < 0 || !Number.isFinite(hours) || !Number.isFinite(quantity)) {
-        return;
-      }
-
-      const remainingQuantity = selectedProject?.id === entryToEdit.projectId
-        ? remainingQuantitiesByPayItem[entryToEdit.payItemId]
-        : undefined;
-
-      if (
-        remainingQuantity !== undefined &&
-        quantity > remainingQuantity + 0.0001 &&
-        !confirmQuantityOverrun([
-          `${entryToEdit.payItemCode}: ${formatPayItemQuantity(quantity)} entered, ${formatPayItemQuantity(remainingQuantity)} remaining.`
-        ])
-      ) {
-        setEntryNotice("Update cancelled. Adjust the quantity or save again to confirm the overrun.");
-        return;
-      }
-
-      let updatedEntry: AllocationEntry | null = null;
-      const nextEntries = entries.map((entry) => {
-        if (entry.id !== editingEntry.entryId) {
-          return entry;
-        }
-
-        updatedEntry = {
-          ...entry,
-          hours,
-          quantityCompleted: quantity,
-          crewAllocations: scaleCrewAllocations(entry.crewAllocations ?? [], hours),
-          savedByUserId: currentUser.id,
-          savedByName: formatUserName(currentUser),
-          savedAt: new Date().toISOString()
-        };
-
-        return updatedEntry;
-      });
-
-      setEntries(nextEntries);
-      if (updatedEntry) {
-        try {
-          await saveDatabaseEntries([updatedEntry]);
-        } catch (error) {
-          setEntryNotice(error instanceof Error ? error.message : "Daily allocation updated locally, but did not sync.");
-          return;
-        }
-      }
-      setEditingEntry(null);
-      setEntryNotice("Daily allocation row updated.");
-    } finally {
-      setSavingEditedEntry(false);
-    }
-  }
-
-  async function submitDay() {
-    if (!selectedProject || !currentUser || visibleEntries.length === 0 || submittingDay) {
-      return;
-    }
-
-    setSubmittingDay(true);
-
-    try {
-      if (
-        !(await ensureEntriesAreCurrent(selectedProject.id, workDate)) ||
-        !(await ensureDaySubmissionIsCurrent(selectedProject.id, workDate))
-      ) {
-        return;
-      }
-
-      if (!window.confirm(`Submit ${selectedProject.name} for ${formatDate(workDate)}? This will lock the day for field edits.`)) {
-        return;
-      }
-
-      setEntryNotice("Submitting day...");
-
-      const daySubmission: DaySubmission = {
-        status: "submitted",
-        submittedByUserId: currentUser.id,
-        submittedByName: formatUserName(currentUser),
-        submittedAt: new Date().toISOString()
-      };
-
-      setDaySubmissions((current) => ({
-        ...current,
-        [getDayKey(selectedProject.id, workDate)]: daySubmission
-      }));
-      try {
-        await saveDatabaseDaySubmission(selectedProject.id, workDate, daySubmission);
-      } catch (error) {
-        setEntryNotice(error instanceof Error ? error.message : "Day submitted locally, but did not sync.");
-        return;
-      }
-      setEditingEntry(null);
-      setDraftsByPayItem({});
-      setEntryNotice("Day submitted.");
-    } finally {
-      setSubmittingDay(false);
-    }
-  }
-
-  async function reopenSubmittedDay() {
-    if (currentUser?.role !== "admin" || !selectedProject || !dayIsSubmitted || reopeningDay) {
-      return;
-    }
-
-    setReopeningDay(true);
-    setEntryNotice("Reopening submitted day...");
-
-    try {
-      if (!(await ensureDaySubmissionIsCurrent(selectedProject.id, workDate))) {
-        return;
-      }
-
-      const dayKey = getDayKey(selectedProject.id, workDate);
-
-      const daySubmission: DaySubmission = {
-        status: "draft"
-      };
-
-      setDaySubmissions((current) => ({
-        ...current,
-        [dayKey]: daySubmission
-      }));
-      try {
-        await saveDatabaseDaySubmission(selectedProject.id, workDate, daySubmission);
-      } catch (error) {
-        setEntryNotice(error instanceof Error ? error.message : "Submitted day reopened locally, but did not sync.");
-        return;
-      }
-      setEntryNotice("Submitted day reopened.");
-    } finally {
-      setReopeningDay(false);
-    }
   }
 
   if (!authChecked) {
@@ -3188,9 +2806,7 @@ export function TimeAllocationWorkspace() {
                               step="0.25"
                               type="number"
                               value={editingEntry.hours}
-                              onChange={(event) =>
-                                setEditingEntry((current) => (current ? { ...current, hours: event.target.value } : current))
-                              }
+                              onChange={(event) => updateEditingEntry("hours", event.target.value)}
                               onWheel={(event) => event.currentTarget.blur()}
                             />
                             <input
@@ -3201,9 +2817,7 @@ export function TimeAllocationWorkspace() {
                               step="0.01"
                               type="number"
                               value={editingEntry.quantity}
-                              onChange={(event) =>
-                                setEditingEntry((current) => (current ? { ...current, quantity: event.target.value } : current))
-                              }
+                              onChange={(event) => updateEditingEntry("quantity", event.target.value)}
                               onWheel={(event) => event.currentTarget.blur()}
                             />
                             <button className="secondary-button" disabled={savingEditedEntry} onClick={saveEditedEntry} type="button">
