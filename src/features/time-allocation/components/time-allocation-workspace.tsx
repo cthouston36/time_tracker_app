@@ -114,6 +114,11 @@ import {
   validateDailyReportAnswers
 } from "@/features/time-allocation/lib/daily-report-helpers";
 import { downloadBlob, openDatePicker } from "@/features/time-allocation/lib/browser-actions";
+import {
+  buildDailyReportConflictSignature,
+  buildDaySubmissionConflictSignature,
+  buildEntryConflictSignature
+} from "@/features/time-allocation/lib/conflict-helpers";
 import { exportEntriesToCsv } from "@/features/time-allocation/lib/entry-csv-export";
 import {
   buildCrewDirectoryFromProjects,
@@ -6785,68 +6790,6 @@ function filterDailyReportsByProjectIds(dailyReportsByKey: DailyReportsByKey, pr
       return parsedDayKey ? projectIds.has(parsedDayKey.projectId) : false;
     })
   );
-}
-
-function buildEntryConflictSignature(entries: AllocationEntry[]) {
-  return entries
-    .map((entry) => {
-      const crewSignature = (entry.crewAllocations ?? [])
-        .map((allocation) =>
-          [
-            allocation.crewMemberId,
-            allocation.crewMemberName,
-            allocation.jobTitle,
-            formatConflictNumber(allocation.hours)
-          ].join(":")
-        )
-        .sort()
-        .join(",");
-
-      return [
-        entry.id,
-        entry.payItemId,
-        formatConflictNumber(entry.hours),
-        formatConflictNumber(entry.quantityCompleted),
-        formatConflictTimestamp(entry.savedAt),
-        crewSignature
-      ].join("|");
-    })
-    .sort()
-    .join(";");
-}
-
-function buildDaySubmissionConflictSignature(daySubmission: DaySubmission) {
-  return [
-    daySubmission.status,
-    daySubmission.submittedByUserId ?? "",
-    daySubmission.submittedByName ?? "",
-    daySubmission.submittedAt ?? ""
-  ].join("|");
-}
-
-function buildDailyReportConflictSignature(dailyReport: DailyReport | undefined) {
-  if (!dailyReport) {
-    return "";
-  }
-
-  return JSON.stringify({
-    updatedAt: dailyReport.updatedAt,
-    report: normalizeDailyReportAnswersForSave(getDailyReportAnswers(dailyReport))
-  });
-}
-
-function formatConflictNumber(value: number) {
-  return Number.isFinite(value) ? value.toFixed(6) : "";
-}
-
-function formatConflictTimestamp(value: string | undefined) {
-  if (!value) {
-    return "";
-  }
-
-  const timestamp = new Date(value).getTime();
-
-  return Number.isFinite(timestamp) ? String(timestamp) : value;
 }
 
 function getEntryNoticeClassName(message: string) {
