@@ -105,7 +105,6 @@ import {
   getDailyReportEmployeeTotalHours,
   isDailyReportTimeField,
   normalizeDailyReportAnswersForSave,
-  normalizeDailyReportDraftAnswers,
   normalizeDailyReportEmployeeRows,
   normalizeDailyReportItsfmRows,
   normalizeDailyReportPayItemRows,
@@ -125,10 +124,24 @@ import {
   buildSharedAppState,
   mergeCrewDirectories,
   normalizeSharedAppState,
-  readLocalJson,
   readLocalSharedAppState,
   writeLocalSharedAppState
 } from "@/features/time-allocation/lib/app-state-storage";
+import {
+  clearAllDailyReportAutosaveDrafts,
+  clearDailyReportAutosaveDraft,
+  clearPendingDailyReportAutosaveTimeout,
+  clearPendingProcoreReturn,
+  dismissMobileInstallPrompt,
+  getLastProjectStorageKey,
+  hasDismissedMobileInstallPrompt,
+  readDailyReportAutosaveDraft,
+  readPendingProcoreReturn,
+  writeDailyReportAutosaveDraft,
+  writePendingProcoreReturn,
+  type PendingProcoreReturn,
+  type ViewMode
+} from "@/features/time-allocation/lib/client-storage";
 import {
   addDaysToInputDate,
   buildDailyReportUploadFileName,
@@ -374,28 +387,6 @@ type EditingCrewMember = {
   jobTitle: string;
   subcontractorCompany: string;
 };
-
-type ViewMode = "dashboard" | "entry" | "calendar" | "reports";
-
-type PendingProcoreReturn = {
-  date?: string;
-  intent?: "connect" | "upload_daily";
-  mobilePayItemId?: string;
-  projectId?: string;
-  viewMode?: ViewMode;
-};
-
-type DailyReportAutosaveDraft = {
-  date: string;
-  draft: DailyReportAnswers;
-  projectId: string;
-  updatedAt: string;
-  userId: string;
-};
-
-const PENDING_PROCORE_RETURN_KEY = "pending-procore-return";
-const DAILY_REPORT_DRAFT_STORAGE_PREFIX = "daily-report-draft";
-const MOBILE_INSTALL_PROMPT_DISMISSED_KEY = "mobile-install-prompt-dismissed";
 
 export function TimeAllocationWorkspace() {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
@@ -1009,7 +1000,7 @@ export function TimeAllocationWorkspace() {
           setMobileSelectedPayItemId(pendingProcoreReturn.mobilePayItemId);
         }
         if (pendingProcoreReturn) {
-          window.localStorage.removeItem(PENDING_PROCORE_RETURN_KEY);
+          clearPendingProcoreReturn();
         }
         if (procoreStatus === "connected" && pendingProcoreReturn?.intent === "upload_daily") {
           setDailyReportUploadNotice({
@@ -1034,7 +1025,7 @@ export function TimeAllocationWorkspace() {
       return;
     }
 
-    const dismissed = window.localStorage.getItem(MOBILE_INSTALL_PROMPT_DISMISSED_KEY) === "true";
+    const dismissed = hasDismissedMobileInstallPrompt();
     const isStandalone =
       window.matchMedia("(display-mode: standalone)").matches ||
       ("standalone" in window.navigator && Boolean((window.navigator as Navigator & { standalone?: boolean }).standalone));
@@ -3098,16 +3089,13 @@ export function TimeAllocationWorkspace() {
       return;
     }
 
-    window.localStorage.setItem(
-      PENDING_PROCORE_RETURN_KEY,
-      JSON.stringify({
-        date: workDate,
-        intent,
-        mobilePayItemId: mobileSelectedPayItemId,
-        projectId: selectedProject?.id ?? selectedProjectId,
-        viewMode
-      } satisfies PendingProcoreReturn)
-    );
+    writePendingProcoreReturn({
+      date: workDate,
+      intent,
+      mobilePayItemId: mobileSelectedPayItemId,
+      projectId: selectedProject?.id ?? selectedProjectId,
+      viewMode
+    });
     window.location.assign("/api/procore/oauth/login");
   }
 
@@ -4346,7 +4334,7 @@ export function TimeAllocationWorkspace() {
       {mobileInstallPromptVisible ? (
         <MobileInstallPrompt
           onDismiss={() => {
-            window.localStorage.setItem(MOBILE_INSTALL_PROMPT_DISMISSED_KEY, "true");
+            dismissMobileInstallPrompt();
             setMobileInstallPromptVisible(false);
           }}
         />
@@ -6824,94 +6812,6 @@ function createEmptyPasswordResetForm(): PasswordResetFormState {
     token: "",
     userId: ""
   };
-}
-
-function readDailyReportAutosaveDraft(
-  userId: string,
-  projectId: string,
-  date: string
-): DailyReportAutosaveDraft | null {
-  const value = readLocalJson<Partial<DailyReportAutosaveDraft> | null>(
-    getDailyReportDraftStorageKey(userId, projectId, date),
-    null
-  );
-
-  if (!value || value.userId !== userId || value.projectId !== projectId || value.date !== date || !value.draft) {
-    return null;
-  }
-
-  return {
-    date,
-    draft: normalizeDailyReportDraftAnswers(value.draft),
-    projectId,
-    updatedAt: typeof value.updatedAt === "string" && value.updatedAt ? value.updatedAt : new Date().toISOString(),
-    userId
-  };
-}
-
-function writeDailyReportAutosaveDraft(draft: DailyReportAutosaveDraft) {
-  window.localStorage.setItem(getDailyReportDraftStorageKey(draft.userId, draft.projectId, draft.date), JSON.stringify(draft));
-}
-
-function clearDailyReportAutosaveDraft(userId: string, projectId: string, date: string) {
-  window.localStorage.removeItem(getDailyReportDraftStorageKey(userId, projectId, date));
-}
-
-function clearAllDailyReportAutosaveDrafts() {
-  const keysToClear: string[] = [];
-
-  for (let index = 0; index < window.localStorage.length; index += 1) {
-    const key = window.localStorage.key(index);
-
-    if (key?.startsWith(`${DAILY_REPORT_DRAFT_STORAGE_PREFIX}:`)) {
-      keysToClear.push(key);
-    }
-  }
-
-  for (const key of keysToClear) {
-    window.localStorage.removeItem(key);
-  }
-}
-
-function getDailyReportDraftStorageKey(userId: string, projectId: string, date: string) {
-  return `${DAILY_REPORT_DRAFT_STORAGE_PREFIX}:${userId}:${projectId}:${date}`;
-}
-
-function clearPendingDailyReportAutosaveTimeout(timeoutRef: { current: number | null }) {
-  if (timeoutRef.current !== null) {
-    window.clearTimeout(timeoutRef.current);
-    timeoutRef.current = null;
-  }
-}
-
-function readPendingProcoreReturn(): PendingProcoreReturn | null {
-  const value = window.localStorage.getItem(PENDING_PROCORE_RETURN_KEY);
-
-  if (!value) {
-    return null;
-  }
-
-  try {
-    const parsed = JSON.parse(value) as PendingProcoreReturn;
-
-    return {
-      date: parsed.date,
-      intent: parsed.intent === "upload_daily" ? "upload_daily" : "connect",
-      mobilePayItemId: parsed.mobilePayItemId,
-      projectId: parsed.projectId,
-      viewMode:
-        parsed.viewMode === "dashboard" || parsed.viewMode === "calendar" || parsed.viewMode === "reports"
-          ? parsed.viewMode
-          : "entry"
-    };
-  } catch {
-    window.localStorage.removeItem(PENDING_PROCORE_RETURN_KEY);
-    return null;
-  }
-}
-
-function getLastProjectStorageKey(userId: string) {
-  return `last-selected-project-${userId}`;
 }
 
 function getNetworkNotice(status: NetworkStatus): NetworkNotice | null {
