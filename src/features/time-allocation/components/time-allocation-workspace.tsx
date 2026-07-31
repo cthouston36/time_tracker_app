@@ -69,7 +69,6 @@ import {
   loadDatabaseEntries,
   loadDatabaseProjectControls,
   mergeDatabaseCrewMembers,
-  postProjectsWithTimeout,
   readApiJson,
   removeDatabaseCrewMemberFromProject,
   saveDatabaseDaySubmission,
@@ -77,7 +76,6 @@ import {
   saveDatabaseMyJobs,
   saveDatabaseProjectArchive,
   saveDatabaseProjectBlacklist,
-  saveDatabaseSyncLogEntry,
   updateDatabaseCrewMember
 } from "@/features/time-allocation/lib/api-client";
 import {
@@ -168,15 +166,8 @@ import {
   buildNetSuiteProjectManagerOptions,
   filterActiveProjects,
   getDefaultMyJobIdsForUser,
-  normalizeSyncLogEntry,
-  normalizeSyncSummary,
-  projectMatchesIdentifier,
   sortProjectsByName
 } from "@/features/time-allocation/lib/selectors";
-import {
-  buildSyncStatus,
-  hasSyncWarnings
-} from "@/features/time-allocation/lib/sync-status-helpers";
 import type {
   AuthResponse,
   ProcoreStatusResponse
@@ -189,12 +180,10 @@ import type {
   DaySubmissionsByKey,
   DraftsByPayItem,
   MyJobsByUser,
-  ProcoreSyncSummary,
   ProjectArchiveById,
   ProjectBlacklistById,
   ProjectsResponse,
-  SharedAppState,
-  SyncLogEntry
+  SharedAppState
 } from "@/features/time-allocation/types";
 import { useNetworkStatus } from "@/features/time-allocation/hooks/use-network-status";
 import { useAdminUserManagement } from "@/features/time-allocation/hooks/use-admin-user-management";
@@ -203,6 +192,7 @@ import { useDailyReports } from "@/features/time-allocation/hooks/use-daily-repo
 import { useFieldProjectAssignments } from "@/features/time-allocation/hooks/use-field-project-assignments";
 import { useJobImages } from "@/features/time-allocation/hooks/use-job-images";
 import { useNetSuiteVendors } from "@/features/time-allocation/hooks/use-netsuite-vendors";
+import { useProjectSync } from "@/features/time-allocation/hooks/use-project-sync";
 import { WeeklyStatusReport } from "@/features/time-allocation/components/dashboard/weekly-status-report";
 import { AdminToolsDrawer } from "@/features/time-allocation/components/admin/admin-tools";
 import type { AllocationEntry, CrewLaborType, Project } from "@/lib/procore/types";
@@ -271,14 +261,37 @@ export function TimeAllocationWorkspace() {
   const [clearingStagingData, setClearingStagingData] = useState(false);
   const [clearingProjectCache, setClearingProjectCache] = useState(false);
   const [adminMaintenanceNotice, setAdminMaintenanceNotice] = useState<{ message: string; status: "success" | "error" } | null>(null);
-  const [syncSummary, setSyncSummary] = useState<ProcoreSyncSummary | null>(null);
-  const [syncLog, setSyncLog] = useState<SyncLogEntry[]>([]);
-  const [syncedAt, setSyncedAt] = useState<string | null>(null);
-  const [syncing, setSyncing] = useState(false);
-  const [syncingAll, setSyncingAll] = useState(false);
-  const [updatingProject, setUpdatingProject] = useState(false);
   const networkStatus = useNetworkStatus();
   const userIsOffline = networkStatus.checked && !networkStatus.online;
+  const resetDraftPayItems = useCallback(() => {
+    setDraftsByPayItem({});
+  }, []);
+  const {
+    addOrUpdateProject,
+    addSyncLog,
+    replaceSyncLog,
+    resetProjectSyncState,
+    setSyncedAt,
+    syncAllProjects,
+    syncing,
+    syncingAll,
+    syncLog,
+    syncNewProjects,
+    syncSummary,
+    syncedAt,
+    updatingProject
+  } = useProjectSync({
+    onConnectionStatus: setConnectionStatus,
+    onDraftsReset: resetDraftPayItems,
+    onProjectArchiveChange: setProjectArchiveById,
+    onProjectLoadError: setProjectLoadError,
+    onProjectsChange: setAllProjects,
+    onSelectedProjectChange: setSelectedProjectId,
+    projectArchiveById,
+    projectBlacklistById,
+    selectedProjectId,
+    userIsOffline
+  });
   const [appStateHydrated, setAppStateHydrated] = useState(false);
   const dateInputRef = useRef<HTMLInputElement>(null);
   const payItemEntryPanelRef = useRef<HTMLDivElement>(null);
@@ -576,7 +589,7 @@ export function TimeAllocationWorkspace() {
         dailyReportUploadsByKey: normalizedState.dailyReportUploadsByKey,
         dailyReportsByKey: normalizedState.dailyReportsByKey
       });
-      setSyncLog(normalizedState.syncLog);
+      replaceSyncLog(normalizedState.syncLog);
       setCrewMembersByProject(normalizedState.crewMembersByProject);
       setCrewDirectory(
         mergeCrewDirectories(
@@ -588,7 +601,7 @@ export function TimeAllocationWorkspace() {
       setProjectArchiveById(normalizedState.projectArchiveById);
       setProjectBlacklistById(normalizedState.projectBlacklistById);
     },
-    [replaceDailyReportData]
+    [replaceDailyReportData, replaceSyncLog]
   );
 
   useEffect(() => {
@@ -852,7 +865,7 @@ export function TimeAllocationWorkspace() {
 
     void loadProcoreConnectionStatus();
     void loadProjects();
-  }, [currentUser, setDailyReportUploadNotice]);
+  }, [currentUser, setDailyReportUploadNotice, setSyncedAt]);
 
   useEffect(() => {
     if (!currentUser || typeof window === "undefined") {
@@ -1270,8 +1283,7 @@ export function TimeAllocationWorkspace() {
 
       setAllProjects([]);
       setSelectedProjectId("");
-      setSyncedAt(null);
-      setSyncSummary(null);
+      resetProjectSyncState();
       setDraftsByPayItem({});
       setProjectLoadError("");
       setConnectionStatus("No cached project data");
@@ -1813,190 +1825,6 @@ export function TimeAllocationWorkspace() {
     });
   }
 
-  function addSyncLog(entry: Omit<SyncLogEntry, "id" | "createdAt">) {
-    const syncLogEntry = normalizeSyncLogEntry({
-      id: crypto.randomUUID(),
-      createdAt: new Date().toISOString(),
-      ...entry
-    });
-
-    if (!syncLogEntry) {
-      return;
-    }
-
-    setSyncLog((current) =>
-      [syncLogEntry, ...current].slice(0, 25)
-    );
-    void saveDatabaseSyncLogEntry(syncLogEntry).catch((error) => {
-      setProjectLoadError(error instanceof Error ? error.message : "Sync log saved locally, but did not sync.");
-    });
-  }
-
-  async function syncProcoreData() {
-    if (shouldBlockOfflineAction(setProjectLoadError)) {
-      return;
-    }
-
-    setSyncing(true);
-    setProjectLoadError("");
-    setSyncSummary(null);
-
-    try {
-      const { data, response } = await postProjectsWithTimeout(
-        "/api/procore/sync",
-        "Sync New Projects timed out before the server returned. Try again, or use Add/Update Project for a specific job."
-      );
-
-      if (!response.ok) {
-        throw new Error(data.error ?? "Unable to sync NetSuite project data.");
-      }
-
-      const sortedProjects = sortProjectsByName(data.projects);
-      const nextProjectArchiveById = data.projectArchiveById ?? projectArchiveById;
-      const visibleSyncedProjects = filterActiveProjects(sortedProjects, projectBlacklistById, nextProjectArchiveById);
-      setAllProjects(sortedProjects);
-      setProjectArchiveById(nextProjectArchiveById);
-      setSelectedProjectId((currentProjectId) =>
-        visibleSyncedProjects.some((project) => project.id === currentProjectId)
-          ? currentProjectId
-          : visibleSyncedProjects[0]?.id ?? ""
-      );
-      setSyncedAt(data.syncedAt ?? null);
-      const summary = normalizeSyncSummary(data.summary);
-      setSyncSummary(summary ?? null);
-      const message = buildSyncStatus("New project sync", summary);
-      setConnectionStatus(message);
-      setDraftsByPayItem({});
-      addSyncLog({
-        action: "Sync New Projects",
-        status: hasSyncWarnings(summary) ? "warning" : "success",
-        message,
-        summary
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unable to sync NetSuite project data.";
-      setProjectLoadError(message);
-      setConnectionStatus("Project sync failed");
-      addSyncLog({
-        action: "Sync New Projects",
-        status: "error",
-        message
-      });
-    } finally {
-      setSyncing(false);
-    }
-  }
-
-  async function syncAllProcoreData() {
-    if (shouldBlockOfflineAction(setProjectLoadError)) {
-      return;
-    }
-
-    setSyncingAll(true);
-    setProjectLoadError("");
-    setSyncSummary(null);
-
-    try {
-      const { data, response } = await postProjectsWithTimeout(
-        "/api/procore/sync-all",
-        "Sync All Projects timed out before the server returned. Try again, or use Add/Update Project for a specific job."
-      );
-
-      if (!response.ok) {
-        throw new Error(data.error ?? "Unable to sync all NetSuite projects.");
-      }
-
-      const sortedProjects = sortProjectsByName(data.projects);
-      const nextProjectArchiveById = data.projectArchiveById ?? projectArchiveById;
-      const visibleSyncedProjects = filterActiveProjects(sortedProjects, projectBlacklistById, nextProjectArchiveById);
-      setAllProjects(sortedProjects);
-      setProjectArchiveById(nextProjectArchiveById);
-      setSelectedProjectId((currentProjectId) =>
-        visibleSyncedProjects.some((project) => project.id === currentProjectId)
-          ? currentProjectId
-          : visibleSyncedProjects[0]?.id ?? ""
-      );
-      setSyncedAt(data.syncedAt ?? null);
-      const summary = normalizeSyncSummary(data.summary);
-      setSyncSummary(summary ?? null);
-      const message = buildSyncStatus("Full sync", summary);
-      setConnectionStatus(message);
-      setDraftsByPayItem({});
-      addSyncLog({
-        action: "Sync All Projects",
-        status: hasSyncWarnings(summary) ? "warning" : "success",
-        message,
-        summary
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unable to sync all NetSuite projects.";
-      setProjectLoadError(message);
-      setConnectionStatus("Full sync failed");
-      addSyncLog({
-        action: "Sync All Projects",
-        status: "error",
-        message
-      });
-    } finally {
-      setSyncingAll(false);
-    }
-  }
-
-  async function addOrUpdateProject() {
-    if (shouldBlockOfflineAction(setProjectLoadError)) {
-      return;
-    }
-
-    const projectId = window.prompt("Enter the NetSuite project ID or Procore project ID to add or update.", selectedProjectId);
-    const trimmedProjectId = projectId?.trim();
-
-    if (!trimmedProjectId) {
-      return;
-    }
-
-    setUpdatingProject(true);
-    setProjectLoadError("");
-    setSyncSummary(null);
-
-    try {
-      const response = await fetch(`/api/procore/projects/${encodeURIComponent(trimmedProjectId)}/sync`, {
-        method: "POST"
-      });
-      const data = (await readApiJson(response)) as ProjectsResponse;
-
-      if (!response.ok) {
-        throw new Error(data.error ?? "Unable to add or update project.");
-      }
-
-      const sortedProjects = sortProjectsByName(data.projects);
-      const nextProjectArchiveById = data.projectArchiveById ?? projectArchiveById;
-      const visibleSyncedProjects = filterActiveProjects(sortedProjects, projectBlacklistById, nextProjectArchiveById);
-      const syncedProject = visibleSyncedProjects.find((project) => projectMatchesIdentifier(project, trimmedProjectId));
-      setAllProjects(sortedProjects);
-      setProjectArchiveById(nextProjectArchiveById);
-      setSelectedProjectId((currentProjectId) => syncedProject?.id ?? currentProjectId);
-      setSyncedAt(data.syncedAt ?? null);
-      setConnectionStatus("Project added or updated");
-      setDraftsByPayItem({});
-      addSyncLog({
-        action: "Add/Update Project",
-        status: "success",
-        message: `Project ${trimmedProjectId} added or updated`
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unable to add or update project.";
-      setProjectLoadError(message);
-      setConnectionStatus("Project add/update failed");
-      addSyncLog({
-        action: "Add/Update Project",
-        status: "error",
-        message
-      });
-    } finally {
-      setUpdatingProject(false);
-    }
-  }
-
   function exportAllEntryDetails() {
     exportEntriesToCsv({
       dayEntryNotesByKey,
@@ -2483,9 +2311,9 @@ export function TimeAllocationWorkspace() {
       onRetryDailyReportUpload={retryDailyReportUpload}
       onSaveUser={saveAdminUser}
       onSetUserActive={setAdminUserActive}
-      onSyncAllProjects={syncAllProcoreData}
+      onSyncAllProjects={syncAllProjects}
       onSyncNetSuiteVendors={syncNetSuiteVendorDirectory}
-      onSyncNewProjects={syncProcoreData}
+      onSyncNewProjects={syncNewProjects}
       onToggleProjectArchive={toggleProjectArchive}
       onToggleProjectBlacklist={toggleProjectBlacklist}
       onToggleVendorBlacklist={toggleVendorBlacklist}
