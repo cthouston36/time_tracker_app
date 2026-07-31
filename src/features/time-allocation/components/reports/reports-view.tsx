@@ -30,6 +30,8 @@ import { EmptyState, PageHeader, ReportLoadingSkeleton } from "@/features/time-a
 import { MobileOptionPicker } from "@/features/time-allocation/components/mobile-option-picker";
 import { MyJobsManager } from "@/features/time-allocation/components/my-jobs-manager";
 import { getDefaultMyJobIdsForUser } from "@/features/time-allocation/lib/selectors";
+import { downloadBlob, openDatePicker } from "@/features/time-allocation/lib/browser-actions";
+import { formatCsvIdentifier, formatCsvNumber, rowsToCsv } from "@/features/time-allocation/lib/csv-utils";
 import type { AllocationEntry, CrewLaborType, Project } from "@/lib/procore/types";
 
 const CREW_LABOR_TYPE_OPTIONS: Array<{ value: CrewLaborType; label: string }> = [
@@ -98,42 +100,6 @@ function isAbortError(error: unknown) {
   return error instanceof DOMException && error.name === "AbortError";
 }
 
-function formatCsvNumber(value: number | undefined) {
-  if (value === undefined || !Number.isFinite(value)) {
-    return "";
-  }
-
-  return String(Math.round(value * 1000000) / 1000000);
-}
-
-function formatCsvIdentifier(value: string) {
-  if (/^\d{12,}$/.test(value)) {
-    return `\t${value}`;
-  }
-
-  return value;
-}
-
-function escapeCsvCell(value: string) {
-  const safeValue = value.trimStart().match(/^[=+\-@]/) ? `'${value}` : value;
-
-  if (/[",\r\n\t]/.test(safeValue)) {
-    return `"${safeValue.replaceAll('"', '""')}"`;
-  }
-
-  return safeValue;
-}
-
-function downloadBlob(blob: Blob, fileName: string) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-
-  link.href = url;
-  link.download = fileName;
-  link.click();
-  URL.revokeObjectURL(url);
-}
-
 async function readApiError(response: Response, fallbackMessage: string) {
   try {
     const data = (await readApiJson(response)) as { error?: string };
@@ -160,19 +126,6 @@ async function readApiJson(response: Response) {
 
     throw new Error(text.slice(0, 300) || `${response.status} ${response.statusText || "Request failed"}`.trim());
   }
-}
-
-function openDatePicker(input: HTMLInputElement | null) {
-  if (!input) {
-    return;
-  }
-
-  if (typeof input.showPicker === "function") {
-    input.showPicker();
-    return;
-  }
-
-  input.focus();
 }
 
 type ReportResponse = {
@@ -1514,17 +1467,12 @@ function exportPayItemSummaryToCsv(payItemRows: PayItemReportRow[]) {
     row.excludedEntryCount,
     row.sampleSize
   ]);
-  const csv = [headers, ...rows].map((row) => row.map((cell) => escapeCsvCell(String(cell))).join(",")).join("\r\n");
+  const csv = rowsToCsv([headers, ...rows]);
   const blob = new Blob([csv], {
     type: "text/csv;charset=utf-8"
   });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
 
-  link.href = url;
-  link.download = `time-allocation-summary-${todayInputValue()}.csv`;
-  link.click();
-  URL.revokeObjectURL(url);
+  downloadBlob(blob, `time-allocation-summary-${todayInputValue()}.csv`);
 }
 
 function exportDailyWorkReportToCsv(rows: DailyWorkReportRow[]) {
@@ -1578,16 +1526,11 @@ function exportDailyWorkReportToCsv(rows: DailyWorkReportRow[]) {
           ]
         ]
   );
-  const csv = [headers, ...csvRows].map((row) => row.map((cell) => escapeCsvCell(String(cell))).join(",")).join("\r\n");
+  const csv = rowsToCsv([headers, ...csvRows]);
   const blob = new Blob([csv], {
     type: "text/csv;charset=utf-8"
   });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
 
-  link.href = url;
-  link.download = `time-allocation-daily-work-${todayInputValue()}.csv`;
-  link.click();
-  URL.revokeObjectURL(url);
+  downloadBlob(blob, `time-allocation-daily-work-${todayInputValue()}.csv`);
 }
 
