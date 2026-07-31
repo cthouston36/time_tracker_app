@@ -3,7 +3,6 @@
 import NextImage from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
-  AlertTriangle,
   BarChart3,
   CalendarDays,
   ChevronLeft,
@@ -21,13 +20,10 @@ import {
   RotateCcw,
   Save,
   Send,
-  Smartphone,
   Trash2,
   UploadCloud,
   UserPlus,
   Users,
-  WifiOff,
-  type LucideIcon,
   X
 } from "lucide-react";
 import { IconLabel } from "@/components/icon-label";
@@ -45,8 +41,13 @@ import {
   PageHeader
 } from "@/features/time-allocation/components/workspace-primitives";
 import { DailyStatusStrip } from "@/features/time-allocation/components/daily-status-strip";
+import { ChangePasswordModal } from "@/features/time-allocation/components/change-password-modal";
 import { MobileOptionPicker } from "@/features/time-allocation/components/mobile-option-picker";
 import { MyJobsManager } from "@/features/time-allocation/components/my-jobs-manager";
+import {
+  MobileInstallPrompt,
+  NetworkStatusBanner
+} from "@/features/time-allocation/components/status-banners";
 import { ReportsView } from "@/features/time-allocation/components/reports/reports-view";
 import {
   DailyReportModal,
@@ -56,6 +57,7 @@ import {
   MobilePayItemEntry,
   PayItemMatrix
 } from "@/features/time-allocation/components/entry/pay-item-entry-matrix";
+import { SubmittedDayReview } from "@/features/time-allocation/components/entry/submitted-day-review";
 import {
   addDatabaseCrewMemberToProject,
   clearDatabaseProjectCache,
@@ -145,7 +147,6 @@ import {
   addDaysToInputDate,
   buildDailyReportUploadFileName,
   formatDate,
-  formatWeekDayLabel,
   formatWeekRange,
   getDayKey,
   getWeekDates,
@@ -155,10 +156,7 @@ import {
 import {
   buildEntryDayKeySet,
   buildProcoreDocumentsFolderUrl,
-  getDailyReportCalendarStatus,
   getDailyReportProcoreStatus,
-  getHasDailyEntryActivity,
-  getProjectEntryCalendarStatus,
   getProjectWorkTypeLabel
 } from "@/features/time-allocation/lib/status-helpers";
 import {
@@ -250,13 +248,11 @@ import type {
   CalendarStatusMode,
   CrewMember,
   CrewMembersByProject,
-  CrewSummaryRow,
   DailyReport,
   DailyReportAnswers,
   DailyReportEmployeeRow,
   DailyReportItsfmRow,
   DailyReportPayItemRow,
-  DailyReportProcoreStatus,
   DailyReportsByKey,
   DailyReportTimeField,
   DailyReportUpload,
@@ -280,10 +276,7 @@ import type {
   SyncLogEntry,
   VendorBlacklistById
 } from "@/features/time-allocation/types";
-import {
-  useNetworkStatus,
-  type NetworkStatus
-} from "@/features/time-allocation/hooks/use-network-status";
+import { useNetworkStatus } from "@/features/time-allocation/hooks/use-network-status";
 import {
   DashboardAttentionList,
   DashboardMetric,
@@ -295,6 +288,7 @@ import {
   FieldProjectAssignmentPanel,
   PmComplianceRanking
 } from "@/features/time-allocation/components/dashboard/dashboard-components";
+import { WeeklyStatusReport } from "@/features/time-allocation/components/dashboard/weekly-status-report";
 import { AdminToolsDrawer } from "@/features/time-allocation/components/admin/admin-tools";
 import type { AllocationEntry, CrewLaborType, Project } from "@/lib/procore/types";
 type DailyReportUploadResponse = {
@@ -346,13 +340,6 @@ type ProcoreStatusResponse = {
   connected: boolean;
   connectedAt?: string;
   connectedBy?: string;
-};
-
-type NetworkNotice = {
-  icon: LucideIcon;
-  message: string;
-  tone: "offline" | "weak";
-  title: string;
 };
 
 type EditingEntry = {
@@ -5834,519 +5821,6 @@ function DashboardView({
   );
 }
 
-function MobileInstallPrompt({ onDismiss }: { onDismiss: () => void }) {
-  return (
-    <div className="mobile-install-prompt">
-      <Smartphone aria-hidden="true" size={18} />
-      <div>
-        <strong>Install Chinchor Daily</strong>
-        <span>On iPhone/iPad: tap Share, then Add to Home Screen for faster field access.</span>
-      </div>
-      <button className="icon-button" aria-label="Dismiss install prompt" onClick={onDismiss} type="button">
-        <X aria-hidden="true" size={16} />
-      </button>
-    </div>
-  );
-}
-
-function NetworkStatusBanner({ status }: { status: NetworkStatus }) {
-  const notice = getNetworkNotice(status);
-
-  if (!notice) {
-    return null;
-  }
-
-  const NoticeIcon = notice.icon;
-
-  return (
-    <div className={`network-status-banner ${notice.tone}`}>
-      <NoticeIcon aria-hidden="true" size={18} />
-      <div>
-        <strong>{notice.title}</strong>
-        <span>{notice.message}</span>
-      </div>
-    </div>
-  );
-}
-
-function SubmittedDayReview({
-  crewSummaryRows,
-  dailyReport,
-  entries,
-  procoreStatus,
-  showPayItemEntries,
-  totalHours
-}: {
-  crewSummaryRows: CrewSummaryRow[];
-  dailyReport: DailyReport | undefined;
-  entries: AllocationEntry[];
-  procoreStatus: DailyReportProcoreStatus;
-  showPayItemEntries: boolean;
-  totalHours: number;
-}) {
-  return (
-    <div className="submitted-day-review">
-      <div className="submitted-day-summary">
-        <div>
-          <span>{showPayItemEntries ? "Pay Item Rows" : "Entry Status"}</span>
-          <strong>{showPayItemEntries ? entries.length : "N/A"}</strong>
-        </div>
-        <div>
-          <span>Total Hours</span>
-          <strong>{totalHours.toFixed(2)}</strong>
-        </div>
-        <div>
-          <span>Daily Report</span>
-          <strong>{dailyReport ? "Saved" : "Not created"}</strong>
-        </div>
-        <div>
-          <span>Procore Upload</span>
-          <DailyReportProcoreStatusValue status={procoreStatus} />
-        </div>
-      </div>
-
-      <div className="submitted-review-grid">
-        <section className="submitted-review-section">
-          <h3>Crew Hours</h3>
-          {crewSummaryRows.length === 0 ? (
-            <div className="field-note">No crew hours are tied to saved pay item entries for this day.</div>
-          ) : (
-            <div className="submitted-crew-list">
-              {crewSummaryRows.map((row) => (
-                <div className="submitted-crew-row" key={row.crewMemberId}>
-                  <span>
-                    <strong>{getCrewDisplayName(row)}</strong>
-                    {formatCrewMemberMeta(row)}
-                  </span>
-                  <strong>{row.hours.toFixed(2)} hrs</strong>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-      </div>
-
-      {showPayItemEntries ? (
-        entries.length > 0 ? (
-          <SubmittedDayEntryTable entries={entries} />
-        ) : (
-          <div className="empty-state">No pay item entries for this job and date.</div>
-        )
-      ) : (
-        <div className="field-note">This job uses daily reports and photos only, so pay item entry status is not applicable.</div>
-      )}
-    </div>
-  );
-}
-
-function SubmittedDayEntryTable({ entries }: { entries: AllocationEntry[] }) {
-  return (
-    <div className="submitted-entry-table" role="table" aria-label="Submitted pay item entries">
-      <div className="submitted-entry-row submitted-entry-header" role="row">
-        <span>Code</span>
-        <span>Pay Item</span>
-        <span>Hours</span>
-        <span>Quantity</span>
-        <span>Crew</span>
-      </div>
-      {entries.map((entry) => (
-        <div className="submitted-entry-row" key={entry.id} role="row">
-          <span data-label="Code">
-            <strong>{entry.payItemCode}</strong>
-          </span>
-          <span data-label="Pay Item">{entry.payItemName}</span>
-          <span data-label="Hours">{entry.hours.toFixed(2)}</span>
-          <span data-label="Quantity">{entry.quantityCompleted.toFixed(2)}</span>
-          <SubmittedEntryCrewCell entry={entry} />
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function SubmittedEntryCrewCell({ entry }: { entry: AllocationEntry }) {
-  if (!entry.crewAllocations?.length) {
-    return (
-      <div className="submitted-entry-crew" data-label="Crew">
-        <span>Unassigned</span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="submitted-entry-crew" data-label="Crew">
-      {entry.crewAllocations.map((allocation, index) => (
-        <span key={`${allocation.crewMemberId}-${index}`}>
-          {getCrewDisplayName(allocation)} {allocation.hours.toFixed(2)}h
-        </span>
-      ))}
-    </div>
-  );
-}
-
-function WeeklyStatusReport({
-  canExportWeeklyDailyReports,
-  dailyReportUploadsByKey,
-  dailyReportsByKey,
-  daySubmissions,
-  entries,
-  myJobIds,
-  onOpenDay,
-  projects,
-  selectedProjectIds,
-  setSelectedProjectIds,
-  setUseMyJobs,
-  setWeekStart,
-  useMyJobs,
-  weekStart
-}: {
-  canExportWeeklyDailyReports: boolean;
-  dailyReportUploadsByKey: DailyReportUploadsByKey;
-  dailyReportsByKey: DailyReportsByKey;
-  daySubmissions: DaySubmissionsByKey;
-  entries: AllocationEntry[];
-  myJobIds: string[];
-  onOpenDay: (projectId: string, date: string) => void;
-  projects: Project[];
-  selectedProjectIds: string[];
-  setSelectedProjectIds: (projectIds: string[]) => void;
-  setUseMyJobs: (useMyJobs: boolean) => void;
-  setWeekStart: (weekStart: string) => void;
-  useMyJobs: boolean;
-  weekStart: string;
-}) {
-  const [calendarStatusMode, setCalendarStatusMode] = useState<CalendarStatusMode>("entry_status");
-  const [exportingWeeklyDailyReportsPdf, setExportingWeeklyDailyReportsPdf] = useState(false);
-  const [weeklyDailyReportsNotice, setWeeklyDailyReportsNotice] = useState<{ message: string; status: "error" | "success" } | null>(null);
-  const sortedProjects = sortProjectsByName(projects);
-  const weekDates = getWeekDates(weekStart);
-  const activeProjectIds = useMyJobs ? myJobIds : selectedProjectIds;
-  const activeProjectIdSet = new Set(activeProjectIds);
-  const visibleProjects = sortedProjects.filter((project) => activeProjectIdSet.has(project.id));
-  const entryDayKeys = useMemo(() => buildEntryDayKeySet(entries), [entries]);
-  const savedDailyReportCount = visibleProjects.reduce(
-    (total, project) => total + weekDates.filter((date) => dailyReportsByKey[getDayKey(project.id, date)]).length,
-    0
-  );
-  const selectedLabel = useMyJobs
-    ? `My Projects (${myJobIds.length})`
-    : selectedProjectIds.length === 0
-      ? "Select jobs"
-      : `${selectedProjectIds.length} selected`;
-
-  function toggleProject(projectId: string, checked: boolean) {
-    const nextSelectedProjectIds = new Set(selectedProjectIds);
-
-    if (checked) {
-      nextSelectedProjectIds.add(projectId);
-    } else {
-      nextSelectedProjectIds.delete(projectId);
-    }
-
-    setSelectedProjectIds(
-      sortedProjects.filter((project) => nextSelectedProjectIds.has(project.id)).map((project) => project.id)
-    );
-  }
-
-  async function downloadWeeklyDailyReportsPdf() {
-    if (visibleProjects.length === 0) {
-      setWeeklyDailyReportsNotice({
-        message: "Select one or more projects before exporting weekly daily reports.",
-        status: "error"
-      });
-      return;
-    }
-
-    if (savedDailyReportCount === 0) {
-      setWeeklyDailyReportsNotice({
-        message: "No saved daily reports are available for this week.",
-        status: "error"
-      });
-      return;
-    }
-
-    setExportingWeeklyDailyReportsPdf(true);
-    setWeeklyDailyReportsNotice(null);
-
-    try {
-      const response = await fetch("/api/daily-reports/weekly-pdf", {
-        body: JSON.stringify({
-          projectIds: visibleProjects.map((project) => project.id),
-          weekStart
-        }),
-        headers: {
-          "Content-Type": "application/json"
-        },
-        method: "POST"
-      });
-
-      if (!response.ok) {
-        throw new Error(await readApiError(response, "Unable to export weekly daily reports."));
-      }
-
-      const blob = await response.blob();
-      const fileName = readDownloadFileName(response.headers) ?? `weekly-daily-reports-${weekStart}.pdf`;
-
-      downloadBlob(blob, fileName);
-      setWeeklyDailyReportsNotice({
-        message: `Downloaded ${fileName}.`,
-        status: "success"
-      });
-    } catch (error) {
-      setWeeklyDailyReportsNotice({
-        message: error instanceof Error ? error.message : "Unable to export weekly daily reports.",
-        status: "error"
-      });
-    } finally {
-      setExportingWeeklyDailyReportsPdf(false);
-    }
-  }
-
-  return (
-    <div className="weekly-status-report">
-      <div className="weekly-status-controls">
-        <div className="week-nav">
-          <button
-            aria-label="Previous week"
-            className="icon-button"
-            onClick={() => setWeekStart(addDaysToInputDate(weekStart, -7))}
-            type="button"
-          >
-            <ChevronLeft aria-hidden="true" size={18} />
-          </button>
-          <div className="week-range">
-            <span>Week</span>
-            <strong>{formatWeekRange(weekDates)}</strong>
-          </div>
-          <button
-            aria-label="Next week"
-            className="icon-button"
-            onClick={() => setWeekStart(addDaysToInputDate(weekStart, 7))}
-            type="button"
-          >
-            <ChevronRight aria-hidden="true" size={18} />
-          </button>
-        </div>
-        <details className="job-multi-select">
-          <summary>
-            <span>{selectedLabel}</span>
-            <ChevronDown aria-hidden="true" size={18} />
-          </summary>
-          <div className="job-multi-select-panel">
-            <label className="job-checkbox-row emphasized">
-              <input
-                checked={useMyJobs}
-                disabled={myJobIds.length === 0 && !useMyJobs}
-                onChange={(event) => setUseMyJobs(event.target.checked)}
-                type="checkbox"
-              />
-              <span>My Projects{myJobIds.length === 0 ? " (none tagged)" : ""}</span>
-            </label>
-            <div className="job-multi-actions">
-              <button
-                className="secondary-button"
-                disabled={useMyJobs || selectedProjectIds.length === sortedProjects.length}
-                onClick={() => setSelectedProjectIds(sortedProjects.map((project) => project.id))}
-                type="button"
-              >
-                Select all
-              </button>
-              <button
-                className="secondary-button"
-                disabled={useMyJobs || selectedProjectIds.length === 0}
-                onClick={() => setSelectedProjectIds([])}
-                type="button"
-              >
-                Clear
-              </button>
-            </div>
-            <div className="job-checkbox-list">
-              {sortedProjects.map((project) => (
-                <label className="job-checkbox-row" key={project.id}>
-                  <input
-                    checked={!useMyJobs && selectedProjectIds.includes(project.id)}
-                    disabled={useMyJobs}
-                    onChange={(event) => toggleProject(project.id, event.target.checked)}
-                    type="checkbox"
-                  />
-                  <span>{project.name}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-        </details>
-        <div className="calendar-status-toggle" aria-label="Calendar status type">
-          <button
-            className={calendarStatusMode === "entry_status" ? "active" : ""}
-            onClick={() => setCalendarStatusMode("entry_status")}
-            type="button"
-          >
-            Entry Status
-          </button>
-          <button
-            className={calendarStatusMode === "daily_reports" ? "active" : ""}
-            onClick={() => setCalendarStatusMode("daily_reports")}
-            type="button"
-          >
-            Daily Reports
-          </button>
-        </div>
-        {canExportWeeklyDailyReports ? (
-          <div className="weekly-export-actions">
-            <button
-              className="primary-button"
-              disabled={exportingWeeklyDailyReportsPdf || visibleProjects.length === 0 || savedDailyReportCount === 0}
-              onClick={downloadWeeklyDailyReportsPdf}
-              type="button"
-            >
-              <Download aria-hidden="true" size={16} />
-              {exportingWeeklyDailyReportsPdf
-                ? "Exporting..."
-                : savedDailyReportCount > 0
-                  ? `Export Week PDF (${savedDailyReportCount})`
-                  : "Export Week PDF"}
-            </button>
-          </div>
-        ) : null}
-      </div>
-      {weeklyDailyReportsNotice ? (
-        <div className={weeklyDailyReportsNotice.status === "error" ? "inline-alert" : "success-alert"}>
-          {weeklyDailyReportsNotice.message}
-        </div>
-      ) : null}
-      {visibleProjects.length === 0 ? (
-        <EmptyState icon={CalendarDays} title="No calendar projects selected">
-          Select one or more projects, or tag My Projects, to view weekly status.
-        </EmptyState>
-      ) : (
-        <div className="weekly-calendar">
-          <div className="weekly-calendar-row weekly-calendar-header">
-            <span>Job</span>
-            {weekDates.map((date) => (
-              <span key={date}>{formatWeekDayLabel(date)}</span>
-            ))}
-          </div>
-          {visibleProjects.map((project) => (
-            <div className="weekly-calendar-row" key={project.id}>
-              <span className="weekly-calendar-job">{project.name}</span>
-              {weekDates.map((date) => {
-                const dayKey = getDayKey(project.id, date);
-                const hasDailyEntryActivity = getHasDailyEntryActivity(project, dayKey, daySubmissions, entryDayKeys);
-                const status =
-                  calendarStatusMode === "daily_reports"
-                    ? getDailyReportCalendarStatus(
-                        dailyReportsByKey[dayKey],
-                        dailyReportUploadsByKey[dayKey],
-                        hasDailyEntryActivity
-                      )
-                    : getProjectEntryCalendarStatus(project, daySubmissions[dayKey], entryDayKeys.has(dayKey));
-
-                return (
-                  <button
-                    aria-label={`Open ${project.name} entry for ${formatWeekDayLabel(date)}. Status: ${status.label}`}
-                    className={`status-badge ${status.className}`}
-                    data-label={formatWeekDayLabel(date)}
-                    key={date}
-                    onClick={() => onOpenDay(project.id, date)}
-                    type="button"
-                  >
-                    {status.label}
-                  </button>
-                );
-              })}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ChangePasswordModal({
-  form,
-  notice,
-  onClose,
-  onSubmit,
-  onUpdateForm,
-  saving
-}: {
-  form: ChangePasswordFormState;
-  notice: { message: string; status: "success" | "error" } | null;
-  onClose: () => void;
-  onSubmit: () => void;
-  onUpdateForm: (field: keyof ChangePasswordFormState, value: string) => void;
-  saving: boolean;
-}) {
-  return (
-    <div className="modal-backdrop">
-      <form
-        className="modal-panel password-modal"
-        onSubmit={(event) => {
-          event.preventDefault();
-          onSubmit();
-        }}
-      >
-        <div className="modal-heading">
-          <div>
-            <h2>Change Password</h2>
-            <span>Update the password for your signed-in account.</span>
-          </div>
-          <button aria-label="Close change password" className="icon-button" disabled={saving} onClick={onClose} type="button">
-            <X aria-hidden="true" size={18} />
-          </button>
-        </div>
-        <div className="change-password-form">
-          <div className="field-group">
-            <label htmlFor="current-password">Current Password</label>
-            <input
-              autoComplete="current-password"
-              disabled={saving}
-              id="current-password"
-              onChange={(event) => onUpdateForm("currentPassword", event.target.value)}
-              type="password"
-              value={form.currentPassword}
-            />
-          </div>
-          <div className="field-group">
-            <label htmlFor="new-password">New Password</label>
-            <input
-              autoComplete="new-password"
-              disabled={saving}
-              id="new-password"
-              minLength={8}
-              onChange={(event) => onUpdateForm("newPassword", event.target.value)}
-              type="password"
-              value={form.newPassword}
-            />
-          </div>
-          <div className="field-group">
-            <label htmlFor="confirm-new-password">Confirm New Password</label>
-            <input
-              autoComplete="new-password"
-              disabled={saving}
-              id="confirm-new-password"
-              minLength={8}
-              onChange={(event) => onUpdateForm("confirmPassword", event.target.value)}
-              type="password"
-              value={form.confirmPassword}
-            />
-          </div>
-          {notice ? <div className={notice.status === "success" ? "success-alert" : "inline-alert"}>{notice.message}</div> : null}
-        </div>
-        <div className="modal-actions">
-          <button className="secondary-button" disabled={saving} onClick={onClose} type="button">
-            Cancel
-          </button>
-          <button className="primary-button" disabled={saving} type="submit">
-            <KeyRound aria-hidden="true" size={18} />
-            {saving ? "Saving..." : "Save Password"}
-          </button>
-        </div>
-      </form>
-    </div>
-  );
-}
-
 function filterDailyReportsByProjectIds(dailyReportsByKey: DailyReportsByKey, projectIds: Set<string>) {
   return Object.fromEntries(
     Object.entries(dailyReportsByKey).filter(([dayKey]) => {
@@ -6355,36 +5829,6 @@ function filterDailyReportsByProjectIds(dailyReportsByKey: DailyReportsByKey, pr
       return parsedDayKey ? projectIds.has(parsedDayKey.projectId) : false;
     })
   );
-}
-
-function getNetworkNotice(status: NetworkStatus): NetworkNotice | null {
-  if (!status.checked) {
-    return null;
-  }
-
-  if (!status.online) {
-    return {
-      icon: WifiOff,
-      message: "Reconnect before saving, syncing, or uploading. Unsaved form input should stay on screen until you leave the page.",
-      title: "Offline",
-      tone: "offline"
-    };
-  }
-
-  const effectiveType = status.effectiveType?.toLowerCase() ?? "";
-  const weakEffectiveType = effectiveType === "slow-2g" || effectiveType === "2g";
-  const weakDownlink = typeof status.downlink === "number" && status.downlink > 0 && status.downlink < 0.75;
-
-  if (status.saveData || weakEffectiveType || weakDownlink) {
-    return {
-      icon: AlertTriangle,
-      message: "Connection looks weak. Large Procore uploads may take longer; keep this page open until confirmation appears.",
-      title: "Weak signal",
-      tone: "weak"
-    };
-  }
-
-  return null;
 }
 
 function buildSyncStatus(prefix: string, summary: ProcoreSyncSummary | undefined) {
