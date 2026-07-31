@@ -61,6 +61,45 @@ import {
   PayItemMatrix
 } from "@/features/time-allocation/components/entry/pay-item-entry-matrix";
 import {
+  addDatabaseCrewMemberToProject,
+  clearDatabaseProjectCache,
+  clearDatabaseStagingOperationalData,
+  deleteDatabaseDailyReportUpload,
+  deleteDatabaseDayEntries,
+  deleteDatabaseDaySubmission,
+  deleteDatabaseEntry,
+  loadAssignableFieldUsers,
+  loadDatabaseCrewData,
+  loadDatabaseDailyReportData,
+  loadDatabaseDayRecords,
+  loadDatabaseEntries,
+  loadDatabaseJobImageUploads,
+  loadDatabaseNetSuiteVendors,
+  loadDatabaseProjectControls,
+  mergeDatabaseCrewMembers,
+  postProjectsWithTimeout,
+  readApiError,
+  readApiJson,
+  readDownloadFileName,
+  removeDatabaseCrewMemberFromProject,
+  saveDatabaseDailyReport,
+  saveDatabaseDailyReportUpload,
+  saveDatabaseDaySubmission,
+  saveDatabaseEntries,
+  saveDatabaseMyJobs,
+  saveDatabaseNetSuiteVendorBlacklist,
+  saveDatabaseProjectArchive,
+  saveDatabaseProjectBlacklist,
+  saveDatabaseProjectFieldUsers,
+  saveDatabaseSyncLogEntry,
+  syncDatabaseNetSuiteVendors,
+  updateDatabaseCrewMember
+} from "@/features/time-allocation/lib/api-client";
+import {
+  useNetworkStatus,
+  type NetworkStatus
+} from "@/features/time-allocation/hooks/use-network-status";
+import {
   DashboardAttentionList,
   DashboardMetric,
   DashboardWeeklyCalendar,
@@ -81,7 +120,6 @@ import {
 import { AdminToolsDrawer } from "@/features/time-allocation/components/admin/admin-tools";
 import type { AllocationEntry, CrewLaborType, PayItem, Project } from "@/lib/procore/types";
 
-const PROCORE_SYNC_REQUEST_TIMEOUT_MS = 55_000;
 const PROCORE_WEB_BASE_URL = process.env.NEXT_PUBLIC_PROCORE_WEB_BASE_URL ?? "https://us02.procore.com";
 const PROCORE_COMPANY_ID = process.env.NEXT_PUBLIC_PROCORE_COMPANY_ID ?? "598134325538800";
 const JOB_IMAGE_DAILY_UPLOAD_LIMIT = 50;
@@ -158,32 +196,6 @@ type SharedAppState = {
   syncLog: SyncLogEntry[];
 };
 
-type EntriesResponse = {
-  databaseConfigured?: boolean;
-  entries?: AllocationEntry[];
-  error?: string;
-};
-
-type CrewDataResponse = {
-  crewDirectory?: CrewMember[];
-  crewMembersByProject?: CrewMembersByProject;
-  databaseConfigured?: boolean;
-  error?: string;
-};
-
-type DailyReportsResponse = {
-  dailyReportUploadsByKey?: DailyReportUploadsByKey;
-  dailyReportsByKey?: DailyReportsByKey;
-  databaseConfigured?: boolean;
-  error?: string;
-};
-
-type JobImagesResponse = {
-  databaseConfigured?: boolean;
-  error?: string;
-  uploads?: JobImageUpload[];
-};
-
 type JobImageUploadResponse = {
   databaseConfigured?: boolean;
   error?: string;
@@ -198,38 +210,12 @@ type JobImageUploadResponse = {
   uploads?: JobImageUpload[];
 };
 
-type DayRecordsResponse = {
-  dayEntryNotesByKey?: DayEntryNotesByKey;
-  daySubmissions?: DaySubmissionsByKey;
-  databaseConfigured?: boolean;
-  error?: string;
-};
-
-type ProjectControlsResponse = {
-  myJobsByUser?: MyJobsByUser;
-  projectArchiveById?: ProjectArchiveById;
-  projectBlacklistById?: ProjectBlacklistById;
-  syncLog?: SyncLogEntry[];
-  databaseConfigured?: boolean;
-  error?: string;
-};
-
 type NetSuiteVendor = {
   id: string;
   name: string;
   entityId?: string;
   companyName?: string;
   defaultAddress: string;
-};
-
-type NetSuiteVendorsResponse = {
-  allVendors?: NetSuiteVendor[];
-  databaseConfigured?: boolean;
-  error?: string;
-  ok?: boolean;
-  syncedAt?: string | null;
-  vendorBlacklistById?: VendorBlacklistById;
-  vendors?: NetSuiteVendor[];
 };
 
 type ManagedAppUser = AuthUser & {
@@ -242,31 +228,6 @@ type AdminUsersResponse = {
   databaseConfigured?: boolean;
   error?: string;
   users?: ManagedAppUser[];
-};
-
-type FieldUsersResponse = {
-  databaseConfigured?: boolean;
-  error?: string;
-  users?: AuthUser[];
-};
-
-type AdminClearStagingDataResponse = {
-  cleared?: Record<string, unknown>;
-  databaseConfigured?: boolean;
-  error?: string;
-  ok?: boolean;
-};
-
-type AdminClearProjectCacheResponse = {
-  cleared?: {
-    appSettings: number;
-    payItems: number;
-    projects: number;
-    syncState: number;
-  };
-  databaseConfigured?: boolean;
-  error?: string;
-  ok?: boolean;
 };
 
 type AdminUserFormState = {
@@ -517,31 +478,11 @@ type ProjectBlacklistById = Record<string, true>;
 type ProjectArchiveById = Record<string, true>;
 type VendorBlacklistById = Record<string, true>;
 
-type NetworkStatus = {
-  checked: boolean;
-  downlink?: number;
-  effectiveType?: string;
-  online: boolean;
-  saveData?: boolean;
-};
-
 type NetworkNotice = {
   icon: LucideIcon;
   message: string;
   tone: "offline" | "weak";
   title: string;
-};
-
-type NetworkInformationLike = EventTarget & {
-  downlink?: number;
-  effectiveType?: string;
-  saveData?: boolean;
-};
-
-type NavigatorWithConnection = Navigator & {
-  connection?: NetworkInformationLike;
-  mozConnection?: NetworkInformationLike;
-  webkitConnection?: NetworkInformationLike;
 };
 
 type EditingEntry = {
@@ -682,10 +623,7 @@ export function TimeAllocationWorkspace() {
   const [syncing, setSyncing] = useState(false);
   const [syncingAll, setSyncingAll] = useState(false);
   const [updatingProject, setUpdatingProject] = useState(false);
-  const [networkStatus, setNetworkStatus] = useState<NetworkStatus>(() => ({
-    checked: false,
-    online: true
-  }));
+  const networkStatus = useNetworkStatus();
   const [appStateHydrated, setAppStateHydrated] = useState(false);
   const dateInputRef = useRef<HTMLInputElement>(null);
   const jobImageInputRef = useRef<HTMLInputElement>(null);
@@ -1125,33 +1063,6 @@ export function TimeAllocationWorkspace() {
     setEntryNotice("This daily report was changed by another user. Review the latest saved version before saving again.");
     return false;
   }
-
-  useEffect(() => {
-    function refreshNetworkStatus() {
-      const connection = getBrowserConnection();
-
-      setNetworkStatus({
-        checked: true,
-        downlink: connection?.downlink,
-        effectiveType: connection?.effectiveType,
-        online: navigator.onLine,
-        saveData: connection?.saveData
-      });
-    }
-
-    const connection = getBrowserConnection();
-
-    refreshNetworkStatus();
-    window.addEventListener("online", refreshNetworkStatus);
-    window.addEventListener("offline", refreshNetworkStatus);
-    connection?.addEventListener("change", refreshNetworkStatus);
-
-    return () => {
-      window.removeEventListener("online", refreshNetworkStatus);
-      window.removeEventListener("offline", refreshNetworkStatus);
-      connection?.removeEventListener("change", refreshNetworkStatus);
-    };
-  }, []);
 
   useEffect(() => {
     async function loadCurrentUser() {
@@ -7529,537 +7440,6 @@ function normalizeAllocationEntryList(value: unknown): AllocationEntry[] {
   return Array.isArray(value) ? (value.filter((entry) => entry && typeof entry === "object") as AllocationEntry[]) : [];
 }
 
-async function loadDatabaseEntries() {
-  try {
-    const response = await fetch("/api/entries", {
-      cache: "no-store"
-    });
-    const data = (await readApiJson(response)) as EntriesResponse;
-
-    if (!response.ok || !data.databaseConfigured) {
-      return null;
-    }
-
-    return data.entries ?? [];
-  } catch {
-    return null;
-  }
-}
-
-async function saveDatabaseEntries(entries: AllocationEntry[]) {
-  const response = await fetch("/api/entries", {
-    body: JSON.stringify({ entries }),
-    headers: {
-      "Content-Type": "application/json"
-    },
-    method: "POST"
-  });
-  const data = (await readApiJson(response)) as { error?: string };
-
-  if (!response.ok) {
-    throw new Error(data.error ?? "Unable to save entries.");
-  }
-}
-
-async function deleteDatabaseEntry(entryId: string) {
-  const response = await fetch(`/api/entries?entryId=${encodeURIComponent(entryId)}`, {
-    method: "DELETE"
-  });
-  const data = (await readApiJson(response)) as { error?: string };
-
-  if (!response.ok) {
-    throw new Error(data.error ?? "Unable to delete entry.");
-  }
-}
-
-async function deleteDatabaseDayEntries(projectId: string, date: string) {
-  const response = await fetch(
-    `/api/entries?projectId=${encodeURIComponent(projectId)}&date=${encodeURIComponent(date)}`,
-    {
-      method: "DELETE"
-    }
-  );
-  const data = (await readApiJson(response)) as { error?: string };
-
-  if (!response.ok) {
-    throw new Error(data.error ?? "Unable to delete day entries.");
-  }
-}
-
-async function loadDatabaseCrewData() {
-  try {
-    const response = await fetch("/api/crew", {
-      cache: "no-store"
-    });
-    const data = (await readApiJson(response)) as CrewDataResponse;
-
-    if (!response.ok || !data.databaseConfigured) {
-      return null;
-    }
-
-    return {
-      crewDirectory: data.crewDirectory ?? [],
-      crewMembersByProject: data.crewMembersByProject ?? {}
-    };
-  } catch {
-    return null;
-  }
-}
-
-async function addDatabaseCrewMemberToProject(projectId: string, crewMember: CrewMember) {
-  const response = await fetch("/api/crew", {
-    body: JSON.stringify({
-      action: "add_to_project",
-      crewMember,
-      projectId
-    }),
-    headers: {
-      "Content-Type": "application/json"
-    },
-    method: "POST"
-  });
-  const data = (await readApiJson(response)) as { error?: string; ok?: boolean };
-
-  if (!response.ok || data.ok === false) {
-    throw new Error(data.error ?? "Unable to save crew member.");
-  }
-}
-
-async function updateDatabaseCrewMember(crewMember: CrewMember) {
-  const response = await fetch("/api/crew", {
-    body: JSON.stringify({
-      action: "update_member",
-      crewMember
-    }),
-    headers: {
-      "Content-Type": "application/json"
-    },
-    method: "PATCH"
-  });
-  const data = (await readApiJson(response)) as { error?: string; ok?: boolean };
-
-  if (!response.ok || data.ok === false) {
-    throw new Error(data.error ?? "Unable to update crew member.");
-  }
-}
-
-async function removeDatabaseCrewMemberFromProject(projectId: string, crewMemberId: string) {
-  const response = await fetch(
-    `/api/crew?projectId=${encodeURIComponent(projectId)}&crewMemberId=${encodeURIComponent(crewMemberId)}`,
-    {
-      method: "DELETE"
-    }
-  );
-  const data = (await readApiJson(response)) as { error?: string; ok?: boolean };
-
-  if (!response.ok || data.ok === false) {
-    throw new Error(data.error ?? "Unable to remove crew member from project.");
-  }
-}
-
-async function mergeDatabaseCrewMembers(sourceCrewMemberId: string, targetCrewMember: CrewMember) {
-  const response = await fetch("/api/crew", {
-    body: JSON.stringify({
-      action: "merge",
-      sourceCrewMemberId,
-      targetCrewMember
-    }),
-    headers: {
-      "Content-Type": "application/json"
-    },
-    method: "PATCH"
-  });
-  const data = (await readApiJson(response)) as { error?: string; ok?: boolean };
-
-  if (!response.ok || data.ok === false) {
-    throw new Error(data.error ?? "Unable to merge crew members.");
-  }
-}
-
-async function loadDatabaseDailyReportData() {
-  try {
-    const response = await fetch("/api/daily-reports", {
-      cache: "no-store"
-    });
-    const data = (await readApiJson(response)) as DailyReportsResponse;
-
-    if (!response.ok || !data.databaseConfigured) {
-      return null;
-    }
-
-    return {
-      dailyReportUploadsByKey: data.dailyReportUploadsByKey ?? {},
-      dailyReportsByKey: data.dailyReportsByKey ?? {}
-    };
-  } catch {
-    return null;
-  }
-}
-
-async function saveDatabaseDailyReport(projectId: string, date: string, dailyReport: DailyReport) {
-  const response = await fetch("/api/daily-reports", {
-    body: JSON.stringify({
-      action: "save_report",
-      dailyReport,
-      date,
-      projectId
-    }),
-    headers: {
-      "Content-Type": "application/json"
-    },
-    method: "PATCH"
-  });
-  const data = (await readApiJson(response)) as { error?: string; ok?: boolean };
-
-  if (!response.ok || data.ok === false) {
-    throw new Error(data.error ?? "Unable to save daily report.");
-  }
-}
-
-async function saveDatabaseDailyReportUpload(projectId: string, date: string, dailyReportUpload: DailyReportUpload) {
-  const response = await fetch("/api/daily-reports", {
-    body: JSON.stringify({
-      action: "save_upload",
-      dailyReportUpload,
-      date,
-      projectId
-    }),
-    headers: {
-      "Content-Type": "application/json"
-    },
-    method: "PATCH"
-  });
-  const data = (await readApiJson(response)) as { error?: string; ok?: boolean };
-
-  if (!response.ok || data.ok === false) {
-    throw new Error(data.error ?? "Unable to save daily report upload status.");
-  }
-}
-
-async function deleteDatabaseDailyReportUpload(projectId: string, date: string) {
-  const response = await fetch(
-    `/api/daily-reports?projectId=${encodeURIComponent(projectId)}&date=${encodeURIComponent(date)}&kind=upload`,
-    {
-      method: "DELETE"
-    }
-  );
-  const data = (await readApiJson(response)) as { error?: string; ok?: boolean };
-
-  if (!response.ok || data.ok === false) {
-    throw new Error(data.error ?? "Unable to clear daily report upload status.");
-  }
-}
-
-async function loadDatabaseJobImageUploads(projectId: string, date: string) {
-  try {
-    const response = await fetch(
-      `/api/job-images?projectId=${encodeURIComponent(projectId)}&date=${encodeURIComponent(date)}`,
-      {
-        cache: "no-store"
-      }
-    );
-    const data = (await readApiJson(response)) as JobImagesResponse;
-
-    if (!response.ok || !data.databaseConfigured) {
-      return null;
-    }
-
-    return data.uploads ?? [];
-  } catch {
-    return null;
-  }
-}
-
-async function loadDatabaseDayRecords() {
-  try {
-    const response = await fetch("/api/day-records", {
-      cache: "no-store"
-    });
-    const data = (await readApiJson(response)) as DayRecordsResponse;
-
-    if (!response.ok || !data.databaseConfigured) {
-      return null;
-    }
-
-    return {
-      dayEntryNotesByKey: data.dayEntryNotesByKey ?? {},
-      daySubmissions: data.daySubmissions ?? {}
-    };
-  } catch {
-    return null;
-  }
-}
-
-async function saveDatabaseDaySubmission(projectId: string, date: string, daySubmission: DaySubmission) {
-  const response = await fetch("/api/day-records", {
-    body: JSON.stringify({
-      action: "save_submission",
-      date,
-      daySubmission,
-      projectId
-    }),
-    headers: {
-      "Content-Type": "application/json"
-    },
-    method: "PATCH"
-  });
-  const data = (await readApiJson(response)) as { error?: string; ok?: boolean };
-
-  if (!response.ok || data.ok === false) {
-    throw new Error(data.error ?? "Unable to save day status.");
-  }
-}
-
-async function deleteDatabaseDaySubmission(projectId: string, date: string) {
-  const response = await fetch(
-    `/api/day-records?projectId=${encodeURIComponent(projectId)}&date=${encodeURIComponent(date)}`,
-    {
-      method: "DELETE"
-    }
-  );
-  const data = (await readApiJson(response)) as { error?: string; ok?: boolean };
-
-  if (!response.ok || data.ok === false) {
-    throw new Error(data.error ?? "Unable to delete day status.");
-  }
-}
-
-async function loadDatabaseProjectControls() {
-  try {
-    const response = await fetch("/api/project-controls", {
-      cache: "no-store"
-    });
-    const data = (await readApiJson(response)) as ProjectControlsResponse;
-
-    if (!response.ok || !data.databaseConfigured) {
-      return null;
-    }
-
-    return {
-      myJobsByUser: data.myJobsByUser ?? {},
-      projectArchiveById: data.projectArchiveById ?? {},
-      projectBlacklistById: data.projectBlacklistById ?? {},
-      syncLog: data.syncLog ?? []
-    };
-  } catch {
-    return null;
-  }
-}
-
-async function loadDatabaseNetSuiteVendors() {
-  try {
-    const response = await fetch("/api/netsuite/vendors", {
-      cache: "no-store"
-    });
-    const data = (await readApiJson(response)) as NetSuiteVendorsResponse;
-
-    if (!response.ok || !data.databaseConfigured) {
-      return null;
-    }
-
-    return {
-      allVendors: data.allVendors ?? data.vendors ?? [],
-      syncedAt: data.syncedAt ?? null,
-      vendorBlacklistById: data.vendorBlacklistById ?? {},
-      vendors: data.vendors ?? []
-    };
-  } catch {
-    return null;
-  }
-}
-
-async function syncDatabaseNetSuiteVendors() {
-  const response = await fetch("/api/netsuite/vendors", {
-    method: "POST"
-  });
-  const data = (await readApiJson(response)) as NetSuiteVendorsResponse;
-
-  if (!response.ok || data.ok === false) {
-    throw new Error(data.error ?? "Unable to sync NetSuite vendors.");
-  }
-
-  return {
-    allVendors: data.allVendors ?? data.vendors ?? [],
-    syncedAt: data.syncedAt ?? null,
-    vendorBlacklistById: data.vendorBlacklistById ?? {},
-    vendors: data.vendors ?? []
-  };
-}
-
-async function saveDatabaseNetSuiteVendorBlacklist(vendorId: string, blacklisted: boolean) {
-  const response = await fetch("/api/netsuite/vendors", {
-    body: JSON.stringify({
-      blacklisted,
-      vendorId
-    }),
-    headers: {
-      "Content-Type": "application/json"
-    },
-    method: "PATCH"
-  });
-  const data = (await readApiJson(response)) as NetSuiteVendorsResponse;
-
-  if (!response.ok || data.ok === false) {
-    throw new Error(data.error ?? "Unable to save NetSuite vendor blacklist.");
-  }
-
-  return data.databaseConfigured === false
-    ? null
-    : {
-        allVendors: data.allVendors ?? data.vendors ?? [],
-        syncedAt: data.syncedAt ?? null,
-        vendorBlacklistById: data.vendorBlacklistById ?? {},
-        vendors: data.vendors ?? []
-      };
-}
-
-async function saveDatabaseMyJobs(userId: string, projectIds: string[]) {
-  const response = await fetch("/api/project-controls", {
-    body: JSON.stringify({
-      action: "save_my_jobs",
-      projectIds,
-      userId
-    }),
-    headers: {
-      "Content-Type": "application/json"
-    },
-    method: "PATCH"
-  });
-  const data = (await readApiJson(response)) as { error?: string; ok?: boolean };
-
-  if (!response.ok || data.ok === false) {
-    throw new Error(data.error ?? "Unable to save My Projects.");
-  }
-}
-
-async function loadAssignableFieldUsers() {
-  const response = await fetch("/api/field-users", {
-    cache: "no-store"
-  });
-  const data = (await readApiJson(response)) as FieldUsersResponse;
-
-  if (!response.ok || data.databaseConfigured === false) {
-    throw new Error(data.error ?? "Unable to load Field users.");
-  }
-
-  return data.users ?? [];
-}
-
-async function saveDatabaseProjectFieldUsers(projectId: string, fieldUserIds: string[]) {
-  const response = await fetch("/api/project-controls", {
-    body: JSON.stringify({
-      action: "assign_project_field_users",
-      fieldUserIds,
-      projectId
-    }),
-    headers: {
-      "Content-Type": "application/json"
-    },
-    method: "PATCH"
-  });
-  const data = (await readApiJson(response)) as { assignedFieldUserIds?: string[]; error?: string; ok?: boolean };
-
-  if (!response.ok || data.ok === false) {
-    throw new Error(data.error ?? "Unable to save Field project access.");
-  }
-
-  return data.assignedFieldUserIds ?? fieldUserIds;
-}
-
-async function saveDatabaseProjectBlacklist(projectId: string, blacklisted: boolean) {
-  const response = await fetch("/api/project-controls", {
-    body: JSON.stringify({
-      action: "set_blacklist",
-      blacklisted,
-      projectId
-    }),
-    headers: {
-      "Content-Type": "application/json"
-    },
-    method: "PATCH"
-  });
-  const data = (await readApiJson(response)) as { error?: string; ok?: boolean };
-
-  if (!response.ok || data.ok === false) {
-    throw new Error(data.error ?? "Unable to save project blacklist.");
-  }
-}
-
-async function saveDatabaseProjectArchive(projectId: string, archived: boolean) {
-  const response = await fetch("/api/project-controls", {
-    body: JSON.stringify({
-      action: "set_archive",
-      archived,
-      projectId
-    }),
-    headers: {
-      "Content-Type": "application/json"
-    },
-    method: "PATCH"
-  });
-  const data = (await readApiJson(response)) as { error?: string; ok?: boolean };
-
-  if (!response.ok || data.ok === false) {
-    throw new Error(data.error ?? "Unable to save project archive.");
-  }
-}
-
-async function saveDatabaseSyncLogEntry(syncLogEntry: SyncLogEntry) {
-  const response = await fetch("/api/project-controls", {
-    body: JSON.stringify({
-      action: "add_sync_log",
-      syncLogEntry
-    }),
-    headers: {
-      "Content-Type": "application/json"
-    },
-    method: "PATCH"
-  });
-  const data = (await readApiJson(response)) as { error?: string; ok?: boolean };
-
-  if (!response.ok || data.ok === false) {
-    throw new Error(data.error ?? "Unable to save sync log.");
-  }
-}
-
-async function clearDatabaseStagingOperationalData() {
-  const response = await fetch("/api/admin/clear-staging-data", {
-    body: JSON.stringify({
-      confirmation: "CLEAR_STAGING_DATA"
-    }),
-    headers: {
-      "Content-Type": "application/json"
-    },
-    method: "POST"
-  });
-  const data = (await readApiJson(response)) as AdminClearStagingDataResponse;
-
-  if (!response.ok || data.ok === false) {
-    throw new Error(data.error ?? "Unable to clear staging data.");
-  }
-
-  return data;
-}
-
-async function clearDatabaseProjectCache() {
-  const response = await fetch("/api/admin/clear-project-cache", {
-    body: JSON.stringify({
-      confirmation: "CLEAR_PROJECT_CACHE"
-    }),
-    headers: {
-      "Content-Type": "application/json"
-    },
-    method: "POST"
-  });
-  const data = (await readApiJson(response)) as AdminClearProjectCacheResponse;
-
-  if (!response.ok || data.ok === false) {
-    throw new Error(data.error ?? "Unable to clear cached project data.");
-  }
-
-  return data;
-}
-
 async function prepareJobImageFileForUpload(file: File) {
   const compressedFile = await compressJobImage(file);
   return compressedFile ?? file;
@@ -9772,12 +9152,6 @@ function parseDayKey(dayKey: string) {
   };
 }
 
-function getBrowserConnection() {
-  const browserNavigator = navigator as NavigatorWithConnection;
-
-  return browserNavigator.connection ?? browserNavigator.mozConnection ?? browserNavigator.webkitConnection;
-}
-
 function getNetworkNotice(status: NetworkStatus): NetworkNotice | null {
   if (!status.checked) {
     return null;
@@ -9854,33 +9228,6 @@ function hasSyncWarnings(summary: ProcoreSyncSummary | undefined) {
     summary &&
       (summary.failed > 0 || (summary.remainingNewProjects ?? 0) > 0 || (summary.autoArchivedProjects ?? 0) > 0)
   );
-}
-
-async function postProjectsWithTimeout(path: string, timeoutMessage: string) {
-  const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), PROCORE_SYNC_REQUEST_TIMEOUT_MS);
-
-  try {
-    const response = await fetch(path, {
-      method: "POST",
-      signal: controller.signal
-    });
-    const data = (await readApiJson(response)) as ProjectsResponse;
-
-    return { data, response };
-  } catch (error) {
-    if (isAbortError(error)) {
-      throw new Error(timeoutMessage);
-    }
-
-    throw error;
-  } finally {
-    window.clearTimeout(timeoutId);
-  }
-}
-
-function isAbortError(error: unknown) {
-  return error instanceof DOMException && error.name === "AbortError";
 }
 
 function formatDate(value: string) {
@@ -10135,51 +9482,6 @@ function downloadBlob(blob: Blob, fileName: string) {
   link.download = fileName;
   link.click();
   URL.revokeObjectURL(url);
-}
-
-async function readApiError(response: Response, fallbackMessage: string) {
-  try {
-    const data = (await readApiJson(response)) as { error?: string };
-
-    return data.error ?? fallbackMessage;
-  } catch {
-    return fallbackMessage;
-  }
-}
-
-async function readApiJson(response: Response) {
-  const text = await response.text();
-
-  if (!text.trim()) {
-    if (response.ok) {
-      return {};
-    }
-
-    throw new Error(`${response.status} ${response.statusText || "Request failed"}`.trim());
-  }
-
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    if (response.ok) {
-      throw new Error("The server returned an unreadable response.");
-    }
-
-    throw new Error(text.slice(0, 300) || `${response.status} ${response.statusText || "Request failed"}`.trim());
-  }
-}
-
-function readDownloadFileName(headers: Headers) {
-  const contentDisposition = headers.get("content-disposition") ?? "";
-  const encodedMatch = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
-  const quotedMatch = contentDisposition.match(/filename="([^"]+)"/i);
-  const plainMatch = contentDisposition.match(/filename=([^;]+)/i);
-
-  if (encodedMatch) {
-    return decodeURIComponent(encodedMatch[1]);
-  }
-
-  return quotedMatch?.[1] ?? plainMatch?.[1]?.trim();
 }
 
 function buildDailyReportUploadFileName(projectName: string, date: string) {
