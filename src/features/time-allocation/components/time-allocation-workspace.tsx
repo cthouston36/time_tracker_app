@@ -76,6 +76,8 @@ import {
   PageHeader,
   ReportLoadingSkeleton
 } from "@/features/time-allocation/components/workspace-primitives";
+import { DailyStatusStrip } from "@/features/time-allocation/components/daily-status-strip";
+import { MobileOptionPicker } from "@/features/time-allocation/components/mobile-option-picker";
 import type { AllocationEntry, CrewLaborType, PayItem, Project } from "@/lib/procore/types";
 
 const PROCORE_SYNC_REQUEST_TIMEOUT_MS = 55_000;
@@ -5304,7 +5306,7 @@ export function TimeAllocationWorkspace() {
               </div>
             </div>
             <DailyStatusStrip
-              dailyReport={currentDailyReport}
+              dailyReportExists={Boolean(currentDailyReport)}
               dayIsSubmitted={dayIsSubmitted}
               draftEntryCount={draftEntryCount}
               entryCount={visibleEntries.length}
@@ -5985,66 +5987,6 @@ export function TimeAllocationWorkspace() {
         />
       ) : null}
     </main>
-  );
-}
-
-function DailyStatusStrip({
-  dailyReport,
-  dayIsSubmitted,
-  draftEntryCount,
-  entryCount,
-  procoreStatus,
-  showEntryStatus,
-  uploadedImageCount
-}: {
-  dailyReport: DailyReport | undefined;
-  dayIsSubmitted: boolean;
-  draftEntryCount: number;
-  entryCount: number;
-  procoreStatus: DailyReportProcoreStatus;
-  showEntryStatus: boolean;
-  uploadedImageCount: number;
-}) {
-  return (
-    <div className={`daily-status-strip ${showEntryStatus ? "" : "daily-status-strip-compact"}`} aria-label="Daily status">
-      {showEntryStatus ? (
-        <>
-          <DailyStatusItem
-            label="Entries"
-            tone={dayIsSubmitted ? "success" : entryCount > 0 ? "warning" : draftEntryCount > 0 ? "warning" : "neutral"}
-            value={dayIsSubmitted ? "Submitted" : entryCount > 0 ? "Draft" : draftEntryCount > 0 ? "Unsaved" : "Not Started"}
-          />
-          <DailyStatusItem
-            label="Day"
-            tone={dayIsSubmitted ? "success" : entryCount > 0 ? "warning" : "neutral"}
-            value={dayIsSubmitted ? "Submitted" : entryCount > 0 ? "Draft" : "Not Started"}
-          />
-        </>
-      ) : null}
-      <DailyStatusItem
-        label="Daily Report"
-        tone={dailyReport ? "success" : "neutral"}
-        value={dailyReport ? "Saved" : "Not created"}
-      />
-      <DailyStatusItem
-        label="Procore"
-        tone={
-          procoreStatus.className === "uploaded"
-            ? "success"
-            : procoreStatus.className === "failed"
-              ? "error"
-              : procoreStatus.className === "pending"
-                ? "warning"
-                : "neutral"
-        }
-        value={procoreStatus.label}
-      />
-      <DailyStatusItem
-        label="Images"
-        tone={uploadedImageCount > 0 ? "success" : "neutral"}
-        value={uploadedImageCount > 0 ? `${uploadedImageCount} uploaded` : "None"}
-      />
-    </div>
   );
 }
 
@@ -7438,23 +7380,6 @@ function formatDashboardAttentionSummary(row: DashboardProjectWeekRow) {
   return parts.join(" | ");
 }
 
-function DailyStatusItem({
-  label,
-  tone,
-  value
-}: {
-  label: string;
-  tone: "error" | "neutral" | "success" | "warning";
-  value: string;
-}) {
-  return (
-    <div className={`daily-status-item ${tone}`}>
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
 function MobileInstallPrompt({ onDismiss }: { onDismiss: () => void }) {
   return (
     <div className="mobile-install-prompt">
@@ -7627,11 +7552,6 @@ function DailyReportProcoreStatusValue({
 
   return <strong className={className}>{status.label}</strong>;
 }
-
-type MobileOption = {
-  value: string;
-  label: string;
-};
 
 function DailyReportModal({
   canCopyPreviousCrewTime,
@@ -8285,119 +8205,6 @@ function DailyReportItsfmMatrix({
           })}
         </div>
       ))}
-    </div>
-  );
-}
-
-function MobileOptionPicker({
-  disabled = false,
-  id,
-  label,
-  options,
-  searchable = true,
-  value,
-  onChange
-}: {
-  disabled?: boolean;
-  id?: string;
-  label: string;
-  options: MobileOption[];
-  searchable?: boolean;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const selectedOption = options.find((option) => option.value === value);
-  const normalizedQuery = query.trim().toLowerCase();
-  const searchInputId = `mobile-picker-search-${label.toLowerCase().replaceAll(" ", "-")}`;
-  const filteredOptions = searchable && normalizedQuery
-    ? options.filter((option) => option.label.toLowerCase().includes(normalizedQuery))
-    : options;
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-
-    function closeOnEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setOpen(false);
-      }
-    }
-
-    window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [open]);
-
-  function closePicker() {
-    setOpen(false);
-    setQuery("");
-  }
-
-  return (
-    <div className="mobile-picker">
-      <button
-        aria-expanded={open}
-        aria-haspopup="listbox"
-        className="mobile-picker-trigger"
-        disabled={disabled || options.length === 0}
-        id={id}
-        onClick={() => setOpen(true)}
-        type="button"
-      >
-        <span>{selectedOption?.label ?? "Select"}</span>
-        <ChevronDown aria-hidden="true" size={18} />
-      </button>
-      {open ? (
-        <div className="mobile-picker-overlay" onClick={closePicker}>
-          <div className="mobile-picker-sheet" onClick={(event) => event.stopPropagation()}>
-            <div className="mobile-picker-heading">
-              <strong>{label}</strong>
-              <button aria-label={`Close ${label} picker`} className="icon-button" onClick={closePicker} type="button">
-                <X aria-hidden="true" size={18} />
-              </button>
-            </div>
-            {searchable ? (
-              <div className="mobile-picker-search-wrap">
-                <label className="sr-only" htmlFor={searchInputId}>
-                  Search {label}
-                </label>
-                <input
-                  autoFocus
-                  className="mobile-picker-search"
-                  id={searchInputId}
-                  placeholder="Search code or description"
-                  type="search"
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                />
-              </div>
-            ) : null}
-            <div className="mobile-picker-options" role="listbox" aria-label={label}>
-              {filteredOptions.length === 0 ? (
-                <div className="mobile-picker-empty">No matches found.</div>
-              ) : (
-                filteredOptions.map((option) => (
-                  <button
-                    aria-selected={option.value === value}
-                    className={option.value === value ? "mobile-picker-option selected" : "mobile-picker-option"}
-                    key={option.value}
-                    onClick={() => {
-                      onChange(option.value);
-                      closePicker();
-                    }}
-                  role="option"
-                  type="button"
-                >
-                    <span>{option.label}</span>
-                </button>
-              ))
-            )}
-            </div>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }
