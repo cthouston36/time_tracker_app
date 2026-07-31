@@ -6,6 +6,11 @@ import {
   formatTwoSeriesProductionCodeLabel
 } from "@/lib/daily-report-templates";
 import type { PayItem, Project } from "@/lib/procore/types";
+import {
+  DAILY_REPORT_ITSFM_ITEMS,
+  createEmptyDailyReportItsfmRow,
+  normalizeDailyReportItsfmRows
+} from "@/features/time-allocation/lib/daily-report-helpers";
 import type {
   DailyReportAnswers,
   DailyReportEmployeeRow,
@@ -18,31 +23,6 @@ import type {
 const DAILY_REPORT_VALIDATION_NOTICE_PREFIX = "Daily report needs attention";
 
 export type { DailyReportItsfmItem };
-
-export const DAILY_REPORT_ITSFM_ITEMS: DailyReportItsfmItem[] = [
-  { group: "Aboveground Equipment", key: "cctv-1", label: "CCTV #1" },
-  { group: "Aboveground Equipment", key: "cctv-2", label: "CCTV #2" },
-  { group: "Aboveground Equipment", key: "cctv-3", label: "CCTV #3" },
-  { group: "Aboveground Equipment", key: "cctv-4", label: "CCTV #4" },
-  { group: "Aboveground Equipment", key: "cctv-5", label: "CCTV #5" },
-  { group: "Aboveground Equipment", key: "cctv-6", label: "CCTV #6" },
-  { group: "Aboveground Equipment", key: "preemption-unit-1", label: "#1 Preemtion Unit" },
-  { group: "Aboveground Equipment", key: "preemption-unit-2", label: "#2 Preemtion Unit" },
-  { group: "Aboveground Equipment", key: "rsu", label: "RSU" },
-  { group: "Aboveground Equipment", key: "antenna", label: "Antenna" },
-  { group: "Cabinet Equipment", key: "cabinet", label: "Cabinet" },
-  { group: "Cabinet Equipment", key: "controller", label: "Controller" },
-  { group: "Cabinet Equipment", key: "mmu", label: "MMU" },
-  { group: "Cabinet Equipment", key: "biu-1", label: "BIU #1" },
-  { group: "Cabinet Equipment", key: "biu-2", label: "BIU #2" },
-  { group: "Cabinet Equipment", key: "detection-ccu", label: "Detection CCU" },
-  { group: "Cabinet Equipment", key: "rpm", label: "RPM" },
-  { group: "Cabinet Equipment", key: "ups", label: "UPS" },
-  { group: "Cabinet Equipment", key: "ethernet-switch", label: "Ethernet Switch" },
-  { group: "Cabinet Equipment", key: "preemption-card", label: "Preemtion Card" },
-  { group: "Cabinet Equipment", key: "misc-1", label: "Misc" },
-  { group: "Cabinet Equipment", key: "misc-2", label: "Misc" }
-];
 
 export function DailyReportProcoreStatusValue({
   status
@@ -791,24 +771,6 @@ function parseDailyReportPositiveNumber(value: string) {
 
 function formatHours(value: number) {
   return value.toFixed(2);
-}
-
-function createEmptyDailyReportItsfmRow(itemKey: string): DailyReportItsfmRow {
-  return {
-    itemKey,
-    location: "",
-    modelNumber: "",
-    serialNumber: ""
-  };
-}
-
-function normalizeDailyReportItsfmRows(rows: DailyReportItsfmRow[] | undefined) {
-  const rowsByKey = new Map((rows ?? []).map((row) => [row.itemKey, row]));
-
-  return DAILY_REPORT_ITSFM_ITEMS.map((item) => ({
-    ...createEmptyDailyReportItsfmRow(item.key),
-    ...(rowsByKey.get(item.key) ?? {})
-  }));
 }
 
 function formatDate(value: string) {
