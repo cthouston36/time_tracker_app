@@ -13,6 +13,7 @@ import type {
   DailyReportsByKey,
   DailyReportTimeField
 } from "@/features/time-allocation/types";
+import { parseDayKey } from "@/features/time-allocation/lib/date-helpers";
 
 const DAILY_REPORT_VALIDATION_NOTICE_PREFIX = "Daily report needs attention";
 
@@ -52,6 +53,16 @@ export const DAILY_REPORT_ITSFM_ITEMS: DailyReportItsfmItem[] = [
 
 export function isDailyReportTimeField(field: keyof DailyReportEmployeeRow): field is DailyReportTimeField {
   return field === "timeIn" || field === "lunchOut" || field === "lunchIn" || field === "timeOut";
+}
+
+export function filterDailyReportsByProjectIds(dailyReportsByKey: DailyReportsByKey, projectIds: Set<string>) {
+  return Object.fromEntries(
+    Object.entries(dailyReportsByKey).filter(([dayKey]) => {
+      const parsedDayKey = parseDayKey(dayKey);
+
+      return parsedDayKey ? projectIds.has(parsedDayKey.projectId) : false;
+    })
+  );
 }
 
 export function sanitizeDailyReportTimeInput(value: string) {

@@ -99,6 +99,7 @@ import {
   createEmptyDailyReportPayItemRows,
   dailyReportEmployeeRowHasContent,
   dailyReportPayItemRowHasContent,
+  filterDailyReportsByProjectIds,
   findPreviousDailyReportWithCrewTime,
   formatDailyReportValidationMessage,
   formatYesNoAnswer,
@@ -244,6 +245,18 @@ import {
   buildProductionPerformanceAlerts,
   filterDashboardProjectNavigationRows
 } from "@/features/time-allocation/lib/dashboard-helpers";
+import {
+  buildSyncStatus,
+  hasSyncWarnings
+} from "@/features/time-allocation/lib/sync-status-helpers";
+import type {
+  AdminUsersResponse,
+  AuthResponse,
+  ChangePasswordResponse,
+  DailyReportUploadResponse,
+  JobImageUploadResponse,
+  ProcoreStatusResponse
+} from "@/features/time-allocation/lib/workspace-api-types";
 import type {
   CalendarStatusMode,
   CrewMember,
@@ -263,7 +276,6 @@ import type {
   DaySubmissionsByKey,
   DraftsByPayItem,
   JobImageQueueItem,
-  JobImageUpload,
   JobImageUploadsByDay,
   ManagedAppUser,
   MyJobsByUser,
@@ -291,56 +303,6 @@ import {
 import { WeeklyStatusReport } from "@/features/time-allocation/components/dashboard/weekly-status-report";
 import { AdminToolsDrawer } from "@/features/time-allocation/components/admin/admin-tools";
 import type { AllocationEntry, CrewLaborType, Project } from "@/lib/procore/types";
-type DailyReportUploadResponse = {
-  companyId?: string;
-  fileName?: string;
-  folderId?: string;
-  folderPath?: string;
-  folderUrl?: string;
-  procoreFileId?: string;
-  procoreUpload?: {
-    createUploadPath?: string;
-    createFilePath?: string;
-    createFilePayload?: string;
-  };
-  error?: string;
-};
-
-type JobImageUploadResponse = {
-  databaseConfigured?: boolean;
-  error?: string;
-  failedCount?: number;
-  folderId?: string;
-  folderPath?: string;
-  folderUrl?: string;
-  ok?: boolean;
-  uploadedImageCount?: number;
-  uploadedImageLimit?: number;
-  uploadedCount?: number;
-  uploads?: JobImageUpload[];
-};
-
-type AdminUsersResponse = {
-  databaseConfigured?: boolean;
-  error?: string;
-  users?: ManagedAppUser[];
-};
-
-type AuthResponse = {
-  user: AuthUser | null;
-  error?: string;
-};
-
-type ChangePasswordResponse = {
-  error?: string;
-  ok?: boolean;
-};
-
-type ProcoreStatusResponse = {
-  connected: boolean;
-  connectedAt?: string;
-  connectedBy?: string;
-};
 
 type EditingEntry = {
   entryId: string;
@@ -5579,7 +5541,6 @@ export function TimeAllocationWorkspace() {
     </main>
   );
 }
-
 function DashboardView({
   adminTools,
   currentUser,
@@ -5818,39 +5779,5 @@ function DashboardView({
       </div>
       )}
     </section>
-  );
-}
-
-function filterDailyReportsByProjectIds(dailyReportsByKey: DailyReportsByKey, projectIds: Set<string>) {
-  return Object.fromEntries(
-    Object.entries(dailyReportsByKey).filter(([dayKey]) => {
-      const parsedDayKey = parseDayKey(dayKey);
-
-      return parsedDayKey ? projectIds.has(parsedDayKey.projectId) : false;
-    })
-  );
-}
-
-function buildSyncStatus(prefix: string, summary: ProcoreSyncSummary | undefined) {
-  if (!summary) {
-    return `${prefix} complete`;
-  }
-
-  const dailyReportOnlyText =
-    summary.dailyReportOnlyProjects !== undefined ? `, ${summary.dailyReportOnlyProjects} Electrical` : "";
-  const remainingNewProjects = summary.remainingNewProjects ?? 0;
-  const queuedText = remainingNewProjects > 0 ? `, ${remainingNewProjects} queued` : "";
-  const autoArchivedProjects = summary.autoArchivedProjects ?? 0;
-  const autoUnarchivedProjects = summary.autoUnarchivedProjects ?? 0;
-  const archivedText = autoArchivedProjects > 0 ? `, ${autoArchivedProjects} archived inactive` : "";
-  const unarchivedText = autoUnarchivedProjects > 0 ? `, ${autoUnarchivedProjects} unarchived active` : "";
-
-  return `${prefix}: ${summary.synced} synced, ${summary.failed} failed${dailyReportOnlyText}${queuedText}${archivedText}${unarchivedText}`;
-}
-
-function hasSyncWarnings(summary: ProcoreSyncSummary | undefined) {
-  return Boolean(
-    summary &&
-      (summary.failed > 0 || (summary.remainingNewProjects ?? 0) > 0 || (summary.autoArchivedProjects ?? 0) > 0)
   );
 }
