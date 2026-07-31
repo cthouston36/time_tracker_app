@@ -72,7 +72,6 @@ import {
   loadDatabaseDayRecords,
   loadDatabaseEntries,
   loadDatabaseJobImageUploads,
-  loadDatabaseNetSuiteVendors,
   loadDatabaseProjectControls,
   mergeDatabaseCrewMembers,
   postProjectsWithTimeout,
@@ -85,11 +84,9 @@ import {
   saveDatabaseDaySubmission,
   saveDatabaseEntries,
   saveDatabaseMyJobs,
-  saveDatabaseNetSuiteVendorBlacklist,
   saveDatabaseProjectArchive,
   saveDatabaseProjectBlacklist,
   saveDatabaseSyncLogEntry,
-  syncDatabaseNetSuiteVendors,
   updateDatabaseCrewMember
 } from "@/features/time-allocation/lib/api-client";
 import {
@@ -195,7 +192,6 @@ import {
   draftHasAnyInput,
   draftIsIncomplete,
   draftIsSaveable,
-  filterNetSuiteVendors,
   formatCrewMemberMeta,
   formatCrewMemberOption,
   formatEntryCrew,
@@ -212,7 +208,6 @@ import {
   mergeProjectCrewMembers,
   normalizeCrewName,
   normalizeDraftCrewHours,
-  normalizeVendorSearchText,
   projectHasCrewMember,
   scaleCrewAllocations,
   sortCrewMembersByName,
@@ -258,18 +253,17 @@ import type {
   JobImageQueueItem,
   JobImageUploadsByDay,
   MyJobsByUser,
-  NetSuiteVendor,
   ProcoreSyncSummary,
   ProjectArchiveById,
   ProjectBlacklistById,
   ProjectsResponse,
   SharedAppState,
-  SyncLogEntry,
-  VendorBlacklistById
+  SyncLogEntry
 } from "@/features/time-allocation/types";
 import { useNetworkStatus } from "@/features/time-allocation/hooks/use-network-status";
 import { useAdminUserManagement } from "@/features/time-allocation/hooks/use-admin-user-management";
 import { useFieldProjectAssignments } from "@/features/time-allocation/hooks/use-field-project-assignments";
+import { useNetSuiteVendors } from "@/features/time-allocation/hooks/use-netsuite-vendors";
 import { WeeklyStatusReport } from "@/features/time-allocation/components/dashboard/weekly-status-report";
 import { AdminToolsDrawer } from "@/features/time-allocation/components/admin/admin-tools";
 import type { AllocationEntry, CrewLaborType, Project } from "@/lib/procore/types";
@@ -346,14 +340,6 @@ export function TimeAllocationWorkspace() {
   const [crewMemberName, setCrewMemberName] = useState("");
   const [crewMemberJobTitle, setCrewMemberJobTitle] = useState("");
   const [crewMemberLaborType, setCrewMemberLaborType] = useState<CrewLaborType>(DEFAULT_CREW_LABOR_TYPE);
-  const [netSuiteVendors, setNetSuiteVendors] = useState<NetSuiteVendor[]>([]);
-  const [allNetSuiteVendors, setAllNetSuiteVendors] = useState<NetSuiteVendor[]>([]);
-  const [netSuiteVendorBlacklistById, setNetSuiteVendorBlacklistById] = useState<VendorBlacklistById>({});
-  const [netSuiteVendorsSyncedAt, setNetSuiteVendorsSyncedAt] = useState<string | null>(null);
-  const [loadingNetSuiteVendors, setLoadingNetSuiteVendors] = useState(false);
-  const [syncingNetSuiteVendors, setSyncingNetSuiteVendors] = useState(false);
-  const [subcontractorVendorSearch, setSubcontractorVendorSearch] = useState("");
-  const [selectedSubcontractorVendorId, setSelectedSubcontractorVendorId] = useState("");
   const [selectedExistingCrewMemberId, setSelectedExistingCrewMemberId] = useState("");
   const [mergeSourceCrewMemberId, setMergeSourceCrewMemberId] = useState("");
   const [mergeTargetCrewMemberId, setMergeTargetCrewMemberId] = useState("");
@@ -379,6 +365,7 @@ export function TimeAllocationWorkspace() {
   const [syncingAll, setSyncingAll] = useState(false);
   const [updatingProject, setUpdatingProject] = useState(false);
   const networkStatus = useNetworkStatus();
+  const userIsOffline = networkStatus.checked && !networkStatus.online;
   const [appStateHydrated, setAppStateHydrated] = useState(false);
   const dateInputRef = useRef<HTMLInputElement>(null);
   const jobImageInputRef = useRef<HTMLInputElement>(null);
@@ -432,14 +419,28 @@ export function TimeAllocationWorkspace() {
     currentUser,
     setMyJobsByUser
   });
-  const selectedSubcontractorVendor = useMemo(
-    () => netSuiteVendors.find((vendor) => vendor.id === selectedSubcontractorVendorId) ?? null,
-    [netSuiteVendors, selectedSubcontractorVendorId]
-  );
-  const filteredSubcontractorVendors = useMemo(
-    () => filterNetSuiteVendors(netSuiteVendors, subcontractorVendorSearch).slice(0, 20),
-    [netSuiteVendors, subcontractorVendorSearch]
-  );
+  const {
+    allNetSuiteVendors,
+    clearSubcontractorVendorSelection,
+    filteredSubcontractorVendors,
+    loadingNetSuiteVendors,
+    netSuiteVendorBlacklistById,
+    netSuiteVendors,
+    netSuiteVendorsSyncedAt,
+    selectSubcontractorVendor,
+    selectedSubcontractorVendor,
+    selectedSubcontractorVendorId,
+    subcontractorVendorSearch,
+    syncingNetSuiteVendors,
+    syncNetSuiteVendorDirectory,
+    toggleVendorBlacklist,
+    updateSubcontractorVendorSearch
+  } = useNetSuiteVendors({
+    currentUser,
+    onAdminMaintenanceNotice: setAdminMaintenanceNotice,
+    onSyncLog: addSyncLog,
+    userIsOffline
+  });
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === selectedProjectId) ?? projects[0],
@@ -596,7 +597,6 @@ export function TimeAllocationWorkspace() {
     Boolean(editingCrewMember) ||
     dailyReportModalOpen ||
     queuedJobImages.length > 0;
-  const userIsOffline = networkStatus.checked && !networkStatus.online;
   const currentUserCanManageMyProjects = currentUser?.role === "admin";
 
   function shouldBlockOfflineAction(setNotice: (message: string) => void) {
@@ -695,39 +695,12 @@ export function TimeAllocationWorkspace() {
     setCrewMemberName("");
     setCrewMemberJobTitle("");
     setCrewMemberLaborType(DEFAULT_CREW_LABOR_TYPE);
-    setSelectedSubcontractorVendorId("");
-    setSubcontractorVendorSearch("");
+    clearSubcontractorVendorSelection();
     setSelectedExistingCrewMemberId("");
     setDraftsByPayItem({});
     clearJobImageQueue();
     clearDailyReportDraftForCurrentContext();
   }
-
-  const applyNetSuiteVendorData = useCallback((data: {
-    allVendors?: NetSuiteVendor[];
-    syncedAt?: string | null;
-    vendorBlacklistById?: VendorBlacklistById;
-    vendors: NetSuiteVendor[];
-  }) => {
-    const visibleVendors = data.vendors;
-    const allVendors = data.allVendors ?? visibleVendors;
-    const vendorIds = new Set(visibleVendors.map((vendor) => vendor.id));
-
-    setNetSuiteVendors(visibleVendors);
-    setAllNetSuiteVendors(allVendors);
-    setNetSuiteVendorBlacklistById(data.vendorBlacklistById ?? {});
-    setNetSuiteVendorsSyncedAt(data.syncedAt ?? null);
-    setSelectedSubcontractorVendorId((currentVendorId) => {
-      const nextVendorId = vendorIds.has(currentVendorId) ? currentVendorId : "";
-      const selectedVendor = visibleVendors.find((vendor) => vendor.id === nextVendorId);
-
-      setSubcontractorVendorSearch((currentSearch) =>
-        selectedVendor ? formatNetSuiteVendorOption(selectedVendor) : currentVendorId ? "" : currentSearch
-      );
-
-      return nextVendorId;
-    });
-  }, []);
 
   function changeSelectedProject(nextProjectId: string) {
     if (nextProjectId === selectedProjectId) {
@@ -960,42 +933,6 @@ export function TimeAllocationWorkspace() {
 
     setJobImageHistoryExpanded(window.matchMedia("(min-width: 861px)").matches);
   }, [currentUser]);
-
-  useEffect(() => {
-    if (!currentUser) {
-      setNetSuiteVendors([]);
-      setAllNetSuiteVendors([]);
-      setNetSuiteVendorBlacklistById({});
-      setNetSuiteVendorsSyncedAt(null);
-      setSubcontractorVendorSearch("");
-      setSelectedSubcontractorVendorId("");
-      return;
-    }
-
-    let cancelled = false;
-
-    async function loadVendors() {
-      setLoadingNetSuiteVendors(true);
-
-      try {
-        const data = await loadDatabaseNetSuiteVendors();
-
-        if (!cancelled && data) {
-          applyNetSuiteVendorData(data);
-        }
-      } finally {
-        if (!cancelled) {
-          setLoadingNetSuiteVendors(false);
-        }
-      }
-    }
-
-    void loadVendors();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [applyNetSuiteVendorData, currentUser]);
 
   useEffect(() => {
     if (currentUser?.role !== "admin") {
@@ -1502,61 +1439,11 @@ export function TimeAllocationWorkspace() {
     setCrewMemberName("");
     setCrewMemberJobTitle("");
     setCrewMemberLaborType(DEFAULT_CREW_LABOR_TYPE);
-    setNetSuiteVendors([]);
-    setAllNetSuiteVendors([]);
-    setNetSuiteVendorBlacklistById({});
-    setNetSuiteVendorsSyncedAt(null);
-    setSubcontractorVendorSearch("");
-    setSelectedSubcontractorVendorId("");
     setSelectedExistingCrewMemberId("");
     setMergeSourceCrewMemberId("");
     setMergeTargetCrewMemberId("");
     setEditingCrewMember(null);
     setViewMode("dashboard");
-  }
-
-  async function syncNetSuiteVendorDirectory() {
-    if (currentUser?.role !== "admin") {
-      return;
-    }
-
-    if (shouldBlockOfflineAction((message) => {
-      setAdminMaintenanceNotice({ message, status: "error" });
-    })) {
-      return;
-    }
-
-    setSyncingNetSuiteVendors(true);
-    setAdminMaintenanceNotice(null);
-
-    try {
-      const data = await syncDatabaseNetSuiteVendors();
-
-      applyNetSuiteVendorData(data);
-      setAdminMaintenanceNotice({
-        message: `Loaded ${data.vendors.length} NetSuite vendor${data.vendors.length === 1 ? "" : "s"} with default addresses.`,
-        status: "success"
-      });
-      addSyncLog({
-        action: "Get Vendors",
-        status: "success",
-        message: `Loaded ${data.vendors.length} NetSuite vendor${data.vendors.length === 1 ? "" : "s"}.`
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unable to sync NetSuite vendors.";
-
-      setAdminMaintenanceNotice({
-        message,
-        status: "error"
-      });
-      addSyncLog({
-        action: "Get Vendors",
-        status: "error",
-        message
-      });
-    } finally {
-      setSyncingNetSuiteVendors(false);
-    }
   }
 
   async function clearStagingOperationalData() {
@@ -1608,8 +1495,7 @@ export function TimeAllocationWorkspace() {
       setCrewMemberName("");
       setCrewMemberJobTitle("");
       setCrewMemberLaborType(DEFAULT_CREW_LABOR_TYPE);
-      setSubcontractorVendorSearch("");
-      setSelectedSubcontractorVendorId("");
+      clearSubcontractorVendorSelection();
       setSelectedExistingCrewMemberId("");
       setMergeSourceCrewMemberId("");
       setMergeTargetCrewMemberId("");
@@ -1819,57 +1705,6 @@ export function TimeAllocationWorkspace() {
     void saveDatabaseProjectArchive(projectId, archived).catch((error) => {
       setProjectLoadError(error instanceof Error ? error.message : "Project archive saved locally, but did not sync.");
     });
-  }
-
-  function toggleVendorBlacklist(vendorId: string, blacklisted: boolean) {
-    const nextBlacklist = {
-      ...netSuiteVendorBlacklistById
-    };
-
-    if (blacklisted) {
-      nextBlacklist[vendorId] = true;
-    } else {
-      delete nextBlacklist[vendorId];
-    }
-
-    const visibleVendors = allNetSuiteVendors.filter((vendor) => !nextBlacklist[vendor.id]);
-
-    setNetSuiteVendorBlacklistById(nextBlacklist);
-    setNetSuiteVendors(visibleVendors);
-    if (blacklisted && selectedSubcontractorVendorId === vendorId) {
-      setSelectedSubcontractorVendorId("");
-      setSubcontractorVendorSearch("");
-    }
-
-    void saveDatabaseNetSuiteVendorBlacklist(vendorId, blacklisted)
-      .then((data) => {
-        if (data) {
-          applyNetSuiteVendorData(data);
-        }
-      })
-      .catch((error) => {
-        setAdminMaintenanceNotice({
-          message: error instanceof Error ? error.message : "Vendor blacklist saved locally, but did not sync.",
-          status: "error"
-        });
-      });
-  }
-
-  function updateSubcontractorVendorSearch(value: string) {
-    setSubcontractorVendorSearch(value);
-
-    const normalizedValue = normalizeVendorSearchText(value);
-    const exactMatch = netSuiteVendors.find((vendor) =>
-      [formatNetSuiteVendorOption(vendor), vendor.name, vendor.entityId ?? ""].some(
-        (candidate) => normalizeVendorSearchText(candidate) === normalizedValue
-      )
-    );
-    setSelectedSubcontractorVendorId(exactMatch?.id ?? "");
-  }
-
-  function selectSubcontractorVendor(vendor: NetSuiteVendor) {
-    setSelectedSubcontractorVendorId(vendor.id);
-    setSubcontractorVendorSearch(formatNetSuiteVendorOption(vendor));
   }
 
   function openDailyEntry(projectId: string, date: string) {
@@ -2826,8 +2661,7 @@ export function TimeAllocationWorkspace() {
     setCrewMemberName("");
     setCrewMemberJobTitle("");
     setCrewMemberLaborType(DEFAULT_CREW_LABOR_TYPE);
-    setSubcontractorVendorSearch("");
-    setSelectedSubcontractorVendorId("");
+    clearSubcontractorVendorSelection();
     setSelectedExistingCrewMemberId("");
     setEditingCrewMember(null);
     setEntryNotice(`${name} added to ${selectedProject.name}.`);
@@ -2888,8 +2722,7 @@ export function TimeAllocationWorkspace() {
     void addDatabaseCrewMemberToProject(selectedProject.id, crewMember).catch((error) => {
       setEntryNotice(error instanceof Error ? error.message : "Subcontractor added locally, but did not sync.");
     });
-    setSubcontractorVendorSearch("");
-    setSelectedSubcontractorVendorId("");
+    clearSubcontractorVendorSelection();
     setSelectedExistingCrewMemberId("");
     setEditingCrewMember(null);
     setEntryNotice(
