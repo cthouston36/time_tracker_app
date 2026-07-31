@@ -67,7 +67,6 @@ import {
   deleteDatabaseDayEntries,
   deleteDatabaseDaySubmission,
   deleteDatabaseEntry,
-  loadAssignableFieldUsers,
   loadDatabaseCrewData,
   loadDatabaseDailyReportData,
   loadDatabaseDayRecords,
@@ -89,7 +88,6 @@ import {
   saveDatabaseNetSuiteVendorBlacklist,
   saveDatabaseProjectArchive,
   saveDatabaseProjectBlacklist,
-  saveDatabaseProjectFieldUsers,
   saveDatabaseSyncLogEntry,
   syncDatabaseNetSuiteVendors,
   updateDatabaseCrewMember
@@ -271,6 +269,7 @@ import type {
 } from "@/features/time-allocation/types";
 import { useNetworkStatus } from "@/features/time-allocation/hooks/use-network-status";
 import { useAdminUserManagement } from "@/features/time-allocation/hooks/use-admin-user-management";
+import { useFieldProjectAssignments } from "@/features/time-allocation/hooks/use-field-project-assignments";
 import { WeeklyStatusReport } from "@/features/time-allocation/components/dashboard/weekly-status-report";
 import { AdminToolsDrawer } from "@/features/time-allocation/components/admin/admin-tools";
 import type { AllocationEntry, CrewLaborType, Project } from "@/lib/procore/types";
@@ -370,9 +369,6 @@ export function TimeAllocationWorkspace() {
   const [connectionStatus, setConnectionStatus] = useState("Mock data active");
   const [projectLoadError, setProjectLoadError] = useState("");
   const [entryNotice, setEntryNotice] = useState("");
-  const [fieldUsers, setFieldUsers] = useState<AuthUser[]>([]);
-  const [fieldAssignmentNotice, setFieldAssignmentNotice] = useState<{ message: string; status: "success" | "error" } | null>(null);
-  const [savingFieldAssignmentProjectId, setSavingFieldAssignmentProjectId] = useState("");
   const [clearingStagingData, setClearingStagingData] = useState(false);
   const [clearingProjectCache, setClearingProjectCache] = useState(false);
   const [adminMaintenanceNotice, setAdminMaintenanceNotice] = useState<{ message: string; status: "success" | "error" } | null>(null);
@@ -426,6 +422,15 @@ export function TimeAllocationWorkspace() {
   } = useAdminUserManagement({
     currentUser,
     netSuiteProjectManagerOptions
+  });
+  const {
+    fieldAssignmentNotice,
+    fieldUsers,
+    saveFieldProjectAssignments,
+    savingFieldAssignmentProjectId
+  } = useFieldProjectAssignments({
+    currentUser,
+    setMyJobsByUser
   });
   const selectedSubcontractorVendor = useMemo(
     () => netSuiteVendors.find((vendor) => vendor.id === selectedSubcontractorVendorId) ?? null,
@@ -998,40 +1003,6 @@ export function TimeAllocationWorkspace() {
       setAdminMaintenanceNotice(null);
     }
   }, [currentUser?.role]);
-
-  useEffect(() => {
-    if (!currentUser || !canAccessReports(currentUser)) {
-      setFieldUsers([]);
-      setFieldAssignmentNotice(null);
-      setSavingFieldAssignmentProjectId("");
-      return;
-    }
-
-    let cancelled = false;
-
-    async function loadFieldUsers() {
-      try {
-        const users = await loadAssignableFieldUsers();
-
-        if (!cancelled) {
-          setFieldUsers(users);
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setFieldAssignmentNotice({
-            message: error instanceof Error ? error.message : "Unable to load Field users.",
-            status: "error"
-          });
-        }
-      }
-    }
-
-    void loadFieldUsers();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [currentUser]);
 
   useEffect(() => {
     if (!currentUser) {
@@ -1802,46 +1773,6 @@ export function TimeAllocationWorkspace() {
     void saveDatabaseMyJobs(currentUser.id, uniqueJobIds).catch((error) => {
       setEntryNotice(error instanceof Error ? error.message : "My Projects saved locally, but did not sync.");
     });
-  }
-
-  async function saveFieldProjectAssignments(projectId: string, fieldUserIds: string[]) {
-    if (!currentUser || !canAccessReports(currentUser)) {
-      return;
-    }
-
-    setSavingFieldAssignmentProjectId(projectId);
-    setFieldAssignmentNotice(null);
-
-    try {
-      const assignedFieldUserIds = await saveDatabaseProjectFieldUsers(projectId, fieldUserIds);
-      const assignedFieldUserIdSet = new Set(assignedFieldUserIds);
-
-      setMyJobsByUser((current) => ({
-        ...fieldUsers.reduce<MyJobsByUser>((next, fieldUser) => {
-          const currentProjectIds = next[fieldUser.id] ?? [];
-          const nextProjectIds = currentProjectIds.filter((candidateProjectId) => candidateProjectId !== projectId);
-
-          if (assignedFieldUserIdSet.has(fieldUser.id)) {
-            nextProjectIds.push(projectId);
-          }
-
-          next[fieldUser.id] = Array.from(new Set(nextProjectIds));
-
-          return next;
-        }, { ...current })
-      }));
-      setFieldAssignmentNotice({
-        message: "Field project access updated.",
-        status: "success"
-      });
-    } catch (error) {
-      setFieldAssignmentNotice({
-        message: error instanceof Error ? error.message : "Unable to save Field project access.",
-        status: "error"
-      });
-    } finally {
-      setSavingFieldAssignmentProjectId("");
-    }
   }
 
   function toggleProjectBlacklist(projectId: string, blacklisted: boolean) {
