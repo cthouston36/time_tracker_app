@@ -1,6 +1,7 @@
 "use client";
 
 import { EmptyState } from "@/features/time-allocation/components/workspace-primitives";
+import { sortProjectsByName } from "@/features/time-allocation/lib/selectors";
 import type { Project } from "@/lib/procore/types";
 
 export function MyJobsManager({
@@ -67,14 +68,5 @@ export function MyJobsManager({
         </div>
       )}
     </div>
-  );
-}
-
-function sortProjectsByName(projects: Project[]) {
-  return [...projects].sort((a, b) =>
-    a.name.localeCompare(b.name, undefined, {
-      numeric: true,
-      sensitivity: "base"
-    })
   );
 }

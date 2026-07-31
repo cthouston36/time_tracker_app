@@ -16,6 +16,7 @@ import { isTwoSeriesProject } from "@/lib/daily-report-templates";
 import type { Project } from "@/lib/procore/types";
 import type { AuthUser } from "@/lib/auth/types";
 import { EmptyState, InlineSpinner } from "@/features/time-allocation/components/workspace-primitives";
+import { getFieldUserIdsAssignedToProject } from "@/features/time-allocation/lib/selectors";
 import type {
   CalendarStatusMode,
   DailyReportUpload,
@@ -770,12 +771,6 @@ export function FieldProjectAssignmentPanel({
       </div>
     </details>
   );
-}
-
-function getFieldUserIdsAssignedToProject(fieldUsers: AuthUser[], myJobsByUser: MyJobsByUser, projectId: string) {
-  return fieldUsers
-    .filter((fieldUser) => (myJobsByUser[fieldUser.id] ?? []).includes(projectId))
-    .map((fieldUser) => fieldUser.id);
 }
 
 function filterFieldUsersBySearch(fieldUsers: AuthUser[], search: string) {

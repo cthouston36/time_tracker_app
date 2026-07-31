@@ -20,6 +20,7 @@ import {
 import { isTwoSeriesProject } from "@/lib/daily-report-templates";
 import type { AuthUser } from "@/lib/auth/types";
 import type { AllocationEntry, Project } from "@/lib/procore/types";
+import { readTextValue, sortProjectsByName } from "@/features/time-allocation/lib/selectors";
 import type {
   CrewMember,
   CrewMembersByProject,
@@ -1530,15 +1531,6 @@ function formatNetSuiteVendorOption(vendor: NetSuiteVendor) {
   return vendor.entityId && vendor.entityId !== vendor.name ? `${vendor.name} (${vendor.entityId})` : vendor.name;
 }
 
-function sortProjectsByName(projects: Project[]) {
-  return [...projects].sort((a, b) =>
-    a.name.localeCompare(b.name, undefined, {
-      numeric: true,
-      sensitivity: "base"
-    })
-  );
-}
-
 function formatAuditMetadata(metadata: Record<string, unknown>) {
   const entries = Object.entries(metadata).filter(([, value]) => value !== undefined && value !== null && value !== "");
 
@@ -1594,18 +1586,6 @@ function normalizeCrewName(name: string) {
 
 function normalizeVendorSearchText(value: string) {
   return value.trim().replace(/\s+/g, " ").toLowerCase();
-}
-
-function readTextValue(value: unknown) {
-  if (typeof value === "string") {
-    return value.trim();
-  }
-
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return String(value);
-  }
-
-  return "";
 }
 
 function formatDate(value: string) {

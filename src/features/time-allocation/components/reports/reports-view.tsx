@@ -29,6 +29,7 @@ import {
 import { EmptyState, PageHeader, ReportLoadingSkeleton } from "@/features/time-allocation/components/workspace-primitives";
 import { MobileOptionPicker } from "@/features/time-allocation/components/mobile-option-picker";
 import { MyJobsManager } from "@/features/time-allocation/components/my-jobs-manager";
+import { getDefaultMyJobIdsForUser } from "@/features/time-allocation/lib/selectors";
 import type { AllocationEntry, CrewLaborType, Project } from "@/lib/procore/types";
 
 const CREW_LABOR_TYPE_OPTIONS: Array<{ value: CrewLaborType; label: string }> = [
@@ -47,16 +48,6 @@ type ReportsDailyReport = {
 };
 
 type DailyReportsByKey = Record<string, ReportsDailyReport>;
-
-function getDefaultMyJobIdsForUser(user: AuthUser, projects: Project[]) {
-  if (user.role !== "project_manager" || !user.netSuiteProjectManagerId) {
-    return [];
-  }
-
-  return projects
-    .filter((project) => project.netSuiteProjectManagerId === user.netSuiteProjectManagerId)
-    .map((project) => project.id);
-}
 
 function getCrewLaborType(source: { laborType?: CrewLaborType } | undefined | null): CrewLaborType {
   if (source?.laborType === "subcontractor" || source?.laborType === "temp_employee") {
