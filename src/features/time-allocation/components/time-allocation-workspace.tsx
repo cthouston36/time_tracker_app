@@ -71,7 +71,6 @@ import {
   loadDatabaseDailyReportData,
   loadDatabaseDayRecords,
   loadDatabaseEntries,
-  loadDatabaseJobImageUploads,
   loadDatabaseProjectControls,
   mergeDatabaseCrewMembers,
   postProjectsWithTimeout,
@@ -172,16 +171,9 @@ import {
   type PasswordResetResponse
 } from "@/features/time-allocation/lib/auth-ui-helpers";
 import {
-  chunkJobImagesForUpload,
   formatFileSize,
   formatJobImageQueueStatus,
-  JOB_IMAGE_CLIENT_BATCH_DELAY_MS,
-  JOB_IMAGE_DAILY_UPLOAD_LIMIT,
-  MAX_JOB_IMAGE_QUEUE_ITEMS,
-  mergeJobImageUploads,
-  prepareJobImageFileForUpload,
-  uploadClientId,
-  waitForClientDelay
+  JOB_IMAGE_DAILY_UPLOAD_LIMIT
 } from "@/features/time-allocation/lib/job-image-helpers";
 import {
   buildCrewAllocations,
@@ -230,7 +222,6 @@ import type {
   AuthResponse,
   ChangePasswordResponse,
   DailyReportUploadResponse,
-  JobImageUploadResponse,
   ProcoreStatusResponse
 } from "@/features/time-allocation/lib/workspace-api-types";
 import type {
@@ -250,8 +241,6 @@ import type {
   DaySubmission,
   DaySubmissionsByKey,
   DraftsByPayItem,
-  JobImageQueueItem,
-  JobImageUploadsByDay,
   MyJobsByUser,
   ProcoreSyncSummary,
   ProjectArchiveById,
@@ -263,6 +252,7 @@ import type {
 import { useNetworkStatus } from "@/features/time-allocation/hooks/use-network-status";
 import { useAdminUserManagement } from "@/features/time-allocation/hooks/use-admin-user-management";
 import { useFieldProjectAssignments } from "@/features/time-allocation/hooks/use-field-project-assignments";
+import { useJobImages } from "@/features/time-allocation/hooks/use-job-images";
 import { useNetSuiteVendors } from "@/features/time-allocation/hooks/use-netsuite-vendors";
 import { WeeklyStatusReport } from "@/features/time-allocation/components/dashboard/weekly-status-report";
 import { AdminToolsDrawer } from "@/features/time-allocation/components/admin/admin-tools";
@@ -327,12 +317,6 @@ export function TimeAllocationWorkspace() {
   const [uploadingDailyReport, setUploadingDailyReport] = useState(false);
   const [retryingDailyReportUploadKey, setRetryingDailyReportUploadKey] = useState("");
   const [dailyReportUploadNotice, setDailyReportUploadNotice] = useState<{ message: string; status: "success" | "error" } | null>(null);
-  const [jobImageUploadsByDay, setJobImageUploadsByDay] = useState<JobImageUploadsByDay>({});
-  const [jobImageQueue, setJobImageQueue] = useState<JobImageQueueItem[]>([]);
-  const [jobImageNotice, setJobImageNotice] = useState<{ message: string; status: "success" | "error" } | null>(null);
-  const [loadingJobImageUploads, setLoadingJobImageUploads] = useState(false);
-  const [uploadingJobImages, setUploadingJobImages] = useState(false);
-  const [jobImageHistoryExpanded, setJobImageHistoryExpanded] = useState(false);
   const [mobileInstallPromptVisible, setMobileInstallPromptVisible] = useState(false);
   const [myJobsByUser, setMyJobsByUser] = useState<MyJobsByUser>({});
   const [crewDirectory, setCrewDirectory] = useState<CrewMember[]>([]);
@@ -368,9 +352,7 @@ export function TimeAllocationWorkspace() {
   const userIsOffline = networkStatus.checked && !networkStatus.online;
   const [appStateHydrated, setAppStateHydrated] = useState(false);
   const dateInputRef = useRef<HTMLInputElement>(null);
-  const jobImageInputRef = useRef<HTMLInputElement>(null);
   const payItemEntryPanelRef = useRef<HTMLDivElement>(null);
-  const jobImagePreviewUrlsRef = useRef<Set<string>>(new Set());
   const myProjectsFilterInitializedRef = useRef(false);
   const dailyReportDraftAutosaveTimeoutRef = useRef<number | null>(null);
   const saveDailyReportRef = useRef<(() => Promise<void>) | null>(null);
@@ -485,6 +467,35 @@ export function TimeAllocationWorkspace() {
     ? dayEntryNotesByKey[getDayKey(selectedProject.id, workDate)] ?? { notes: "", inventory: "" }
     : { notes: "", inventory: "" };
   const currentDayKey = selectedProject ? getDayKey(selectedProject.id, workDate) : "";
+  const {
+    addJobImages,
+    clearJobImageQueue,
+    clearUploadedJobImagesFromQueue,
+    currentJobImageUploads,
+    failedJobImageUploads,
+    failedQueuedJobImages,
+    jobImageDailyLimitReached,
+    jobImageHistoryExpanded,
+    jobImageInputRef,
+    jobImageNotice,
+    jobImageQueue,
+    loadingJobImageUploads,
+    queuedJobImages,
+    removeJobImageFromQueue,
+    retryFailedJobImages,
+    setJobImageHistoryExpanded,
+    showJobImageDetails,
+    uploadedJobImageCount,
+    uploadingJobImages,
+    uploadQueuedJobImages,
+    updateJobImageCaption
+  } = useJobImages({
+    currentDayKey,
+    currentUser,
+    selectedProject,
+    userIsOffline,
+    workDate
+  });
   const currentDailyReport = selectedProject ? dailyReportsByKey[currentDayKey] : undefined;
   const currentDailyReportUpload = selectedProject ? dailyReportUploadsByKey[currentDayKey] : undefined;
   const currentDailyReportProcoreStatus = getDailyReportProcoreStatus(
@@ -494,14 +505,6 @@ export function TimeAllocationWorkspace() {
     currentUser?.role ?? "standard"
   );
   const dailyReportNeedsUpload = Boolean(currentDailyReport && currentDailyReportProcoreStatus.className !== "uploaded");
-  const currentJobImageUploads = selectedProject ? jobImageUploadsByDay[currentDayKey] ?? [] : [];
-  const queuedJobImages = jobImageQueue.filter((image) => image.status !== "uploaded");
-  const failedQueuedJobImages = jobImageQueue.filter((image) => image.status === "failed");
-  const failedJobImageUploads = currentJobImageUploads.filter((upload) => upload.status === "failed");
-  const uploadedJobImageCount = currentJobImageUploads.filter((upload) => upload.status === "uploaded").length;
-  const remainingJobImageSlots = Math.max(0, JOB_IMAGE_DAILY_UPLOAD_LIMIT - uploadedJobImageCount);
-  const remainingQueueableJobImageSlots = Math.max(0, remainingJobImageSlots - queuedJobImages.length);
-  const jobImageDailyLimitReached = remainingJobImageSlots === 0;
   const previousDailyReportCrewTime = useMemo(
     () => (selectedProject ? findPreviousDailyReportWithCrewTime(dailyReportsByKey, selectedProject.id, workDate) : null),
     [dailyReportsByKey, selectedProject, workDate]
@@ -542,10 +545,6 @@ export function TimeAllocationWorkspace() {
       downloadingDailyReportPdf ||
       dailyReportUploadRetryQueue.length > 0
   );
-  const showJobImageDetails = Boolean(
-    jobImageQueue.length > 0 || currentJobImageUploads.length > 0 || jobImageNotice || uploadingJobImages
-  );
-
   const scrollPayItemEntryPanelToTop = useCallback(() => {
     window.requestAnimationFrame(() => {
       payItemEntryPanelRef.current?.scrollIntoView({
@@ -926,15 +925,6 @@ export function TimeAllocationWorkspace() {
   }, [currentUser]);
 
   useEffect(() => {
-    if (!currentUser || typeof window === "undefined") {
-      setJobImageHistoryExpanded(false);
-      return;
-    }
-
-    setJobImageHistoryExpanded(window.matchMedia("(min-width: 861px)").matches);
-  }, [currentUser]);
-
-  useEffect(() => {
     if (currentUser?.role !== "admin") {
       setClearingStagingData(false);
       setAdminMaintenanceNotice(null);
@@ -1013,51 +1003,6 @@ export function TimeAllocationWorkspace() {
 
     window.localStorage.setItem(getLastProjectStorageKey(currentUser.id), selectedProjectId);
   }, [currentUser, selectedProjectId]);
-
-  useEffect(() => {
-    if (!currentUser || !selectedProject) {
-      return;
-    }
-
-    let cancelled = false;
-    const dayKey = getDayKey(selectedProject.id, workDate);
-
-    async function loadJobImagesForDay() {
-      setLoadingJobImageUploads(true);
-
-      try {
-        const uploads = await loadDatabaseJobImageUploads(selectedProject.id, workDate);
-
-        if (!cancelled && uploads) {
-          setJobImageUploadsByDay((current) => ({
-            ...current,
-            [dayKey]: uploads
-          }));
-        }
-      } finally {
-        if (!cancelled) {
-          setLoadingJobImageUploads(false);
-        }
-      }
-    }
-
-    void loadJobImagesForDay();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [currentUser, selectedProject, workDate]);
-
-  useEffect(
-    () => () => {
-      for (const previewUrl of jobImagePreviewUrlsRef.current) {
-        URL.revokeObjectURL(previewUrl);
-      }
-
-      jobImagePreviewUrlsRef.current.clear();
-    },
-    []
-  );
 
   useEffect(() => {
     if (!displayedPayItems.length) {
@@ -2262,306 +2207,6 @@ export function TimeAllocationWorkspace() {
     }
 
     setEntryNotice(message);
-  }
-
-  async function createJobImageQueueItem(file: File): Promise<JobImageQueueItem> {
-    if (!file.type.startsWith("image/")) {
-      throw new Error(`${file.name || "Selected file"} is not an image.`);
-    }
-
-    const preparedFile = await prepareJobImageFileForUpload(file);
-    const previewUrl = URL.createObjectURL(preparedFile);
-
-    jobImagePreviewUrlsRef.current.add(previewUrl);
-
-    return {
-      caption: "",
-      file: preparedFile,
-      id: crypto.randomUUID(),
-      originalName: file.name || preparedFile.name,
-      previewUrl,
-      size: preparedFile.size,
-      status: "queued"
-    };
-  }
-
-  function updateJobImageCaption(imageId: string, caption: string) {
-    setJobImageQueue((current) => current.map((item) => (item.id === imageId ? { ...item, caption } : item)));
-  }
-
-  function revokeJobImagePreview(previewUrl: string) {
-    URL.revokeObjectURL(previewUrl);
-    jobImagePreviewUrlsRef.current.delete(previewUrl);
-  }
-
-  async function addJobImages(files: FileList | null) {
-    if (!files || files.length === 0) {
-      return;
-    }
-
-    if (!selectedProject) {
-      setJobImageNotice({
-        message: "Select a job before adding images.",
-        status: "error"
-      });
-      return;
-    }
-
-    const remainingQueueSlots = Math.max(0, MAX_JOB_IMAGE_QUEUE_ITEMS - jobImageQueue.length);
-    const remainingSlots = Math.min(remainingQueueSlots, remainingQueueableJobImageSlots);
-    const selectedFiles = Array.from(files).slice(0, remainingSlots);
-
-    if (remainingSlots === 0) {
-      if (remainingQueueableJobImageSlots === 0) {
-        setJobImageNotice({
-          message: jobImageDailyLimitReached
-            ? `This job/day already has the maximum ${JOB_IMAGE_DAILY_UPLOAD_LIMIT} uploaded images.`
-            : `Upload or remove queued images before adding more. ${remainingJobImageSlots} upload slot${
-                remainingJobImageSlots === 1 ? "" : "s"
-              } remain for this job/day.`,
-          status: "error"
-        });
-        return;
-      }
-
-      setJobImageNotice({
-        message: `Upload or remove queued images before adding more. The temporary queue holds ${MAX_JOB_IMAGE_QUEUE_ITEMS} images.`,
-        status: "error"
-      });
-      return;
-    }
-
-    setJobImageNotice(null);
-
-    try {
-      const queueItems = await Promise.all(selectedFiles.map(createJobImageQueueItem));
-
-      setJobImageQueue((current) => [...current, ...queueItems]);
-
-      if (selectedFiles.length < files.length) {
-        setJobImageNotice({
-          message: `Added ${selectedFiles.length} image${selectedFiles.length === 1 ? "" : "s"}. Extra selected images were not added because of the job/day limit or temporary queue limit.`,
-          status: "success"
-        });
-      }
-    } catch (error) {
-      setJobImageNotice({
-        message: error instanceof Error ? error.message : "Unable to prepare selected images.",
-        status: "error"
-      });
-    } finally {
-      if (jobImageInputRef.current) {
-        jobImageInputRef.current.value = "";
-      }
-    }
-  }
-
-  function removeJobImageFromQueue(imageId: string) {
-    setJobImageQueue((current) => {
-      const removedItem = current.find((item) => item.id === imageId);
-
-      if (removedItem) {
-        revokeJobImagePreview(removedItem.previewUrl);
-      }
-
-      return current.filter((item) => item.id !== imageId);
-    });
-  }
-
-  function clearUploadedJobImagesFromQueue() {
-    setJobImageQueue((current) => {
-      const uploadedItems = current.filter((item) => item.status === "uploaded");
-
-      for (const item of uploadedItems) {
-        revokeJobImagePreview(item.previewUrl);
-      }
-
-      return current.filter((item) => item.status !== "uploaded");
-    });
-  }
-
-  function clearJobImageQueue() {
-    setJobImageQueue((current) => {
-      for (const item of current) {
-        revokeJobImagePreview(item.previewUrl);
-      }
-
-      return [];
-    });
-    setJobImageNotice(null);
-  }
-
-  async function uploadQueuedJobImages() {
-    await uploadJobImageItems(
-      jobImageQueue.filter((image) => image.status === "queued" || image.status === "failed"),
-      "Add at least one image before uploading."
-    );
-  }
-
-  async function retryFailedJobImages() {
-    await uploadJobImageItems(failedQueuedJobImages, "No failed images are waiting to retry.");
-  }
-
-  async function uploadJobImageItems(imagesToUpload: JobImageQueueItem[], emptyMessage: string) {
-    if (!selectedProject) {
-      setJobImageNotice({
-        message: "Select a job before uploading images.",
-        status: "error"
-      });
-      return;
-    }
-
-    if (userIsOffline) {
-      setJobImageNotice({
-        message: "You appear to be offline. Reconnect before uploading images to Procore.",
-        status: "error"
-      });
-      return;
-    }
-
-    if (imagesToUpload.length === 0) {
-      setJobImageNotice({
-        message: emptyMessage,
-        status: "error"
-      });
-      return;
-    }
-
-    if (remainingJobImageSlots === 0) {
-      setJobImageNotice({
-        message: `This job/day already has the maximum ${JOB_IMAGE_DAILY_UPLOAD_LIMIT} uploaded images.`,
-        status: "error"
-      });
-      return;
-    }
-
-    if (imagesToUpload.length > remainingJobImageSlots) {
-      setJobImageNotice({
-        message: `Only ${remainingJobImageSlots} image${remainingJobImageSlots === 1 ? "" : "s"} can still be uploaded for this job/day. Remove extra queued images before uploading.`,
-        status: "error"
-      });
-      return;
-    }
-
-    setUploadingJobImages(true);
-    setJobImageNotice(null);
-    setJobImageQueue((current) =>
-      current.map((item) =>
-        imagesToUpload.some((image) => image.id === item.id)
-          ? {
-              ...item,
-              error: undefined,
-              status: "uploading"
-            }
-          : item
-      )
-    );
-
-    let uploadedCount = 0;
-    let failedCount = 0;
-
-    try {
-      const batches = chunkJobImagesForUpload(imagesToUpload);
-
-      for (const [batchIndex, batch] of batches.entries()) {
-        if (batchIndex > 0) {
-          await waitForClientDelay(JOB_IMAGE_CLIENT_BATCH_DELAY_MS);
-        }
-
-        const formData = new FormData();
-
-        formData.set("date", workDate);
-        formData.set(
-          "project",
-          JSON.stringify({
-            id: selectedProject.id,
-            name: selectedProject.name,
-            payItems: [],
-            procoreProjectId: selectedProject.procoreProjectId
-          } satisfies Project)
-        );
-
-        for (const item of batch) {
-          formData.append("images", item.file, item.file.name);
-          formData.append("imageClientIds", item.id);
-          formData.append("imageCaptions", item.caption);
-          formData.append("originalFileNames", item.originalName);
-        }
-
-        try {
-          const response = await fetch("/api/procore/job-images/upload", {
-            body: formData,
-            method: "POST"
-          });
-          const data = (await readApiJson(response)) as JobImageUploadResponse;
-
-          if (!response.ok) {
-            throw new Error(data.error ?? "Unable to upload job images to Procore.");
-          }
-
-          const uploadedByClientId = new Map((data.uploads ?? []).map((upload) => [uploadClientId(upload), upload]));
-          const returnedUploads = data.uploads ?? [];
-
-          uploadedCount += returnedUploads.filter((upload) => upload.status === "uploaded").length;
-          failedCount += returnedUploads.filter((upload) => upload.status === "failed").length;
-
-          setJobImageQueue((current) =>
-            current.map((item) => {
-              const upload = uploadedByClientId.get(item.id);
-
-              if (!upload) {
-                return item;
-              }
-
-              return {
-                ...item,
-                error: upload.error,
-                status: upload.status,
-                uploadedFileName: upload.fileName
-              };
-            })
-          );
-          setJobImageUploadsByDay((current) => ({
-            ...current,
-            [currentDayKey]: mergeJobImageUploads(current[currentDayKey] ?? [], returnedUploads)
-          }));
-        } catch (error) {
-          const message = error instanceof Error ? error.message : "Unable to upload job images to Procore.";
-
-          failedCount += batch.length;
-          setJobImageQueue((current) =>
-            current.map((item) =>
-              batch.some((image) => image.id === item.id)
-                ? {
-                    ...item,
-                    error: message,
-                    status: "failed"
-                  }
-                : item
-            )
-          );
-        }
-      }
-
-      if (uploadedCount > 0 && failedCount === 0) {
-        setJobImageNotice({
-          message: `Uploaded ${uploadedCount} job image${uploadedCount === 1 ? "" : "s"} to Procore.`,
-          status: "success"
-        });
-      } else if (uploadedCount > 0) {
-        setJobImageNotice({
-          message: `Uploaded ${uploadedCount} image${uploadedCount === 1 ? "" : "s"}; ${failedCount} failed and can be retried.`,
-          status: "error"
-        });
-      } else {
-        setJobImageNotice({
-          message: "No images were uploaded. Review the failed image messages and try again.",
-          status: "error"
-        });
-      }
-    } finally {
-      setUploadingJobImages(false);
-    }
   }
 
   function connectProcore(intent: PendingProcoreReturn["intent"] = "connect") {
