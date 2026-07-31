@@ -16,6 +16,12 @@ import { isTwoSeriesProject } from "@/lib/daily-report-templates";
 import type { Project } from "@/lib/procore/types";
 import type { AuthUser } from "@/lib/auth/types";
 import { EmptyState, InlineSpinner } from "@/features/time-allocation/components/workspace-primitives";
+import type {
+  CalendarStatusMode,
+  DailyReportUpload,
+  DaySubmission,
+  MyJobsByUser
+} from "@/features/time-allocation/types";
 
 export type DashboardIssue = {
   date: string;
@@ -90,18 +96,6 @@ export type DashboardProjectWeekRow = {
   project: Project;
   submittedEntryCount: number;
 };
-
-type DaySubmission = {
-  status: "draft" | "submitted";
-};
-
-type DailyReportUpload = {
-  status?: "failed" | "uploaded";
-};
-
-type MyJobsByUser = Record<string, string[]>;
-
-type CalendarStatusMode = "entry_status" | "daily_reports";
 
 export function DashboardMetric({
   label,

@@ -95,6 +95,42 @@ import {
   syncDatabaseNetSuiteVendors,
   updateDatabaseCrewMember
 } from "@/features/time-allocation/lib/api-client";
+import type {
+  CalendarStatusMode,
+  CrewMember,
+  CrewMembersByProject,
+  CrewSummaryRow,
+  DailyReport,
+  DailyReportAnswers,
+  DailyReportEmployeeRow,
+  DailyReportItsfmRow,
+  DailyReportPayItemRow,
+  DailyReportProcoreStatus,
+  DailyReportsByKey,
+  DailyReportTimeField,
+  DailyReportUpload,
+  DailyReportUploadsByKey,
+  DayEntryNotes,
+  DayEntryNotesByKey,
+  DaySubmission,
+  DaySubmissionsByKey,
+  DraftsByPayItem,
+  JobImageQueueItem,
+  JobImageUpload,
+  JobImageUploadsByDay,
+  ManagedAppUser,
+  MyJobsByUser,
+  NetSuiteProjectManagerOption,
+  NetSuiteVendor,
+  PayItemDraft,
+  ProcoreSyncSummary,
+  ProjectArchiveById,
+  ProjectBlacklistById,
+  ProjectsResponse,
+  SharedAppState,
+  SyncLogEntry,
+  VendorBlacklistById
+} from "@/features/time-allocation/types";
 import {
   useNetworkStatus,
   type NetworkStatus
@@ -132,14 +168,6 @@ const JOB_IMAGE_JPEG_QUALITY = 0.82;
 const DAILY_REPORT_VALIDATION_NOTICE_PREFIX = "Daily report needs attention";
 const DEFAULT_CREW_LABOR_TYPE: CrewLaborType = "chinchor_employee";
 
-type ProjectsResponse = {
-  projectArchiveById?: ProjectArchiveById;
-  projects: Project[];
-  syncedAt?: string | null;
-  summary?: ProcoreSyncSummary;
-  error?: string;
-};
-
 type DailyReportUploadResponse = {
   companyId?: string;
   fileName?: string;
@@ -155,47 +183,6 @@ type DailyReportUploadResponse = {
   error?: string;
 };
 
-type ProcoreSyncSummary = {
-  attempted: number;
-  synced: number;
-  failed: number;
-  skippedExisting: number;
-  failedProjects: string[];
-  autoArchivedProjects?: number;
-  autoUnarchivedProjects?: number;
-  dailyReportOnlyProjects?: number;
-  eligibleProjects?: number;
-  inactiveNetSuiteProjects?: number;
-  payItemProjects?: number;
-  remainingNewProjects?: number;
-  skippedMissingProcoreProjectId?: number;
-  skippedNoPayItems?: number;
-  totalNetSuiteProjects?: number;
-};
-
-type SyncLogEntry = {
-  id: string;
-  action: string;
-  status: "success" | "warning" | "error";
-  createdAt: string;
-  message: string;
-  summary?: ProcoreSyncSummary;
-};
-
-type SharedAppState = {
-  crewDirectory: CrewMember[];
-  crewMembersByProject: CrewMembersByProject;
-  dailyReportUploadsByKey: DailyReportUploadsByKey;
-  dailyReportsByKey: DailyReportsByKey;
-  dayEntryNotesByKey: DayEntryNotesByKey;
-  daySubmissions: DaySubmissionsByKey;
-  entries: AllocationEntry[];
-  myJobsByUser: MyJobsByUser;
-  projectArchiveById: ProjectArchiveById;
-  projectBlacklistById: ProjectBlacklistById;
-  syncLog: SyncLogEntry[];
-};
-
 type JobImageUploadResponse = {
   databaseConfigured?: boolean;
   error?: string;
@@ -208,20 +195,6 @@ type JobImageUploadResponse = {
   uploadedImageLimit?: number;
   uploadedCount?: number;
   uploads?: JobImageUpload[];
-};
-
-type NetSuiteVendor = {
-  id: string;
-  name: string;
-  entityId?: string;
-  companyName?: string;
-  defaultAddress: string;
-};
-
-type ManagedAppUser = AuthUser & {
-  active: boolean;
-  createdAt?: string;
-  updatedAt?: string;
 };
 
 type AdminUsersResponse = {
@@ -241,45 +214,10 @@ type AdminUserFormState = {
   userId: string;
 };
 
-type NetSuiteProjectManagerOption = {
-  id: string;
-  name: string;
-};
-
 type ChangePasswordFormState = {
   confirmPassword: string;
   currentPassword: string;
   newPassword: string;
-};
-
-type PayItemDraft = {
-  hours: string;
-  quantity: string;
-  crewMemberIds: string[];
-  crewHours: Record<string, string>;
-};
-
-type DraftsByPayItem = Record<string, PayItemDraft>;
-
-type CrewMember = {
-  id: string;
-  name: string;
-  jobTitle: string;
-  laborType?: CrewLaborType;
-  subcontractorCompany?: string;
-  netSuiteVendorEntityId?: string;
-  netSuiteVendorId?: string;
-};
-
-type CrewMembersByProject = Record<string, CrewMember[]>;
-
-type CrewSummaryRow = {
-  crewMemberId: string;
-  name: string;
-  jobTitle: string;
-  laborType?: CrewLaborType;
-  subcontractorCompany?: string;
-  hours: number;
 };
 
 type AuthResponse = {
@@ -313,76 +251,6 @@ type ProcoreStatusResponse = {
   connectedBy?: string;
 };
 
-type DaySubmission = {
-  status: "draft" | "submitted";
-  submittedByUserId?: string;
-  submittedByName?: string;
-  submittedAt?: string;
-};
-
-type DaySubmissionsByKey = Record<string, DaySubmission>;
-
-type DayEntryNotes = {
-  notes: string;
-  inventory: string;
-};
-
-type DayEntryNotesByKey = Record<string, DayEntryNotes>;
-
-type DailyReportAnswers = {
-  employeeRows: DailyReportEmployeeRow[];
-  payItemRows: DailyReportPayItemRow[];
-  quantitiesTurnedIn: string;
-  inspectorName: string;
-  inspectorQuantityDetails: string;
-  workDescription: string;
-  planSheetNumbers: string;
-  workDetails: string;
-  incidentOccurred: string;
-  incidentDetails: string;
-  accidentReportFiled: string;
-  motSigns: string;
-  conesBarrels: string;
-  typeIISidewalkBarricades: string;
-  typeIIIBarricades: string;
-  lcdCount: string;
-  lcdFootage: string;
-  arrowBoards: string;
-  vmsBoards: string;
-  fdotIndex: string;
-  itsfmRows: DailyReportItsfmRow[];
-  itsfmAbovegroundEquipment: string;
-  itsfmCabinetEquipment: string;
-  twoSeriesEquipmentTools: string;
-  twoSeriesSafetyIssues: string;
-  twoSeriesDelayReasons: string;
-  twoSeriesDeliveries: string;
-};
-
-type DailyReportEmployeeRow = {
-  employeeClassification: string;
-  truckNumber: string;
-  timeIn: string;
-  lunchOut: string;
-  lunchIn: string;
-  timeOut: string;
-  productionCode1: string;
-  productionHours1: string;
-  productionCode2: string;
-  productionHours2: string;
-  totalHours: string;
-  driver: boolean;
-  passenger: boolean;
-};
-
-type DailyReportTimeField = "timeIn" | "lunchOut" | "lunchIn" | "timeOut";
-
-type DailyReportPayItemRow = {
-  notes: string;
-  payItemId: string;
-  quantity: string;
-};
-
 type DailyReportValidationResult = {
   errors: string[];
   warnings: string[];
@@ -391,92 +259,6 @@ type DailyReportValidationResult = {
 type DailyReportValidationOptions = {
   template: DailyReportTemplate;
 };
-
-type DailyReportItsfmRow = {
-  itemKey: string;
-  modelNumber: string;
-  serialNumber: string;
-  location: string;
-};
-
-type DailyReport = DailyReportAnswers & {
-  projectId: string;
-  date: string;
-  createdByUserId: string;
-  createdByName: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
-type DailyReportsByKey = Record<string, DailyReport>;
-
-type DailyReportUploadStatus = "failed" | "uploaded";
-
-type DailyReportUpload = {
-  attemptedAt?: string;
-  companyId?: string;
-  error?: string;
-  fileName: string;
-  folderId?: string;
-  folderPath: string;
-  folderUrl?: string;
-  procoreFileId?: string;
-  status?: DailyReportUploadStatus;
-  uploadedAt?: string;
-};
-
-type DailyReportUploadsByKey = Record<string, DailyReportUpload>;
-
-type DailyReportProcoreStatus = {
-  className: string;
-  href?: string;
-  label: string;
-  message: string;
-};
-
-type JobImageUploadStatus = "failed" | "uploaded";
-
-type JobImageUpload = {
-  attemptedAt?: string;
-  caption?: string;
-  clientId?: string;
-  contentType?: string;
-  date: string;
-  error?: string;
-  fileName: string;
-  fileSizeBytes?: number;
-  folderId?: string;
-  folderPath: string;
-  folderUrl?: string;
-  id: string;
-  originalFileName?: string;
-  procoreFileId?: string;
-  projectId: string;
-  status: JobImageUploadStatus;
-  uploadedAt?: string;
-  uploadedByName?: string;
-  uploadedByUserId?: string;
-};
-
-type JobImageUploadsByDay = Record<string, JobImageUpload[]>;
-
-type JobImageQueueItem = {
-  caption: string;
-  error?: string;
-  file: File;
-  id: string;
-  originalName: string;
-  previewUrl: string;
-  size: number;
-  status: "failed" | "queued" | "uploaded" | "uploading";
-  uploadedFileName?: string;
-};
-
-type MyJobsByUser = Record<string, string[]>;
-
-type ProjectBlacklistById = Record<string, true>;
-type ProjectArchiveById = Record<string, true>;
-type VendorBlacklistById = Record<string, true>;
 
 type NetworkNotice = {
   icon: LucideIcon;
@@ -500,8 +282,6 @@ type EditingCrewMember = {
 };
 
 type ViewMode = "dashboard" | "entry" | "calendar" | "reports";
-
-type CalendarStatusMode = "entry_status" | "daily_reports";
 
 type PendingProcoreReturn = {
   date?: string;

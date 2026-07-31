@@ -19,11 +19,19 @@ import {
 } from "lucide-react";
 import { isTwoSeriesProject } from "@/lib/daily-report-templates";
 import type { AuthUser } from "@/lib/auth/types";
-import type { AllocationEntry, CrewLaborType, Project } from "@/lib/procore/types";
-
-export type ManagedAppUser = AuthUser & {
-  active: boolean;
-};
+import type { AllocationEntry, Project } from "@/lib/procore/types";
+import type {
+  CrewMember,
+  CrewMembersByProject,
+  ManagedAppUser,
+  NetSuiteProjectManagerOption,
+  NetSuiteVendor,
+  ProcoreSyncSummary,
+  ProjectArchiveById,
+  ProjectBlacklistById,
+  SyncLogEntry,
+  VendorBlacklistById
+} from "@/features/time-allocation/types";
 
 export type AdminUserFormState = {
   active: boolean;
@@ -36,67 +44,12 @@ export type AdminUserFormState = {
   userId: string;
 };
 
-export type NetSuiteProjectManagerOption = {
-  id: string;
-  name: string;
-};
-
 export type PasswordResetResponse = {
   error?: string;
   expiresAt?: string;
   ok?: boolean;
   token?: string;
   userId?: string;
-};
-
-export type ProcoreSyncSummary = {
-  attempted: number;
-  autoArchivedProjects?: number;
-  autoUnarchivedProjects?: number;
-  dailyReportOnlyProjects?: number;
-  eligibleProjects?: number;
-  failed: number;
-  failedProjects: string[];
-  inactiveNetSuiteProjects?: number;
-  payItemProjects?: number;
-  remainingNewProjects?: number;
-  skippedExisting: number;
-  skippedMissingProcoreProjectId?: number;
-  skippedNoPayItems?: number;
-  synced: number;
-  totalNetSuiteProjects?: number;
-};
-
-export type SyncLogEntry = {
-  action: string;
-  createdAt: string;
-  id: string;
-  message: string;
-  status: "error" | "success" | "warning";
-  summary?: ProcoreSyncSummary;
-};
-
-type CrewMember = {
-  id: string;
-  jobTitle: string;
-  laborType?: CrewLaborType;
-  name: string;
-  netSuiteVendorEntityId?: string;
-  netSuiteVendorId?: string;
-  subcontractorCompany?: string;
-};
-
-type CrewMembersByProject = Record<string, CrewMember[]>;
-type ProjectArchiveById = Record<string, true>;
-type ProjectBlacklistById = Record<string, true>;
-type VendorBlacklistById = Record<string, true>;
-
-type NetSuiteVendor = {
-  companyName?: string;
-  defaultAddress: string;
-  entityId?: string;
-  id: string;
-  name: string;
 };
 
 type AdminFailedUploadDailyReport = {

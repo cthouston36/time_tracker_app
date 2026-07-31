@@ -4,25 +4,11 @@ import { useState } from "react";
 import { Users } from "lucide-react";
 import { MobileOptionPicker } from "@/features/time-allocation/components/mobile-option-picker";
 import type { AllocationEntry, CrewLaborType, PayItem, Project } from "@/lib/procore/types";
-
-type PayItemDraft = {
-  hours: string;
-  quantity: string;
-  crewMemberIds: string[];
-  crewHours: Record<string, string>;
-};
-
-type DraftsByPayItem = Record<string, PayItemDraft>;
-
-type CrewMember = {
-  id: string;
-  name: string;
-  jobTitle: string;
-  laborType?: CrewLaborType;
-  subcontractorCompany?: string;
-  netSuiteVendorEntityId?: string;
-  netSuiteVendorId?: string;
-};
+import type {
+  CrewMember,
+  DraftsByPayItem,
+  PayItemDraft
+} from "@/features/time-allocation/types";
 
 export function PayItemMatrix({
   ariaLabel,

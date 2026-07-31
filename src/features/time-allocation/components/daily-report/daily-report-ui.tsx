@@ -6,75 +6,18 @@ import {
   formatTwoSeriesProductionCodeLabel
 } from "@/lib/daily-report-templates";
 import type { PayItem, Project } from "@/lib/procore/types";
+import type {
+  DailyReportAnswers,
+  DailyReportEmployeeRow,
+  DailyReportItsfmItem,
+  DailyReportItsfmRow,
+  DailyReportPayItemRow,
+  DailyReportTimeField
+} from "@/features/time-allocation/types";
 
 const DAILY_REPORT_VALIDATION_NOTICE_PREFIX = "Daily report needs attention";
 
-type DailyReportAnswers = {
-  employeeRows: DailyReportEmployeeRow[];
-  payItemRows: DailyReportPayItemRow[];
-  quantitiesTurnedIn: string;
-  inspectorName: string;
-  inspectorQuantityDetails: string;
-  workDescription: string;
-  planSheetNumbers: string;
-  workDetails: string;
-  incidentOccurred: string;
-  incidentDetails: string;
-  accidentReportFiled: string;
-  motSigns: string;
-  conesBarrels: string;
-  typeIISidewalkBarricades: string;
-  typeIIIBarricades: string;
-  lcdCount: string;
-  lcdFootage: string;
-  arrowBoards: string;
-  vmsBoards: string;
-  fdotIndex: string;
-  itsfmRows: DailyReportItsfmRow[];
-  itsfmAbovegroundEquipment: string;
-  itsfmCabinetEquipment: string;
-  twoSeriesEquipmentTools: string;
-  twoSeriesSafetyIssues: string;
-  twoSeriesDelayReasons: string;
-  twoSeriesDeliveries: string;
-};
-
-type DailyReportEmployeeRow = {
-  employeeClassification: string;
-  truckNumber: string;
-  timeIn: string;
-  lunchOut: string;
-  lunchIn: string;
-  timeOut: string;
-  productionCode1: string;
-  productionHours1: string;
-  productionCode2: string;
-  productionHours2: string;
-  totalHours: string;
-  driver: boolean;
-  passenger: boolean;
-};
-
-type DailyReportTimeField = "timeIn" | "lunchOut" | "lunchIn" | "timeOut";
-
-type DailyReportPayItemRow = {
-  notes: string;
-  payItemId: string;
-  quantity: string;
-};
-
-type DailyReportItsfmRow = {
-  itemKey: string;
-  modelNumber: string;
-  serialNumber: string;
-  location: string;
-};
-
-export type DailyReportItsfmItem = {
-  group: "Aboveground Equipment" | "Cabinet Equipment";
-  key: string;
-  label: string;
-};
+export type { DailyReportItsfmItem };
 
 export const DAILY_REPORT_ITSFM_ITEMS: DailyReportItsfmItem[] = [
   { group: "Aboveground Equipment", key: "cctv-1", label: "CCTV #1" },
