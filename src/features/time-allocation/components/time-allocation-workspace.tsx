@@ -128,7 +128,6 @@ import {
   addDaysToInputDate,
   buildDailyReportUploadFileName,
   formatDate,
-  formatStatusDateTime,
   formatWeekDayLabel,
   formatWeekRange,
   getDayKey,
@@ -136,6 +135,15 @@ import {
   getWeekStart,
   parseDayKey
 } from "@/features/time-allocation/lib/date-helpers";
+import {
+  buildEntryDayKeySet,
+  buildProcoreDocumentsFolderUrl,
+  getDailyReportCalendarStatus,
+  getDailyReportProcoreStatus,
+  getHasDailyEntryActivity,
+  getProjectEntryCalendarStatus,
+  getProjectWorkTypeLabel
+} from "@/features/time-allocation/lib/status-helpers";
 import {
   chunkJobImagesForUpload,
   formatFileSize,
@@ -249,9 +257,6 @@ import {
 } from "@/features/time-allocation/components/dashboard/dashboard-components";
 import { AdminToolsDrawer } from "@/features/time-allocation/components/admin/admin-tools";
 import type { AllocationEntry, CrewLaborType, PayItem, Project } from "@/lib/procore/types";
-
-const PROCORE_WEB_BASE_URL = process.env.NEXT_PUBLIC_PROCORE_WEB_BASE_URL ?? "https://us02.procore.com";
-const PROCORE_COMPANY_ID = process.env.NEXT_PUBLIC_PROCORE_COMPANY_ID ?? "598134325538800";
 type DailyReportUploadResponse = {
   companyId?: string;
   fileName?: string;
@@ -6680,191 +6685,6 @@ function WeeklyStatusReport({
       )}
     </div>
   );
-}
-
-function getEntryCalendarStatus(daySubmission: DaySubmission | undefined, hasSavedEntries: boolean) {
-  if (daySubmission?.status === "submitted") {
-    return {
-      className: "submitted",
-      label: "Submitted"
-    };
-  }
-
-  if (!hasSavedEntries) {
-    return {
-      className: "not-started",
-      label: "Not Started"
-    };
-  }
-
-  return {
-    className: "draft",
-    label: "Draft"
-  };
-}
-
-function getProjectEntryCalendarStatus(project: Project, daySubmission: DaySubmission | undefined, hasSavedEntries: boolean) {
-  if (isTwoSeriesProject(project)) {
-    return getNotApplicableCalendarStatus();
-  }
-
-  return getEntryCalendarStatus(daySubmission, hasSavedEntries);
-}
-
-function getProjectWorkTypeLabel(project: Project | null | undefined) {
-  if (!project) {
-    return "No job type";
-  }
-
-  return isTwoSeriesProject(project) ? "Electrical" : "Signal";
-}
-
-function buildEntryDayKeySet(entries: AllocationEntry[]) {
-  return new Set(entries.map((entry) => getDayKey(entry.projectId, entry.date)));
-}
-
-function getNotApplicableCalendarStatus() {
-  return {
-    className: "not-applicable",
-    label: "N/A"
-  };
-}
-
-function getHasDailyEntryActivity(
-  project: Project,
-  dayKey: string,
-  daySubmissions: DaySubmissionsByKey,
-  entryDayKeys: Set<string>
-) {
-  if (isTwoSeriesProject(project)) {
-    return false;
-  }
-
-  return entryDayKeys.has(dayKey) || Boolean(daySubmissions[dayKey]);
-}
-
-function getDailyReportCalendarStatus(
-  dailyReport: DailyReport | undefined,
-  upload: DailyReportUpload | undefined,
-  hasDailyEntryActivity = true
-) {
-  if (isUploadedDailyReportUpload(upload)) {
-    return {
-      className: "uploaded",
-      label: "Uploaded"
-    };
-  }
-
-  if (upload?.status === "failed") {
-    return {
-      className: "failed",
-      label: "Failed"
-    };
-  }
-
-  if (dailyReport) {
-    return {
-      className: "created",
-      label: "Pending"
-    };
-  }
-
-  if (!hasDailyEntryActivity) {
-    return {
-      className: "not-started",
-      label: "Not Started"
-    };
-  }
-
-  return {
-    className: "missing",
-    label: "Missing"
-  };
-}
-
-function getDailyReportProcoreStatus(
-  dailyReport: DailyReport | undefined,
-  upload: DailyReportUpload | undefined,
-  projectId: string | undefined,
-  userRole: AuthUser["role"]
-) {
-  if (!dailyReport) {
-    return {
-      className: "missing",
-      label: "Not Submitted",
-      message: "Create and save a daily report before uploading to Procore."
-    };
-  }
-
-  if (isUploadedDailyReportUpload(upload)) {
-    const uploadedAt = upload?.uploadedAt ? ` on ${formatStatusDateTime(upload.uploadedAt)}` : "";
-    const fileName = upload?.fileName ? ` File: ${upload.fileName}.` : "";
-    const folderPath = upload?.folderPath ? ` Folder: ${upload.folderPath}.` : "";
-    const folderUrl = normalizeProcoreDocumentsFolderUrl(upload?.folderUrl, upload?.companyId, projectId, upload?.folderId);
-
-    return {
-      className: "uploaded",
-      href: folderUrl,
-      label: "Uploaded",
-      message: userRole === "admin" ? `Uploaded to Procore${uploadedAt}.${fileName}${folderPath}` : `Uploaded${uploadedAt}.`
-    };
-  }
-
-  if (upload?.status === "failed") {
-    const attemptedAt = upload.attemptedAt ? ` on ${new Date(upload.attemptedAt).toLocaleString()}` : "";
-
-    return {
-      className: "failed",
-      label: "Upload failed",
-      message: `Last Procore upload failed${attemptedAt}: ${upload.error ?? "Unknown error."}`
-    };
-  }
-
-  return {
-    className: "pending",
-    label: "Pending",
-    message: "Pending upload to Procore. Click Upload to Procore when the daily report is ready."
-  };
-}
-
-function isUploadedDailyReportUpload(upload: DailyReportUpload | undefined) {
-  return Boolean(upload && (upload.status === "uploaded" || (!upload.status && upload.uploadedAt)));
-}
-
-function normalizeProcoreDocumentsFolderUrl(
-  folderUrl: string | undefined,
-  companyId: string | undefined,
-  projectId: string | undefined,
-  folderId: string | undefined
-) {
-  if (folderUrl && !folderUrl.includes("app.procore.com")) {
-    return folderUrl;
-  }
-
-  return buildProcoreDocumentsFolderUrl(companyId, projectId, folderId);
-}
-
-function buildProcoreDocumentsFolderUrl(
-  companyId: string | undefined,
-  projectId: string | undefined,
-  folderId: string | undefined
-) {
-  if (!projectId) {
-    return undefined;
-  }
-
-  const url = new URL(
-    `/webclients/host/companies/${encodeURIComponent(companyId || PROCORE_COMPANY_ID)}/projects/${encodeURIComponent(
-      projectId
-    )}/tools/documents`,
-    PROCORE_WEB_BASE_URL
-  );
-
-  if (folderId) {
-    url.searchParams.set("folder_id", folderId);
-  }
-
-  return url.toString();
 }
 
 function ChangePasswordModal({
