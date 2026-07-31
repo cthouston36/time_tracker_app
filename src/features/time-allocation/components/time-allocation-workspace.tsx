@@ -145,6 +145,11 @@ import {
   getProjectWorkTypeLabel
 } from "@/features/time-allocation/lib/status-helpers";
 import {
+  buildRemainingQuantitiesByPayItem,
+  formatPayItemQuantity,
+  formatPayItemUnitOfMeasure
+} from "@/features/time-allocation/lib/pay-item-helpers";
+import {
   chunkJobImagesForUpload,
   formatFileSize,
   formatJobImageQueueStatus,
@@ -256,7 +261,7 @@ import {
   type ProductionPerformanceAlert
 } from "@/features/time-allocation/components/dashboard/dashboard-components";
 import { AdminToolsDrawer } from "@/features/time-allocation/components/admin/admin-tools";
-import type { AllocationEntry, CrewLaborType, PayItem, Project } from "@/lib/procore/types";
+import type { AllocationEntry, CrewLaborType, Project } from "@/lib/procore/types";
 type DailyReportUploadResponse = {
   companyId?: string;
   fileName?: string;
@@ -6780,40 +6785,6 @@ function filterDailyReportsByProjectIds(dailyReportsByKey: DailyReportsByKey, pr
       return parsedDayKey ? projectIds.has(parsedDayKey.projectId) : false;
     })
   );
-}
-
-function buildRemainingQuantitiesByPayItem(
-  payItems: Project["payItems"],
-  projectEntries: AllocationEntry[],
-  selectedDate: string
-) {
-  const previousQuantitiesByPayItem: Record<string, number> = {};
-
-  for (const entry of projectEntries) {
-    if (entry.date >= selectedDate) {
-      continue;
-    }
-
-    previousQuantitiesByPayItem[entry.payItemId] =
-      (previousQuantitiesByPayItem[entry.payItemId] ?? 0) + entry.quantityCompleted;
-  }
-
-  return payItems.reduce<Record<string, number>>((remainingQuantities, payItem) => {
-    remainingQuantities[payItem.id] = payItem.budgetedQuantity - (previousQuantitiesByPayItem[payItem.id] ?? 0);
-
-    return remainingQuantities;
-  }, {});
-}
-
-function formatPayItemQuantity(value: number) {
-  return value.toLocaleString(undefined, {
-    maximumFractionDigits: 2,
-    minimumFractionDigits: 0
-  });
-}
-
-function formatPayItemUnitOfMeasure(payItem: Pick<PayItem, "unitOfMeasure"> | null | undefined) {
-  return typeof payItem?.unitOfMeasure === "string" ? payItem.unitOfMeasure.toUpperCase() : "";
 }
 
 function buildEntryConflictSignature(entries: AllocationEntry[]) {
