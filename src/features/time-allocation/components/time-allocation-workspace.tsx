@@ -5,7 +5,6 @@ import {
   CalendarDays,
   Edit3,
   ExternalLink,
-  Maximize2,
   Save,
   Send,
   UploadCloud
@@ -16,7 +15,6 @@ import type { AuthUser } from "@/lib/auth/types";
 import { isTwoSeriesProject } from "@/lib/daily-report-templates";
 import {
   AppLoadingShell,
-  EmptyState,
   InlineSpinner,
   PageHeader
 } from "@/features/time-allocation/components/workspace-primitives";
@@ -32,10 +30,7 @@ import { ReportsView } from "@/features/time-allocation/components/reports/repor
 import { DailyReportModal } from "@/features/time-allocation/components/daily-report/daily-report-ui";
 import { DailyReportPanel } from "@/features/time-allocation/components/daily-report/daily-report-panel";
 import { DashboardView } from "@/features/time-allocation/components/dashboard/dashboard-view";
-import {
-  MobilePayItemEntry,
-  PayItemMatrix
-} from "@/features/time-allocation/components/entry/pay-item-entry-matrix";
+import { PayItemEntryPanel } from "@/features/time-allocation/components/entry/pay-item-entry-panel";
 import { MatrixFullscreenModal } from "@/features/time-allocation/components/entry/matrix-fullscreen-modal";
 import { JobImagesPanel } from "@/features/time-allocation/components/entry/job-images-panel";
 import { ReviewSubmitPanel } from "@/features/time-allocation/components/entry/review-submit-panel";
@@ -83,7 +78,6 @@ import {
   buildRemainingQuantitiesByPayItem,
   formatPayItemUnitOfMeasure
 } from "@/features/time-allocation/lib/pay-item-helpers";
-import { getEntryNoticeClassName } from "@/features/time-allocation/lib/notice-helpers";
 import { getDefaultViewModeForUser } from "@/features/time-allocation/lib/auth-ui-helpers";
 import {
   buildCrewSummary,
@@ -1718,85 +1712,29 @@ export function TimeAllocationWorkspace() {
 
             {selectedProjectUsesPayItems ? (
               <>
-            <div className="panel workflow-panel" ref={payItemEntryPanelRef}>
-              <div className="panel-heading">
-                <h2 className="workflow-title">
-                  <span className="workflow-step">1</span>
-                  Pay Item Entry
-                </h2>
-                <div className="panel-heading-actions">
-                  <button
-                    className="secondary-button matrix-expand-button"
-                    disabled={!selectedProject?.payItems.length || displayedPayItems.length === 0}
-                    onClick={() => setMatrixFullscreenOpen(true)}
-                    type="button"
-                  >
-                    <Maximize2 aria-hidden="true" size={18} />
-                    Expand Matrix
-                  </button>
-                </div>
-              </div>
-              {!selectedProject?.payItems.length ? (
-                <EmptyState title="No pay items returned">This job can still use daily reports and image uploads.</EmptyState>
-              ) : null}
-              {selectedProject?.payItems.length && displayedPayItems.length > 0 ? (
-                <PayItemMatrix
-                  ariaLabel="Pay item entry matrix"
-                  crewMembers={selectedProjectCrewMembers}
-                  dayIsSubmitted={dayIsSubmitted}
-                  draftsByPayItem={draftsByPayItem}
-                  payItems={displayedPayItems}
-                  remainingQuantitiesByPayItem={remainingQuantitiesByPayItem}
-                  savedEntries={visibleEntries}
-                  onCrewHoursChange={updateDraftCrewHours}
-                  onCrewToggle={toggleDraftCrewMember}
-                  onDraftChange={updateDraft}
-                  onSplitEvenly={splitDraftCrewHoursEvenly}
-                />
-              ) : null}
-              {displayedPayItems.length && mobileSelectedPayItem ? (
-                <MobilePayItemEntry
-                  dayIsSubmitted={dayIsSubmitted}
-                  draftsByPayItem={draftsByPayItem}
-                  payItems={displayedPayItems}
-                  remainingQuantity={remainingQuantitiesByPayItem[mobileSelectedPayItem.id] ?? mobileSelectedPayItem.budgetedQuantity}
-                  savedEntries={visibleEntries}
-                  selectedPayItem={mobileSelectedPayItem}
-                  crewMembers={selectedProjectCrewMembers}
-                  onDraftChange={updateDraft}
-                  onCrewHoursChange={updateDraftCrewHours}
-                  onCrewToggle={toggleDraftCrewMember}
-                  onSplitEvenly={splitDraftCrewHoursEvenly}
-                  onSelectedPayItemChange={setMobileSelectedPayItemId}
-                  onCrewEditorClose={scrollPayItemEntryPanelToTop}
-                />
-              ) : null}
-              {selectedProject?.payItems.length ? (
-                <div className="matrix-footer">
-                  <span className="field-note">
-                    {draftEntryCount} row{draftEntryCount === 1 ? "" : "s"} ready to save
-                  </span>
-                  <button
-                    className="secondary-button"
-                    disabled={Object.keys(draftsByPayItem).length === 0 || dayIsSubmitted || savingEntries}
-                    onClick={clearDraftInputs}
-                    type="button"
-                  >
-                    Clear draft inputs
-                  </button>
-                  <button
-                    className="primary-button save-button prominent-action"
-                    disabled={draftEntryCount === 0 || dayIsSubmitted || savingEntries}
-                    onClick={saveAllocationEntries}
-                    type="button"
-                  >
-                    {savingEntries ? <InlineSpinner /> : <Save aria-hidden="true" size={18} />}
-                    {savingEntries ? "Saving..." : "Save entries"}
-                  </button>
-                </div>
-              ) : null}
-              {entryNotice ? <div className={getEntryNoticeClassName(entryNotice)}>{entryNotice}</div> : null}
-            </div>
+            <PayItemEntryPanel
+              crewMembers={selectedProjectCrewMembers}
+              dayIsSubmitted={dayIsSubmitted}
+              displayedPayItems={displayedPayItems}
+              draftEntryCount={draftEntryCount}
+              draftsByPayItem={draftsByPayItem}
+              entryNotice={entryNotice}
+              mobileSelectedPayItem={mobileSelectedPayItem}
+              panelRef={payItemEntryPanelRef}
+              remainingQuantitiesByPayItem={remainingQuantitiesByPayItem}
+              savedEntries={visibleEntries}
+              savingEntries={savingEntries}
+              selectedProject={selectedProject}
+              onClearDraftInputs={clearDraftInputs}
+              onCrewEditorClose={scrollPayItemEntryPanelToTop}
+              onCrewHoursChange={updateDraftCrewHours}
+              onCrewToggle={toggleDraftCrewMember}
+              onDraftChange={updateDraft}
+              onExpandMatrix={() => setMatrixFullscreenOpen(true)}
+              onSaveEntries={saveAllocationEntries}
+              onSelectedPayItemChange={setMobileSelectedPayItemId}
+              onSplitEvenly={splitDraftCrewHoursEvenly}
+            />
 
             <ReviewSubmitPanel
               canManageSubmittedDay={currentUser.role === "admin"}
