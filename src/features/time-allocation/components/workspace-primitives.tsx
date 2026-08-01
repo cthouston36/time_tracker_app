@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { Inbox, LoaderCircle, type LucideIcon } from "lucide-react";
+import { LoaderCircle, type LucideIcon } from "lucide-react";
+import { EmptyState as DesignEmptyState } from "@/features/time-allocation/components/ui";
 
 export function AppLoadingShell() {
   return (
@@ -38,22 +39,14 @@ export function ReportLoadingSkeleton({ rows = 5 }: { rows?: number }) {
 
 export function EmptyState({
   children,
-  icon: Icon = Inbox,
+  icon,
   title
 }: {
   children?: ReactNode;
   icon?: LucideIcon;
   title: string;
 }) {
-  return (
-    <div className="empty-state enhanced-empty-state">
-      <span className="empty-state-icon">
-        <Icon aria-hidden="true" size={20} />
-      </span>
-      <strong>{title}</strong>
-      {children ? <p>{children}</p> : null}
-    </div>
-  );
+  return <DesignEmptyState icon={icon} title={title}>{children}</DesignEmptyState>;
 }
 
 export function InlineSpinner() {

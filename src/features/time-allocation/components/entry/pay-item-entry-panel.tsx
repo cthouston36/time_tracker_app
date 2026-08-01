@@ -1,10 +1,16 @@
 import type { Ref } from "react";
 import { Maximize2, Save } from "lucide-react";
-import { EmptyState, InlineSpinner } from "@/features/time-allocation/components/workspace-primitives";
+import { InlineSpinner } from "@/features/time-allocation/components/workspace-primitives";
 import {
   MobilePayItemEntry,
   PayItemMatrix
 } from "@/features/time-allocation/components/entry/pay-item-entry-matrix";
+import {
+  Button,
+  EmptyState,
+  Panel,
+  PanelHeader
+} from "@/features/time-allocation/components/ui";
 import { getEntryNoticeClassName } from "@/features/time-allocation/lib/notice-helpers";
 import type { CrewMember, DraftsByPayItem } from "@/features/time-allocation/types";
 import type { AllocationEntry, Project } from "@/lib/procore/types";
@@ -60,24 +66,25 @@ export function PayItemEntryPanel({
   const hasDisplayedPayItems = displayedPayItems.length > 0;
 
   return (
-    <div className="panel workflow-panel" ref={panelRef}>
-      <div className="panel-heading">
+    <Panel className="workflow-panel" ref={panelRef}>
+      <PanelHeader
+        actions={
+          <Button
+            className="matrix-expand-button"
+            disabled={payItemCount === 0 || !hasDisplayedPayItems}
+            onClick={onExpandMatrix}
+            variant="secondary"
+          >
+            <Maximize2 aria-hidden="true" size={18} />
+            Expand Matrix
+          </Button>
+        }
+      >
         <h2 className="workflow-title">
           <span className="workflow-step">1</span>
           Pay Item Entry
         </h2>
-        <div className="panel-heading-actions">
-          <button
-            className="secondary-button matrix-expand-button"
-            disabled={payItemCount === 0 || !hasDisplayedPayItems}
-            onClick={onExpandMatrix}
-            type="button"
-          >
-            <Maximize2 aria-hidden="true" size={18} />
-            Expand Matrix
-          </button>
-        </div>
-      </div>
+      </PanelHeader>
       {payItemCount === 0 ? (
         <EmptyState title="No pay items returned">This job can still use daily reports and image uploads.</EmptyState>
       ) : null}
@@ -118,26 +125,26 @@ export function PayItemEntryPanel({
           <span className="field-note">
             {draftEntryCount} row{draftEntryCount === 1 ? "" : "s"} ready to save
           </span>
-          <button
-            className="secondary-button"
+          <Button
             disabled={Object.keys(draftsByPayItem).length === 0 || dayIsSubmitted || savingEntries}
             onClick={onClearDraftInputs}
-            type="button"
+            variant="secondary"
           >
             Clear draft inputs
-          </button>
-          <button
-            className="primary-button save-button prominent-action"
+          </Button>
+          <Button
+            className="save-button"
             disabled={draftEntryCount === 0 || dayIsSubmitted || savingEntries}
             onClick={onSaveEntries}
-            type="button"
+            prominent
+            variant="primary"
           >
             {savingEntries ? <InlineSpinner /> : <Save aria-hidden="true" size={18} />}
             {savingEntries ? "Saving..." : "Save entries"}
-          </button>
+          </Button>
         </div>
       ) : null}
       {entryNotice ? <div className={getEntryNoticeClassName(entryNotice)}>{entryNotice}</div> : null}
-    </div>
+    </Panel>
   );
 }

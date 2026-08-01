@@ -162,6 +162,36 @@ summary:focus-visible,
   white-space: nowrap;
 }
 
+.status-pill-neutral {
+  background: var(--panel-soft);
+  border-color: var(--line);
+  color: var(--muted);
+}
+
+.status-pill-info {
+  background: #102735;
+  border-color: #2f6f78;
+  color: #d8f3f6;
+}
+
+.status-pill-success {
+  background: #0f2c22;
+  border-color: #245f45;
+  color: var(--success);
+}
+
+.status-pill-warning {
+  background: var(--warning-bg);
+  border-color: var(--warning-line);
+  color: var(--warning-text);
+}
+
+.status-pill-error {
+  background: #351718;
+  border-color: #7f2e34;
+  color: #ffd6d9;
+}
+
 .header-actions {
   align-items: center;
   display: flex;
@@ -972,6 +1002,59 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .compact-button {
   min-height: 34px;
   padding: 6px 10px;
+}
+
+.data-table {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: auto;
+}
+
+.drawer {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.drawer > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 12px;
+}
+
+.drawer > summary::-webkit-details-marker {
+  display: none;
+}
+
+.drawer-body {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.confirm-dialog {
+  max-width: 520px;
+}
+
+.confirm-dialog-body {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.toast {
+  overflow-wrap: anywhere;
+}
+
+.combobox-field,
+.date-field {
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--foreground);
+  min-height: 42px;
+  padding: 9px 10px;
+  width: 100%;
 }
 
 .daily-report-grid {
