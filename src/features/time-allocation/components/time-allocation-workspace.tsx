@@ -57,7 +57,6 @@ import {
 } from "@/features/time-allocation/components/entry/pay-item-entry-matrix";
 import { SubmittedDayReview } from "@/features/time-allocation/components/entry/submitted-day-review";
 import {
-  addDatabaseCrewMemberToProject,
   clearDatabaseProjectCache,
   clearDatabaseStagingOperationalData,
   loadDatabaseCrewData,
@@ -65,14 +64,10 @@ import {
   loadDatabaseDayRecords,
   loadDatabaseEntries,
   loadDatabaseProjectControls,
-  mergeDatabaseCrewMembers,
   readApiJson,
-  removeDatabaseCrewMemberFromProject,
-  saveDatabaseEntries,
   saveDatabaseMyJobs,
   saveDatabaseProjectArchive,
-  saveDatabaseProjectBlacklist,
-  updateDatabaseCrewMember
+  saveDatabaseProjectBlacklist
 } from "@/features/time-allocation/lib/api-client";
 import {
   filterDailyReportsByProjectIds,
@@ -82,9 +77,7 @@ import {
 import { openDatePicker } from "@/features/time-allocation/lib/browser-actions";
 import { exportEntriesToCsv } from "@/features/time-allocation/lib/entry-csv-export";
 import {
-  buildCrewDirectoryFromProjects,
   buildSharedAppState,
-  mergeCrewDirectories,
   normalizeSharedAppState,
   readLocalSharedAppState,
   writeLocalSharedAppState
@@ -134,15 +127,8 @@ import {
   formatEntryCrew,
   formatNetSuiteVendorOption,
   getCrewDisplayName,
-  getCrewLaborType,
   getExistingDraft,
-  getNetSuiteVendorCrewMemberId,
-  mergeDraftCrewMembers,
-  mergeEntryCrewAllocations,
-  mergeProjectCrewMembers,
-  normalizeCrewName,
   normalizeDraftCrewHours,
-  projectHasCrewMember,
   sortCrewMembersByName,
   splitCrewHoursEvenly
 } from "@/features/time-allocation/lib/crew-entry-helpers";
@@ -157,8 +143,6 @@ import type {
   ProcoreStatusResponse
 } from "@/features/time-allocation/lib/workspace-api-types";
 import type {
-  CrewMember,
-  CrewMembersByProject,
   DayEntryNotesByKey,
   DaySubmission,
   DaySubmissionsByKey,
@@ -172,6 +156,7 @@ import type {
 import { useNetworkStatus } from "@/features/time-allocation/hooks/use-network-status";
 import { useAdminUserManagement } from "@/features/time-allocation/hooks/use-admin-user-management";
 import { useAuthForms } from "@/features/time-allocation/hooks/use-auth-forms";
+import { useCrewManagement } from "@/features/time-allocation/hooks/use-crew-management";
 import { useDailyReports } from "@/features/time-allocation/hooks/use-daily-reports";
 import { useEntryActions } from "@/features/time-allocation/hooks/use-entry-actions";
 import { useFieldProjectAssignments } from "@/features/time-allocation/hooks/use-field-project-assignments";
@@ -180,15 +165,7 @@ import { useNetSuiteVendors } from "@/features/time-allocation/hooks/use-netsuit
 import { useProjectSync } from "@/features/time-allocation/hooks/use-project-sync";
 import { WeeklyStatusReport } from "@/features/time-allocation/components/dashboard/weekly-status-report";
 import { AdminToolsDrawer } from "@/features/time-allocation/components/admin/admin-tools";
-import type { AllocationEntry, CrewLaborType, Project } from "@/lib/procore/types";
-
-type EditingCrewMember = {
-  crewMemberId: string;
-  laborType: CrewLaborType;
-  name: string;
-  jobTitle: string;
-  subcontractorCompany: string;
-};
+import type { AllocationEntry, Project } from "@/lib/procore/types";
 
 export function TimeAllocationWorkspace() {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
@@ -217,16 +194,7 @@ export function TimeAllocationWorkspace() {
   const [dayEntryNotesByKey, setDayEntryNotesByKey] = useState<DayEntryNotesByKey>({});
   const [mobileInstallPromptVisible, setMobileInstallPromptVisible] = useState(false);
   const [myJobsByUser, setMyJobsByUser] = useState<MyJobsByUser>({});
-  const [crewDirectory, setCrewDirectory] = useState<CrewMember[]>([]);
-  const [crewMembersByProject, setCrewMembersByProject] = useState<CrewMembersByProject>({});
-  const [crewMemberName, setCrewMemberName] = useState("");
-  const [crewMemberJobTitle, setCrewMemberJobTitle] = useState("");
-  const [crewMemberLaborType, setCrewMemberLaborType] = useState<CrewLaborType>(DEFAULT_CREW_LABOR_TYPE);
-  const [selectedExistingCrewMemberId, setSelectedExistingCrewMemberId] = useState("");
-  const [mergeSourceCrewMemberId, setMergeSourceCrewMemberId] = useState("");
-  const [mergeTargetCrewMemberId, setMergeTargetCrewMemberId] = useState("");
   const [draftsByPayItem, setDraftsByPayItem] = useState<DraftsByPayItem>({});
-  const [editingCrewMember, setEditingCrewMember] = useState<EditingCrewMember | null>(null);
   const [connectionStatus, setConnectionStatus] = useState("Mock data active");
   const [projectLoadError, setProjectLoadError] = useState("");
   const [entryNotice, setEntryNotice] = useState("");
@@ -371,6 +339,47 @@ export function TimeAllocationWorkspace() {
   );
   const selectedProjectUsesTwoSeriesDailyReport = isTwoSeriesProject(selectedProject);
   const selectedProjectUsesPayItems = Boolean(selectedProject && !selectedProjectUsesTwoSeriesDailyReport);
+  const {
+    addCrewMember,
+    addExistingCrewMemberToProject,
+    addSubcontractorVendorToProject,
+    cancelEditingCrewMember,
+    clearCrewForms,
+    crewDirectory,
+    crewMemberJobTitle,
+    crewMemberLaborType,
+    crewMemberName,
+    crewMembersByProject,
+    editingCrewMember,
+    existingCrewMemberOptions,
+    mergeCrewMembers,
+    mergeSourceCrewMemberId,
+    mergeTargetCrewMemberId,
+    removeCrewMember,
+    replaceCrewData,
+    resetCrewManagementState,
+    saveEditedCrewMember,
+    selectedExistingCrewMemberId,
+    selectedProjectCrewMembers,
+    setCrewMemberJobTitle,
+    setCrewMemberLaborType,
+    setCrewMemberName,
+    setMergeSourceCrewMemberId,
+    setMergeTargetCrewMemberId,
+    setSelectedExistingCrewMemberId,
+    startEditingCrewMember,
+    updateEditingCrewMember
+  } = useCrewManagement({
+    clearSubcontractorVendorSelection,
+    currentUser,
+    entries,
+    filteredSubcontractorVendors,
+    selectedProject,
+    selectedSubcontractorVendor,
+    setDraftsByPayItem,
+    setEntries,
+    setEntryNotice
+  });
   const selectedProjectEntries = useMemo(
     () => entries.filter((entry) => entry.projectId === selectedProject?.id),
     [entries, selectedProject?.id]
@@ -394,12 +403,6 @@ export function TimeAllocationWorkspace() {
       null,
     [displayedPayItems, mobileSelectedPayItemId]
   );
-  const selectedProjectCrewMembers = selectedProject
-    ? sortCrewMembersByName(crewMembersByProject[selectedProject.id] ?? [])
-    : [];
-  const existingCrewMemberOptions = selectedProject
-    ? crewDirectory.filter((member) => !projectHasCrewMember(selectedProjectCrewMembers, member.id))
-    : [];
   const crewSummaryRows = buildCrewSummary(visibleEntries, selectedProjectCrewMembers);
   const currentDaySubmission: DaySubmission = selectedProject
     ? daySubmissions[getDayKey(selectedProject.id, workDate)] ?? { status: "draft" }
@@ -598,18 +601,12 @@ export function TimeAllocationWorkspace() {
         dailyReportsByKey: normalizedState.dailyReportsByKey
       });
       replaceSyncLog(normalizedState.syncLog);
-      setCrewMembersByProject(normalizedState.crewMembersByProject);
-      setCrewDirectory(
-        mergeCrewDirectories(
-          normalizedState.crewDirectory,
-          buildCrewDirectoryFromProjects(normalizedState.crewMembersByProject)
-        )
-      );
+      replaceCrewData(normalizedState.crewDirectory, normalizedState.crewMembersByProject);
       setMyJobsByUser(normalizedState.myJobsByUser);
       setProjectArchiveById(normalizedState.projectArchiveById);
       setProjectBlacklistById(normalizedState.projectBlacklistById);
     },
-    [replaceDailyReportData, replaceSyncLog]
+    [replaceCrewData, replaceDailyReportData, replaceSyncLog]
   );
 
   useEffect(() => {
@@ -682,12 +679,7 @@ export function TimeAllocationWorkspace() {
   function clearTransientEntryState() {
     setMobileSelectedPayItemId("");
     cancelEditingEntry();
-    setEditingCrewMember(null);
-    setCrewMemberName("");
-    setCrewMemberJobTitle("");
-    setCrewMemberLaborType(DEFAULT_CREW_LABOR_TYPE);
-    clearSubcontractorVendorSelection();
-    setSelectedExistingCrewMemberId("");
+    clearCrewForms();
     setDraftsByPayItem({});
     clearJobImageQueue();
     clearDailyReportDraftForCurrentContext();
@@ -857,7 +849,7 @@ export function TimeAllocationWorkspace() {
         setSelectedProjectId("");
         setMobileSelectedPayItemId("");
         cancelEditingEntry();
-        setEditingCrewMember(null);
+        clearCrewForms();
         setDraftsByPayItem({});
       }
       return;
@@ -867,10 +859,10 @@ export function TimeAllocationWorkspace() {
       setSelectedProjectId(projects[0].id);
       setMobileSelectedPayItemId("");
       cancelEditingEntry();
-      setEditingCrewMember(null);
+      clearCrewForms();
       setDraftsByPayItem({});
     }
-  }, [cancelEditingEntry, currentUser, projects, selectedProjectId]);
+  }, [cancelEditingEntry, clearCrewForms, currentUser, projects, selectedProjectId]);
 
   useEffect(() => {
     if (!currentUser || jobPickerProjects.length === 0) {
@@ -881,10 +873,10 @@ export function TimeAllocationWorkspace() {
       setSelectedProjectId(jobPickerProjects[0].id);
       setMobileSelectedPayItemId("");
       cancelEditingEntry();
-      setEditingCrewMember(null);
+      clearCrewForms();
       setDraftsByPayItem({});
     }
-  }, [cancelEditingEntry, currentUser, jobPickerProjects, selectedProjectId]);
+  }, [cancelEditingEntry, clearCrewForms, currentUser, jobPickerProjects, selectedProjectId]);
 
   useEffect(() => {
     if (currentUserMyJobIds.length === 0 && showOnlyMyProjects) {
@@ -1129,15 +1121,7 @@ export function TimeAllocationWorkspace() {
     setMyJobsByUser({});
     setProjectArchiveById({});
     setProjectBlacklistById({});
-    setCrewDirectory([]);
-    setCrewMembersByProject({});
-    setCrewMemberName("");
-    setCrewMemberJobTitle("");
-    setCrewMemberLaborType(DEFAULT_CREW_LABOR_TYPE);
-    setSelectedExistingCrewMemberId("");
-    setMergeSourceCrewMemberId("");
-    setMergeTargetCrewMemberId("");
-    setEditingCrewMember(null);
+    resetCrewManagementState();
     setViewMode("dashboard");
   }
 
@@ -1176,16 +1160,7 @@ export function TimeAllocationWorkspace() {
       setDaySubmissions({});
       setDayEntryNotesByKey({});
       resetDailyReportState({ clearAutosaves: true });
-      setCrewDirectory([]);
-      setCrewMembersByProject({});
-      setCrewMemberName("");
-      setCrewMemberJobTitle("");
-      setCrewMemberLaborType(DEFAULT_CREW_LABOR_TYPE);
-      clearSubcontractorVendorSelection();
-      setSelectedExistingCrewMemberId("");
-      setMergeSourceCrewMemberId("");
-      setMergeTargetCrewMemberId("");
-      setEditingCrewMember(null);
+      resetCrewManagementState();
       cancelEditingEntry();
       setDraftsByPayItem({});
       setEntryNotice("Staging daily entry, daily report, and crew data cleared.");
@@ -1342,7 +1317,7 @@ export function TimeAllocationWorkspace() {
     setViewMode("entry");
     setMobileSelectedPayItemId("");
     cancelEditingEntry();
-    setEditingCrewMember(null);
+    clearCrewForms();
     setDraftsByPayItem({});
   }
 
@@ -1378,356 +1353,6 @@ export function TimeAllocationWorkspace() {
         })
       };
     });
-  }
-
-  function addCrewMember() {
-    if (!selectedProject) {
-      return;
-    }
-
-    const name = crewMemberName.trim();
-    const jobTitle = crewMemberJobTitle.trim();
-    const laborType = crewMemberLaborType === "temp_employee" ? "temp_employee" : DEFAULT_CREW_LABOR_TYPE;
-
-    if (!name || !jobTitle) {
-      setEntryNotice("Enter both crew member name and job title.");
-      return;
-    }
-
-    const matchingCrewMember = crewDirectory.find((member) => normalizeCrewName(member.name) === normalizeCrewName(name));
-
-    if (matchingCrewMember) {
-      setEntryNotice(`A crew member named ${matchingCrewMember.name} already exists. Select them from existing crew instead.`);
-      return;
-    }
-
-    const crewMember = {
-      id: crypto.randomUUID(),
-      laborType,
-      name,
-      jobTitle
-    };
-
-    setCrewDirectory((current) => sortCrewMembersByName([...current, crewMember]));
-    setCrewMembersByProject((current) => ({
-      ...current,
-      [selectedProject.id]: [
-        ...(current[selectedProject.id] ?? []),
-        crewMember
-      ]
-    }));
-    void addDatabaseCrewMemberToProject(selectedProject.id, crewMember).catch((error) => {
-      setEntryNotice(error instanceof Error ? error.message : "Crew member added locally, but did not sync.");
-    });
-    setCrewMemberName("");
-    setCrewMemberJobTitle("");
-    setCrewMemberLaborType(DEFAULT_CREW_LABOR_TYPE);
-    clearSubcontractorVendorSelection();
-    setSelectedExistingCrewMemberId("");
-    setEditingCrewMember(null);
-    setEntryNotice(`${name} added to ${selectedProject.name}.`);
-  }
-
-  function addSubcontractorVendorToProject() {
-    if (!selectedProject) {
-      return;
-    }
-
-    const vendor =
-      selectedSubcontractorVendor ??
-      (filteredSubcontractorVendors.length === 1 ? filteredSubcontractorVendors[0] : null);
-
-    if (!vendor) {
-      setEntryNotice("Select a NetSuite vendor to add as a subcontractor.");
-      return;
-    }
-
-    const companyName = vendor.name.trim();
-    const vendorCrewMemberId = getNetSuiteVendorCrewMemberId(vendor.id);
-    const matchingSubcontractor = crewDirectory.find(
-      (member) =>
-        getCrewLaborType(member) === "subcontractor" &&
-        (member.id === vendorCrewMemberId ||
-          member.netSuiteVendorId === vendor.id ||
-          normalizeCrewName(getCrewDisplayName(member)) === normalizeCrewName(companyName))
-    );
-
-    const crewMember = {
-      ...(matchingSubcontractor ?? {}),
-      id: matchingSubcontractor?.id ?? vendorCrewMemberId,
-      laborType: "subcontractor" as CrewLaborType,
-      name: companyName,
-      jobTitle: "Subcontractor",
-      netSuiteVendorEntityId: vendor.entityId,
-      netSuiteVendorId: vendor.id,
-      subcontractorCompany: companyName
-    };
-
-    const alreadyOnProject = projectHasCrewMember(selectedProjectCrewMembers, crewMember.id);
-
-    setCrewDirectory((current) =>
-      sortCrewMembersByName(
-        current.some((member) => member.id === crewMember.id)
-          ? current.map((member) => (member.id === crewMember.id ? crewMember : member))
-          : [...current, crewMember]
-      )
-    );
-    setCrewMembersByProject((current) => ({
-      ...current,
-      [selectedProject.id]: alreadyOnProject
-        ? sortCrewMembersByName(
-            (current[selectedProject.id] ?? []).map((member) => (member.id === crewMember.id ? crewMember : member))
-          )
-        : sortCrewMembersByName([...(current[selectedProject.id] ?? []), crewMember])
-    }));
-    void addDatabaseCrewMemberToProject(selectedProject.id, crewMember).catch((error) => {
-      setEntryNotice(error instanceof Error ? error.message : "Subcontractor added locally, but did not sync.");
-    });
-    clearSubcontractorVendorSelection();
-    setSelectedExistingCrewMemberId("");
-    setEditingCrewMember(null);
-    setEntryNotice(
-      alreadyOnProject ? `${companyName} is already saved to this job.` : `${companyName} added to ${selectedProject.name}.`
-    );
-  }
-
-  function addExistingCrewMemberToProject() {
-    if (!selectedProject || !selectedExistingCrewMemberId) {
-      return;
-    }
-
-    const crewMember = crewDirectory.find((member) => member.id === selectedExistingCrewMemberId);
-
-    if (!crewMember) {
-      setEntryNotice("Select an existing crew member to add.");
-      return;
-    }
-
-    if (projectHasCrewMember(selectedProjectCrewMembers, crewMember.id)) {
-      setEntryNotice(`${getCrewDisplayName(crewMember)} is already saved to this job.`);
-      return;
-    }
-
-    setCrewMembersByProject((current) => ({
-      ...current,
-      [selectedProject.id]: sortCrewMembersByName([...(current[selectedProject.id] ?? []), crewMember])
-    }));
-    void addDatabaseCrewMemberToProject(selectedProject.id, crewMember).catch((error) => {
-      setEntryNotice(error instanceof Error ? error.message : "Crew member added locally, but did not sync.");
-    });
-    setSelectedExistingCrewMemberId("");
-    setEntryNotice(`${getCrewDisplayName(crewMember)} added to ${selectedProject.name}.`);
-  }
-
-  function startEditingCrewMember(member: CrewMember) {
-    setEntryNotice("");
-    const laborType = getCrewLaborType(member);
-    const displayName = getCrewDisplayName(member);
-
-    setEditingCrewMember({
-      crewMemberId: member.id,
-      laborType,
-      name: displayName,
-      jobTitle: laborType === "subcontractor" ? "Subcontractor" : member.jobTitle,
-      subcontractorCompany: laborType === "subcontractor" ? displayName : ""
-    });
-  }
-
-  function saveEditedCrewMember() {
-    if (!selectedProject || !editingCrewMember) {
-      return;
-    }
-
-    const laborType = editingCrewMember.laborType;
-    const subcontractorCompany = laborType === "subcontractor" ? editingCrewMember.subcontractorCompany.trim() : "";
-    const name = laborType === "subcontractor" ? subcontractorCompany : editingCrewMember.name.trim();
-    const jobTitle = laborType === "subcontractor" ? "Subcontractor" : editingCrewMember.jobTitle.trim();
-
-    if (!name || !jobTitle) {
-      setEntryNotice(laborType === "subcontractor" ? "Enter the subcontractor company name." : "Enter both crew member name and job title.");
-      return;
-    }
-
-    const matchingCrewMember = crewDirectory.find(
-      (member) =>
-        member.id !== editingCrewMember.crewMemberId &&
-        normalizeCrewName(getCrewDisplayName(member)) === normalizeCrewName(name)
-    );
-
-    if (matchingCrewMember) {
-      setEntryNotice(`A crew member or subcontractor named ${getCrewDisplayName(matchingCrewMember)} already exists. Use that existing record instead.`);
-      return;
-    }
-
-    setCrewDirectory((current) =>
-      sortCrewMembersByName(
-        current.map((member) =>
-          member.id === editingCrewMember.crewMemberId
-            ? {
-                ...member,
-                laborType,
-                name,
-                jobTitle,
-                subcontractorCompany: subcontractorCompany || undefined
-              }
-            : member
-        )
-      )
-    );
-    setCrewMembersByProject((current) =>
-      Object.fromEntries(
-        Object.entries(current).map(([projectId, crewMembers]) => [
-          projectId,
-          sortCrewMembersByName(
-            crewMembers.map((member) =>
-              member.id === editingCrewMember.crewMemberId
-                ? {
-                    ...member,
-                    laborType,
-                    name,
-                    jobTitle,
-                    subcontractorCompany: subcontractorCompany || undefined
-                  }
-                : member
-            )
-          )
-        ])
-      ) as CrewMembersByProject
-    );
-    const originalCrewMember = crewDirectory.find((member) => member.id === editingCrewMember.crewMemberId);
-    const updatedCrewMember = {
-      ...(originalCrewMember ?? {}),
-      id: editingCrewMember.crewMemberId,
-      laborType,
-      name,
-      jobTitle,
-      subcontractorCompany: subcontractorCompany || undefined
-    };
-    const nextEntries = entries.map((entry) => {
-      if (!entry.crewAllocations?.length) {
-        return entry;
-      }
-
-      let entryChanged = false;
-      const crewAllocations = entry.crewAllocations.map((allocation) => {
-        if (allocation.crewMemberId !== editingCrewMember.crewMemberId) {
-          return allocation;
-        }
-
-        entryChanged = true;
-        return {
-          ...allocation,
-          crewMemberName: name,
-          jobTitle,
-          laborType,
-          subcontractorCompany: subcontractorCompany || undefined
-        };
-      });
-
-      if (!entryChanged) {
-        return entry;
-      }
-
-      return {
-        ...entry,
-        crewAllocations
-      };
-    });
-    const changedEntries = nextEntries.filter((entry, index) => entry !== entries[index]);
-
-    setEntries(nextEntries);
-    void updateDatabaseCrewMember(updatedCrewMember).catch((error) => {
-      setEntryNotice(error instanceof Error ? error.message : "Crew member updated locally, but did not sync.");
-    });
-    if (changedEntries.length > 0) {
-      void saveDatabaseEntries(changedEntries).catch((error) => {
-        setEntryNotice(error instanceof Error ? error.message : "Crew member updated locally, but saved entry rows did not sync.");
-      });
-    }
-    setEditingCrewMember(null);
-    setEntryNotice(`${name} updated across saved days.`);
-  }
-
-  function removeCrewMember(crewMemberId: string) {
-    if (!selectedProject) {
-      return;
-    }
-
-    if (crewMemberHasSavedAllocations(crewMemberId, selectedProject.id, entries)) {
-      setEntryNotice("Crew member is already assigned to saved pay item hours and cannot be deleted.");
-      return;
-    }
-
-    setCrewMembersByProject((current) => ({
-      ...current,
-      [selectedProject.id]: (current[selectedProject.id] ?? []).filter((member) => member.id !== crewMemberId)
-    }));
-    void removeDatabaseCrewMemberFromProject(selectedProject.id, crewMemberId).catch((error) => {
-      setEntryNotice(error instanceof Error ? error.message : "Crew member removed locally, but did not sync.");
-    });
-    setDraftsByPayItem((current) =>
-      Object.fromEntries(
-        Object.entries(current).map(([payItemId, draft]) => [
-          payItemId,
-          {
-            ...draft,
-            crewMemberIds: draft.crewMemberIds.filter((id) => id !== crewMemberId),
-            crewHours: Object.fromEntries(
-              Object.entries(draft.crewHours).filter(([id]) => id !== crewMemberId)
-            )
-          }
-        ])
-      )
-    );
-    setEditingCrewMember((current) => (current?.crewMemberId === crewMemberId ? null : current));
-  }
-
-  function mergeCrewMembers() {
-    if (currentUser?.role !== "admin") {
-      return;
-    }
-
-    const sourceCrewMember = crewDirectory.find((member) => member.id === mergeSourceCrewMemberId);
-    const targetCrewMember = crewDirectory.find((member) => member.id === mergeTargetCrewMemberId);
-
-    if (!sourceCrewMember || !targetCrewMember) {
-      setEntryNotice("Select both crew members before merging.");
-      return;
-    }
-
-    if (sourceCrewMember.id === targetCrewMember.id) {
-      setEntryNotice("Select two different crew members before merging.");
-      return;
-    }
-
-    const confirmed = window.confirm(
-      `Merge ${getCrewDisplayName(sourceCrewMember)} into ${getCrewDisplayName(targetCrewMember)}? This updates saved entries, reports, project crew lists, and draft allocations.`
-    );
-
-    if (!confirmed) {
-      return;
-    }
-
-    const nextEntries = entries.map((entry) => mergeEntryCrewAllocations(entry, sourceCrewMember.id, targetCrewMember));
-    const changedEntries = nextEntries.filter((entry, index) => entry !== entries[index]);
-
-    setCrewDirectory((current) => current.filter((member) => member.id !== sourceCrewMember.id));
-    setCrewMembersByProject((current) => mergeProjectCrewMembers(current, sourceCrewMember.id, targetCrewMember));
-    setEntries(nextEntries);
-    void mergeDatabaseCrewMembers(sourceCrewMember.id, targetCrewMember).catch((error) => {
-      setEntryNotice(error instanceof Error ? error.message : "Crew members merged locally, but crew records did not sync.");
-    });
-    if (changedEntries.length > 0) {
-      void saveDatabaseEntries(changedEntries).catch((error) => {
-        setEntryNotice(error instanceof Error ? error.message : "Crew members merged locally, but saved entry rows did not sync.");
-      });
-    }
-    setDraftsByPayItem((current) => mergeDraftCrewMembers(current, sourceCrewMember.id, targetCrewMember.id));
-    setSelectedExistingCrewMemberId((current) => (current === sourceCrewMember.id ? "" : current));
-    setEditingCrewMember((current) => (current?.crewMemberId === sourceCrewMember.id ? null : current));
-    setMergeSourceCrewMemberId("");
-    setMergeTargetCrewMemberId(targetCrewMember.id);
-    setEntryNotice(`${getCrewDisplayName(sourceCrewMember)} merged into ${getCrewDisplayName(targetCrewMember)}.`);
   }
 
   function toggleDraftCrewMember(payItemId: string, crewMemberId: string, checked: boolean) {
@@ -2454,44 +2079,27 @@ export function TimeAllocationWorkspace() {
                                   aria-label={`Edit company name for ${getCrewDisplayName(member)}`}
                                   placeholder="Company name"
                                   value={editingCrewMember.subcontractorCompany}
-                                  onChange={(event) =>
-                                    setEditingCrewMember((current) =>
-                                      current ? { ...current, subcontractorCompany: event.target.value } : current
-                                    )
-                                  }
+                                  onChange={(event) => updateEditingCrewMember("subcontractorCompany", event.target.value)}
                                 />
                               ) : (
                                 <>
                                   <input
                                     aria-label={`Edit name for ${getCrewDisplayName(member)}`}
                                     value={editingCrewMember.name}
-                                    onChange={(event) =>
-                                      setEditingCrewMember((current) =>
-                                        current ? { ...current, name: event.target.value } : current
-                                      )
-                                    }
+                                    onChange={(event) => updateEditingCrewMember("name", event.target.value)}
                                   />
                                   <input
                                     aria-label={`Edit job title for ${getCrewDisplayName(member)}`}
                                     value={editingCrewMember.jobTitle}
-                                    onChange={(event) =>
-                                      setEditingCrewMember((current) =>
-                                        current ? { ...current, jobTitle: event.target.value } : current
-                                      )
-                                    }
+                                    onChange={(event) => updateEditingCrewMember("jobTitle", event.target.value)}
                                   />
                                   <select
                                     aria-label={`Edit temp employee status for ${getCrewDisplayName(member)}`}
                                     value={editingCrewMember.laborType === "temp_employee" ? "yes" : "no"}
                                     onChange={(event) =>
-                                      setEditingCrewMember((current) =>
-                                        current
-                                          ? {
-                                              ...current,
-                                              laborType:
-                                                event.target.value === "yes" ? "temp_employee" : DEFAULT_CREW_LABOR_TYPE
-                                            }
-                                          : current
+                                      updateEditingCrewMember(
+                                        "laborType",
+                                        event.target.value === "yes" ? "temp_employee" : DEFAULT_CREW_LABOR_TYPE
                                       )
                                     }
                                   >
@@ -2504,7 +2112,7 @@ export function TimeAllocationWorkspace() {
                                 <button className="secondary-button" onClick={saveEditedCrewMember} type="button">
                                   Save
                                 </button>
-                                <button className="icon-button" onClick={() => setEditingCrewMember(null)} type="button">
+                                <button className="icon-button" onClick={cancelEditingCrewMember} type="button">
                                   <X aria-hidden="true" size={16} />
                                 </button>
                               </div>
