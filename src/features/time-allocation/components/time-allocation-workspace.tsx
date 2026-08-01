@@ -1,18 +1,12 @@
 "use client";
 
-import NextImage from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  BarChart3,
   CalendarDays,
   ChevronDown,
-  CheckCircle2,
   Download,
   Edit3,
   ExternalLink,
-  KeyRound,
-  LayoutDashboard,
-  LogOut,
   Maximize2,
   RotateCcw,
   Save,
@@ -21,7 +15,6 @@ import {
   UploadCloud,
   X
 } from "lucide-react";
-import { IconLabel } from "@/components/icon-label";
 import { todayInputValue } from "@/lib/date";
 import { canAccessReports, getAccessibleProjectsForUser } from "@/lib/auth/project-access";
 import type { AuthUser } from "@/lib/auth/types";
@@ -35,6 +28,7 @@ import {
 import { DailyStatusStrip } from "@/features/time-allocation/components/daily-status-strip";
 import { ChangePasswordModal } from "@/features/time-allocation/components/change-password-modal";
 import { JobSetupSidebar } from "@/features/time-allocation/components/job-setup-sidebar";
+import { WorkspaceHeader } from "@/features/time-allocation/components/workspace-header";
 import {
   MobileInstallPrompt,
   NetworkStatusBanner
@@ -96,11 +90,7 @@ import {
   formatPayItemUnitOfMeasure
 } from "@/features/time-allocation/lib/pay-item-helpers";
 import { getEntryNoticeClassName } from "@/features/time-allocation/lib/notice-helpers";
-import {
-  formatRole,
-  formatUserName,
-  getDefaultViewModeForUser
-} from "@/features/time-allocation/lib/auth-ui-helpers";
+import { getDefaultViewModeForUser } from "@/features/time-allocation/lib/auth-ui-helpers";
 import {
   formatFileSize,
   formatJobImageQueueStatus,
@@ -1559,93 +1549,15 @@ export function TimeAllocationWorkspace() {
 
   return (
     <main className="app-shell">
-      <header className="top-bar">
-        <div className="brand-block">
-          <NextImage
-            alt="Chinchor Electric Inc."
-            className="brand-logo"
-            height={908}
-            priority
-            src="/chinchor-logo.png"
-            width={3310}
-          />
-          <div className="brand-copy">
-            <h1>Crew Time Allocation</h1>
-          </div>
-        </div>
-        <nav className="primary-nav" aria-label="Primary navigation">
-          {userCanAccessDashboard ? (
-            <button
-              className={viewMode === "dashboard" ? "tab-button active" : "tab-button"}
-              onClick={() => changeViewMode("dashboard")}
-              type="button"
-            >
-              <LayoutDashboard aria-hidden="true" size={16} />
-              Dashboard
-            </button>
-          ) : null}
-          <button
-            className={viewMode === "entry" ? "tab-button active" : "tab-button"}
-            onClick={() => changeViewMode("entry")}
-            type="button"
-          >
-            <Edit3 aria-hidden="true" size={16} />
-            Entry
-          </button>
-          {canAccessReports(currentUser) ? (
-            <button
-              className={viewMode === "reports" ? "tab-button active" : "tab-button"}
-              onClick={() => changeViewMode("reports")}
-              type="button"
-            >
-              <BarChart3 aria-hidden="true" size={16} />
-              Reports
-            </button>
-          ) : null}
-        </nav>
-        <div className="header-actions">
-          <details className="desktop-header-menu">
-            <summary>
-              <span>
-                <strong>{formatUserName(currentUser)}</strong>
-                <small>{formatRole(currentUser.role)}</small>
-              </span>
-              <ChevronDown aria-hidden="true" size={18} />
-            </summary>
-            <div className="desktop-header-menu-body">
-              <IconLabel icon={CheckCircle2} text={connectionStatus} />
-              <button className="secondary-button" onClick={openChangePasswordModal} type="button">
-                <KeyRound aria-hidden="true" size={18} />
-                Change Password
-              </button>
-              <button className="secondary-button" onClick={logout} type="button">
-                <LogOut aria-hidden="true" size={18} />
-                Sign out
-              </button>
-            </div>
-          </details>
-        </div>
-        <details className="mobile-header-menu">
-          <summary>
-            <span>
-              <strong>{formatUserName(currentUser)}</strong>
-              <small>{formatRole(currentUser.role)}</small>
-            </span>
-            <ChevronDown aria-hidden="true" size={18} />
-          </summary>
-          <div className="mobile-header-menu-body">
-            <IconLabel icon={CheckCircle2} text={connectionStatus} />
-            <button className="secondary-button" onClick={openChangePasswordModal} type="button">
-              <KeyRound aria-hidden="true" size={18} />
-              Change Password
-            </button>
-            <button className="secondary-button" onClick={logout} type="button">
-              <LogOut aria-hidden="true" size={18} />
-              Sign out
-            </button>
-          </div>
-        </details>
-      </header>
+      <WorkspaceHeader
+        connectionStatus={connectionStatus}
+        currentUser={currentUser}
+        userCanAccessDashboard={userCanAccessDashboard}
+        viewMode={viewMode}
+        onChangePassword={openChangePasswordModal}
+        onChangeViewMode={changeViewMode}
+        onLogout={logout}
+      />
 
       {changePasswordOpen ? (
         <ChangePasswordModal
