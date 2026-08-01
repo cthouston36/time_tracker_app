@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requestUserCanAccessProjectId } from "@/lib/auth/project-access-server";
 import { getCurrentUser } from "@/lib/auth/session";
 import { buildDailyReportPdf, buildDailyReportPdfFileName, type DailyReportPdfPayload } from "@/lib/daily-report-pdf";
-import { getProjects } from "@/lib/procore/projects";
+import { getProjects } from "@/lib/project-catalog/projects";
 
 export const runtime = "nodejs";
 

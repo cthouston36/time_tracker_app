@@ -13,7 +13,7 @@ import {
 } from "@/features/time-allocation/components/ui";
 import { getEntryNoticeClassName } from "@/features/time-allocation/lib/notice-helpers";
 import type { CrewMember, DraftsByPayItem } from "@/features/time-allocation/types";
-import type { AllocationEntry, Project } from "@/lib/procore/types";
+import type { AllocationEntry, Project } from "@/lib/domain/types";
 
 type PayItem = Project["payItems"][number];
 

@@ -1,5 +1,5 @@
 import type { AuthUser } from "@/lib/auth/types";
-import type { AllocationEntry } from "@/lib/procore/types";
+import type { AllocationEntry } from "@/lib/domain/types";
 import type {
   CrewMember,
   CrewMembersByProject,
@@ -87,9 +87,12 @@ type AdminClearStagingDataResponse = {
   ok?: boolean;
 };
 
-type AdminClearProjectCacheResponse = {
+type AdminClearProjectCatalogResponse = {
   cleared?: {
     appSettings: number;
+    legacyPayItems: number;
+    legacyProjects: number;
+    legacySyncState: number;
     payItems: number;
     projects: number;
     syncState: number;
@@ -599,20 +602,20 @@ export async function clearDatabaseStagingOperationalData() {
   return data;
 }
 
-export async function clearDatabaseProjectCache() {
+export async function clearDatabaseProjectCatalog() {
   const response = await fetch("/api/admin/clear-project-cache", {
     body: JSON.stringify({
-      confirmation: "CLEAR_PROJECT_CACHE"
+      confirmation: "CLEAR_PROJECT_CATALOG"
     }),
     headers: {
       "Content-Type": "application/json"
     },
     method: "POST"
   });
-  const data = (await readApiJson(response)) as AdminClearProjectCacheResponse;
+  const data = (await readApiJson(response)) as AdminClearProjectCatalogResponse;
 
   if (!response.ok || data.ok === false) {
-    throw new Error(data.error ?? "Unable to clear cached project data.");
+    throw new Error(data.error ?? "Unable to clear the project catalog.");
   }
 
   return data;

@@ -10,7 +10,7 @@ import {
 import { readDailyReportsForRange } from "@/lib/daily-report-store";
 import { readDayRecords } from "@/lib/day-record-store";
 import { readProjectControls } from "@/lib/project-controls-store";
-import { getProjects } from "@/lib/procore/projects";
+import { getProjects } from "@/lib/project-catalog/projects";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;

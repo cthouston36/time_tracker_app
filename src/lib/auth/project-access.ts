@@ -1,5 +1,5 @@
 import type { AuthUser } from "@/lib/auth/types";
-import type { Project } from "@/lib/procore/types";
+import type { Project } from "@/lib/domain/types";
 
 export type ProjectAccessOptions = {
   assignedProjectIdsByUser?: Record<string, string[]>;

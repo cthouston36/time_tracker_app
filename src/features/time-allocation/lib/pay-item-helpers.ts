@@ -1,4 +1,4 @@
-import type { AllocationEntry, PayItem, Project } from "@/lib/procore/types";
+import type { AllocationEntry, PayItem, Project } from "@/lib/domain/types";
 
 export function buildRemainingQuantitiesByPayItem(
   payItems: Project["payItems"],

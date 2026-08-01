@@ -45,9 +45,9 @@ export async function POST(request: NextRequest) {
       },
       preserved: [
         "users",
-        "procore_projects",
-        "procore_pay_items",
-        "procore_sync_state",
+        "project_catalog",
+        "project_pay_items",
+        "project_catalog_sync_state",
         "project_archive",
         "project_blacklist",
         "my_jobs",

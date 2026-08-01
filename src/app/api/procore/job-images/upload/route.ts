@@ -4,8 +4,8 @@ import { requestUserCanAccessProjectId } from "@/lib/auth/project-access-server"
 import { getCurrentUser } from "@/lib/auth/session";
 import { countJobImageUploads, upsertJobImageUploads, type StoredJobImageUpload } from "@/lib/job-image-store";
 import { uploadJobImagesToProcore, type JobImageUploadInput } from "@/lib/procore/documents";
-import { getProjects } from "@/lib/procore/projects";
-import type { Project } from "@/lib/procore/types";
+import { getProjects } from "@/lib/project-catalog/projects";
+import type { Project } from "@/lib/domain/types";
 
 export const runtime = "nodejs";
 

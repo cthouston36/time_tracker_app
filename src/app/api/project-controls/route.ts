@@ -16,7 +16,7 @@ import {
   type StoredProjectBlacklistById,
   type StoredSyncLogEntry
 } from "@/lib/project-controls-store";
-import { getProjects } from "@/lib/procore/projects";
+import { getProjects } from "@/lib/project-catalog/projects";
 
 export async function GET() {
   const user = await getCurrentUser();

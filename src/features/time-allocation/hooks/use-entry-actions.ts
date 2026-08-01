@@ -1,6 +1,6 @@
 import { useCallback, useState, type Dispatch, type SetStateAction } from "react";
 import type { AuthUser } from "@/lib/auth/types";
-import type { AllocationEntry, Project } from "@/lib/procore/types";
+import type { AllocationEntry, Project } from "@/lib/domain/types";
 import {
   deleteDatabaseDayEntries,
   deleteDatabaseDaySubmission,

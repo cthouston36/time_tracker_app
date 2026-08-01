@@ -1,9 +1,9 @@
 import type { AuthUser } from "@/lib/auth/types";
-import type { PayItem, Project } from "@/lib/procore/types";
+import type { PayItem, Project } from "@/lib/domain/types";
 import type {
   MyJobsByUser,
   NetSuiteProjectManagerOption,
-  ProcoreSyncSummary,
+  ProjectSyncSummary,
   ProjectArchiveById,
   ProjectBlacklistById,
   SyncLogEntry
@@ -155,19 +155,19 @@ export function resolveNetSuiteProjectManagerOption(id: string, options: NetSuit
   };
 }
 
-export function getSyncFailedProjects(summary: Partial<ProcoreSyncSummary> | undefined) {
+export function getSyncFailedProjects(summary: Partial<ProjectSyncSummary> | undefined) {
   return Array.isArray(summary?.failedProjects)
     ? summary.failedProjects.map(readTextValue).filter(Boolean)
     : [];
 }
 
-export function normalizeSyncSummary(value: unknown): ProcoreSyncSummary | undefined {
+export function normalizeSyncSummary(value: unknown): ProjectSyncSummary | undefined {
   if (!value || typeof value !== "object") {
     return undefined;
   }
 
-  const summary = value as Partial<ProcoreSyncSummary>;
-  const normalizedSummary: ProcoreSyncSummary = {
+  const summary = value as Partial<ProjectSyncSummary>;
+  const normalizedSummary: ProjectSyncSummary = {
     attempted: readNumberValue(summary.attempted),
     failed: readNumberValue(summary.failed),
     failedProjects: getSyncFailedProjects(summary),
@@ -175,7 +175,7 @@ export function normalizeSyncSummary(value: unknown): ProcoreSyncSummary | undef
     synced: readNumberValue(summary.synced)
   };
 
-  const optionalFields: Array<keyof Omit<ProcoreSyncSummary, "attempted" | "failed" | "failedProjects" | "skippedExisting" | "synced">> = [
+  const optionalFields: Array<keyof Omit<ProjectSyncSummary, "attempted" | "failed" | "failedProjects" | "skippedExisting" | "synced">> = [
     "autoArchivedProjects",
     "autoUnarchivedProjects",
     "dailyReportOnlyProjects",

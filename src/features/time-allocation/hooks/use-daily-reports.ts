@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AuthUser } from "@/lib/auth/types";
-import type { AllocationEntry, Project } from "@/lib/procore/types";
+import type { AllocationEntry, Project } from "@/lib/domain/types";
 import { getDailyReportTemplateForProject } from "@/lib/daily-report-templates";
 import { downloadBlob } from "@/features/time-allocation/lib/browser-actions";
 import {

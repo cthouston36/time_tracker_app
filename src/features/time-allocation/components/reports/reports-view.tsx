@@ -32,7 +32,7 @@ import { MyJobsManager } from "@/features/time-allocation/components/my-jobs-man
 import { getDefaultMyJobIdsForUser } from "@/features/time-allocation/lib/selectors";
 import { downloadBlob, openDatePicker } from "@/features/time-allocation/lib/browser-actions";
 import { formatCsvIdentifier, formatCsvNumber, rowsToCsv } from "@/features/time-allocation/lib/csv-utils";
-import type { AllocationEntry, CrewLaborType, Project } from "@/lib/procore/types";
+import type { AllocationEntry, CrewLaborType, Project } from "@/lib/domain/types";
 
 const CREW_LABOR_TYPE_OPTIONS: Array<{ value: CrewLaborType; label: string }> = [
   { value: "chinchor_employee", label: "Chinchor Employee" },

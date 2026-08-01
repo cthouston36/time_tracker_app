@@ -1,5 +1,5 @@
 import { getSql } from "@/lib/db";
-import type { CrewLaborType } from "@/lib/procore/types";
+import type { CrewLaborType } from "@/lib/domain/types";
 
 export type StoredCrewMember = {
   id: string;

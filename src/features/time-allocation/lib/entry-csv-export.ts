@@ -1,5 +1,5 @@
 import { todayInputValue } from "@/lib/date";
-import type { AllocationEntry, CrewLaborType, Project } from "@/lib/procore/types";
+import type { AllocationEntry, CrewLaborType, Project } from "@/lib/domain/types";
 import type {
   DayEntryNotes,
   DayEntryNotesByKey,

@@ -5,7 +5,7 @@ import {
   ChevronRight
 } from "lucide-react";
 import type { AuthUser } from "@/lib/auth/types";
-import type { AllocationEntry, CrewLaborType, Project } from "@/lib/procore/types";
+import type { AllocationEntry, CrewLaborType, Project } from "@/lib/domain/types";
 import { CrewSetupPanel } from "@/features/time-allocation/components/crew-setup-panel";
 import { ProjectSetupPanel } from "@/features/time-allocation/components/project-setup-panel";
 import { formatDate } from "@/features/time-allocation/lib/date-helpers";

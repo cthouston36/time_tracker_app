@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AuthUser } from "@/lib/auth/types";
-import type { Project } from "@/lib/procore/types";
+import type { Project } from "@/lib/domain/types";
 import {
   loadDatabaseJobImageUploads,
   readApiJson

@@ -3,8 +3,8 @@ import { getAuditRequestMetadata, recordAuditLog } from "@/lib/audit-log";
 import type { AuthUser } from "@/lib/auth/types";
 import { syncAllProjectsFromNetSuite, type NetSuiteSyncSummary } from "@/lib/netsuite/projects";
 import { syncNetSuiteVendors } from "@/lib/netsuite/vendors";
+import { readProjectCatalog } from "@/lib/project-catalog/cache";
 import { insertSyncLogEntry, type StoredSyncLogEntry } from "@/lib/project-controls-store";
-import { readProcoreCache } from "@/lib/procore/cache";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const projectResult = await syncAllProjectsFromNetSuite();
-    const cache = await readProcoreCache();
+    const cache = await readProjectCatalog();
 
     summary.projects = projectResult.summary;
     summary.syncedAt = cache?.syncedAt ?? null;

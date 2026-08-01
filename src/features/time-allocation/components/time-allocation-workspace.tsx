@@ -35,7 +35,7 @@ import { MatrixFullscreenModal } from "@/features/time-allocation/components/ent
 import { JobImagesPanel } from "@/features/time-allocation/components/entry/job-images-panel";
 import { ReviewSubmitPanel } from "@/features/time-allocation/components/entry/review-submit-panel";
 import {
-  clearDatabaseProjectCache,
+  clearDatabaseProjectCatalog,
   clearDatabaseStagingOperationalData,
   loadDatabaseCrewData,
   loadDatabaseDailyReportData,
@@ -120,7 +120,7 @@ import { useNetSuiteVendors } from "@/features/time-allocation/hooks/use-netsuit
 import { useProjectSync } from "@/features/time-allocation/hooks/use-project-sync";
 import { WeeklyStatusReport } from "@/features/time-allocation/components/dashboard/weekly-status-report";
 import { AdminToolsDrawer } from "@/features/time-allocation/components/admin/admin-tools";
-import type { AllocationEntry, Project } from "@/lib/procore/types";
+import type { AllocationEntry, Project } from "@/lib/domain/types";
 
 export function TimeAllocationWorkspace() {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
@@ -154,7 +154,7 @@ export function TimeAllocationWorkspace() {
   const [projectLoadError, setProjectLoadError] = useState("");
   const [entryNotice, setEntryNotice] = useState("");
   const [clearingStagingData, setClearingStagingData] = useState(false);
-  const [clearingProjectCache, setClearingProjectCache] = useState(false);
+  const [clearingProjectCatalog, setClearingProjectCatalog] = useState(false);
   const [adminMaintenanceNotice, setAdminMaintenanceNotice] = useState<{ message: string; status: "success" | "error" } | null>(null);
   const networkStatus = useNetworkStatus();
   const userIsOffline = networkStatus.checked && !networkStatus.online;
@@ -717,13 +717,13 @@ export function TimeAllocationWorkspace() {
           setConnectionStatus(`Procore configured by ${data.connectedBy}`);
         }
       } catch {
-        // Cached project data can still load even if the Procore status check fails.
+        // Project catalog data can still load even if the Procore upload status check fails.
       }
     }
 
     async function loadProjects() {
       try {
-        const response = await fetch("/api/procore/projects");
+        const response = await fetch("/api/project-catalog/projects");
         const data = (await readApiJson(response)) as ProjectsResponse;
 
         if (!response.ok) {
@@ -762,7 +762,7 @@ export function TimeAllocationWorkspace() {
           });
         }
         setSyncedAt(data.syncedAt ?? null);
-        setConnectionStatus(data.syncedAt ? "Cached project data loaded" : "No cached project data");
+        setConnectionStatus(data.syncedAt ? "Project catalog loaded" : "No project catalog data");
       } catch (error) {
         setProjectLoadError(error instanceof Error ? error.message : "Unable to load projects.");
       }
@@ -1097,7 +1097,7 @@ export function TimeAllocationWorkspace() {
         "",
         "This will permanently remove daily pay item entries, submitted/draft day statuses, daily notes, daily reports, daily report upload status, and all crew members/crew project assignments.",
         "",
-        "It will keep user profiles/passwords, cached projects, cached pay items, sync state/log, project blacklist, and My Projects."
+        "It will keep user profiles/passwords, project catalog jobs/pay items, sync state/log, project blacklist, and My Projects."
       ].join("\n")
     );
 
@@ -1121,7 +1121,7 @@ export function TimeAllocationWorkspace() {
       setEntryNotice("Staging daily entry, daily report, and crew data cleared.");
       setAdminMaintenanceNotice({
         message: data.databaseConfigured
-          ? "Staging data cleared. Users, cached projects/pay items, sync state, blacklist, and My Projects were preserved."
+          ? "Staging data cleared. Users, project catalog jobs/pay items, sync state, blacklist, and My Projects were preserved."
           : "Local staging data cleared.",
         status: "success"
       });
@@ -1135,7 +1135,7 @@ export function TimeAllocationWorkspace() {
     }
   }
 
-  async function clearCachedProjectData() {
+  async function clearProjectCatalogData() {
     if (currentUser?.role !== "admin") {
       return;
     }
@@ -1148,9 +1148,9 @@ export function TimeAllocationWorkspace() {
 
     const confirmed = window.confirm(
       [
-        "Clear cached jobs and pay items?",
+        "Clear project catalog jobs and pay items?",
         "",
-        "This will permanently remove the currently cached Procore-sourced jobs/pay items and the old project cache fallback.",
+        "This will permanently remove the current project catalog jobs/pay items and the legacy catalog fallback.",
         "",
         "It will keep users, passwords, daily entries, daily reports, crew records, sync log, project blacklist, and My Projects."
       ].join("\n")
@@ -1160,11 +1160,11 @@ export function TimeAllocationWorkspace() {
       return;
     }
 
-    setClearingProjectCache(true);
+    setClearingProjectCatalog(true);
     setAdminMaintenanceNotice(null);
 
     try {
-      const data = await clearDatabaseProjectCache();
+      const data = await clearDatabaseProjectCatalog();
       const cleared = data.cleared;
       const projectCount = cleared?.projects ?? 0;
       const payItemCount = cleared?.payItems ?? 0;
@@ -1174,18 +1174,18 @@ export function TimeAllocationWorkspace() {
       resetProjectSyncState();
       setDraftsByPayItem({});
       setProjectLoadError("");
-      setConnectionStatus("No cached project data");
+      setConnectionStatus("No project catalog data");
       setAdminMaintenanceNotice({
-        message: `Cached project data cleared. Removed ${projectCount} job${projectCount === 1 ? "" : "s"} and ${payItemCount} pay item${payItemCount === 1 ? "" : "s"}. Sync from NetSuite to reload jobs.`,
+        message: `Project catalog cleared. Removed ${projectCount} job${projectCount === 1 ? "" : "s"} and ${payItemCount} pay item${payItemCount === 1 ? "" : "s"}. Sync from NetSuite to reload jobs.`,
         status: "success"
       });
     } catch (error) {
       setAdminMaintenanceNotice({
-        message: error instanceof Error ? error.message : "Unable to clear cached project data.",
+        message: error instanceof Error ? error.message : "Unable to clear the project catalog.",
         status: "error"
       });
     } finally {
-      setClearingProjectCache(false);
+      setClearingProjectCatalog(false);
     }
   }
 
@@ -1485,7 +1485,7 @@ export function TimeAllocationWorkspace() {
       adminUsersNotice={adminUsersNotice}
       allNetSuiteVendors={allNetSuiteVendors}
       allProjects={allProjects}
-      clearingProjectCache={clearingProjectCache}
+      clearingProjectCatalog={clearingProjectCatalog}
       clearingStagingData={clearingStagingData}
       crewDirectory={crewDirectory}
       crewMembersByProject={crewMembersByProject}
@@ -1498,7 +1498,7 @@ export function TimeAllocationWorkspace() {
       netSuiteVendorsSyncedAt={netSuiteVendorsSyncedAt}
       onAddOrUpdateProject={addOrUpdateProject}
       onCancelAdminUserEdit={resetAdminUserForm}
-      onClearProjectCache={clearCachedProjectData}
+      onClearProjectCatalog={clearProjectCatalogData}
       onClearStagingData={clearStagingOperationalData}
       onConfigureProcoreUpload={() => connectProcore("connect")}
       onCreatePasswordResetToken={createAdminPasswordResetToken}

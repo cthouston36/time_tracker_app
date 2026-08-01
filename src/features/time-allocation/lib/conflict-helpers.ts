@@ -1,4 +1,4 @@
-import type { AllocationEntry } from "@/lib/procore/types";
+import type { AllocationEntry } from "@/lib/domain/types";
 import type { DailyReport, DaySubmission } from "@/features/time-allocation/types";
 import {
   getDailyReportAnswers,

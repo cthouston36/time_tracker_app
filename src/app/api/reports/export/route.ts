@@ -16,8 +16,8 @@ import {
 } from "@/lib/report-builders";
 import { todayInputValue } from "@/lib/date";
 import { readDailyReportsForRange } from "@/lib/daily-report-store";
-import { getProjects } from "@/lib/procore/projects";
-import type { AllocationEntry, CrewLaborType, Project } from "@/lib/procore/types";
+import { getProjects } from "@/lib/project-catalog/projects";
+import type { AllocationEntry, CrewLaborType, Project } from "@/lib/domain/types";
 
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const DEFAULT_CREW_LABOR_TYPES: CrewLaborType[] = ["chinchor_employee", "temp_employee", "subcontractor"];

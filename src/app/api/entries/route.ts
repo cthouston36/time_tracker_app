@@ -11,8 +11,8 @@ import {
   upsertAllocationEntries
 } from "@/lib/allocation-entries-store";
 import { readDayRecords } from "@/lib/day-record-store";
-import { getProjects } from "@/lib/procore/projects";
-import type { AllocationEntry } from "@/lib/procore/types";
+import { getProjects } from "@/lib/project-catalog/projects";
+import type { AllocationEntry } from "@/lib/domain/types";
 
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 

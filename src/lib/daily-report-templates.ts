@@ -1,4 +1,4 @@
-import type { Project } from "@/lib/procore/types";
+import type { Project } from "@/lib/domain/types";
 
 export type DailyReportTemplate = "standard" | "two-series";
 

@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { todayInputValue } from "@/lib/date";
 import { isTwoSeriesProject } from "@/lib/daily-report-templates";
-import type { Project } from "@/lib/procore/types";
+import type { Project } from "@/lib/domain/types";
 import type { AuthUser } from "@/lib/auth/types";
 import { EmptyState, InlineSpinner } from "@/features/time-allocation/components/workspace-primitives";
 import { getFieldUserIdsAssignedToProject } from "@/features/time-allocation/lib/selectors";

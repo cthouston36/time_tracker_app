@@ -1,5 +1,5 @@
 import { Save, X } from "lucide-react";
-import type { AllocationEntry, Project } from "@/lib/procore/types";
+import type { AllocationEntry, Project } from "@/lib/domain/types";
 import { InlineSpinner } from "@/features/time-allocation/components/workspace-primitives";
 import { PayItemMatrix } from "@/features/time-allocation/components/entry/pay-item-entry-matrix";
 import { formatDate } from "@/features/time-allocation/lib/date-helpers";

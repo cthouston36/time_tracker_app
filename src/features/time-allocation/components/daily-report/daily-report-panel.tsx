@@ -1,5 +1,5 @@
 import { Download, Edit3, UploadCloud } from "lucide-react";
-import type { Project } from "@/lib/procore/types";
+import type { Project } from "@/lib/domain/types";
 import { InlineSpinner } from "@/features/time-allocation/components/workspace-primitives";
 import {
   DailyReportProcoreStatusValue

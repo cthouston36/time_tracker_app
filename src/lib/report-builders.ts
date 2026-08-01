@@ -1,4 +1,4 @@
-import type { AllocationEntry, CrewLaborType, Project } from "@/lib/procore/types";
+import type { AllocationEntry, CrewLaborType, Project } from "@/lib/domain/types";
 
 export type ReportMode = "summary" | "detail" | "crew" | "employee_hours" | "daily_work";
 export type DetailGrouping = "crew_day" | "crew_project" | "job_day";

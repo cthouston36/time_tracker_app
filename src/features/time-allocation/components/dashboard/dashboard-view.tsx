@@ -4,7 +4,7 @@ import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { LayoutDashboard } from "lucide-react";
 import { todayInputValue } from "@/lib/date";
 import type { AuthUser } from "@/lib/auth/types";
-import type { AllocationEntry, Project } from "@/lib/procore/types";
+import type { AllocationEntry, Project } from "@/lib/domain/types";
 import { PageHeader } from "@/features/time-allocation/components/workspace-primitives";
 import {
   DashboardAttentionList,

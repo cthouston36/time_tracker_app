@@ -1,6 +1,6 @@
 import { getSql } from "@/lib/db";
 import { normalizeNumericCostCode } from "@/lib/pay-items";
-import type { AllocationEntry, CrewAllocation, CrewLaborType } from "@/lib/procore/types";
+import type { AllocationEntry, CrewAllocation, CrewLaborType } from "@/lib/domain/types";
 
 type EntryRow = {
   id: string;

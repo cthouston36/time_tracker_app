@@ -2,7 +2,7 @@ import { getProcoreConfig } from "@/lib/procore/config";
 import { getProcoreIntegrationAccessToken } from "@/lib/procore/session";
 import { buildDailyReportPdf, buildDailyReportPdfFileName } from "@/lib/daily-report-pdf";
 import { getSql } from "@/lib/db";
-import type { Project } from "@/lib/procore/types";
+import type { Project } from "@/lib/domain/types";
 
 const DEFAULT_FOLDERS_PATH = "/rest/v1.0/folders";
 const DEFAULT_PROCORE_WEB_BASE_URL = "https://us02.procore.com";

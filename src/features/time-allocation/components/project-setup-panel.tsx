@@ -4,7 +4,7 @@ import {
   ListChecks
 } from "lucide-react";
 import type { AuthUser } from "@/lib/auth/types";
-import type { Project } from "@/lib/procore/types";
+import type { Project } from "@/lib/domain/types";
 import { MobileOptionPicker } from "@/features/time-allocation/components/mobile-option-picker";
 import { MyJobsManager } from "@/features/time-allocation/components/my-jobs-manager";
 import { EmptyState } from "@/features/time-allocation/components/workspace-primitives";
@@ -120,7 +120,7 @@ export function ProjectSetupPanel({
       {projects.length === 0 && !projectLoadError ? (
         <EmptyState title={allProjects.length > 0 ? "No selectable projects" : "No projects loaded"}>
           {allProjects.length > 0
-            ? "All cached projects are currently hidden by admin controls."
+            ? "All project catalog jobs are currently hidden by admin controls."
             : currentUser.role === "admin"
               ? "Use Admin Tools to load NetSuite jobs and pay items."
               : "Projects will appear after an admin syncs NetSuite data."}

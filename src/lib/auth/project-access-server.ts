@@ -6,7 +6,7 @@ import {
 } from "@/lib/auth/project-access";
 import type { AuthUser } from "@/lib/auth/types";
 import { readProjectControls } from "@/lib/project-controls-store";
-import type { Project } from "@/lib/procore/types";
+import type { Project } from "@/lib/domain/types";
 
 export async function getStoredProjectAccessOptions(): Promise<ProjectAccessOptions> {
   const projectControls = await readProjectControls();

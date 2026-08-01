@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getAccessibleProjectsForUser } from "@/lib/auth/project-access";
 import { getCurrentUser } from "@/lib/auth/session";
 import { readProjectControls } from "@/lib/project-controls-store";
-import { getProjectCache } from "@/lib/procore/projects";
+import { getProjectCatalog } from "@/lib/project-catalog/projects";
 
 export async function GET() {
   try {
@@ -20,7 +20,7 @@ export async function GET() {
         : user.role === "standard"
           ? { projectIds: assignedProjectIdsByUser[user.id] ?? [] }
           : {};
-    const cache = await getProjectCache(cacheOptions);
+    const cache = await getProjectCatalog(cacheOptions);
     const projects = getAccessibleProjectsForUser(user, cache?.projects ?? [], { assignedProjectIdsByUser });
 
     return NextResponse.json({

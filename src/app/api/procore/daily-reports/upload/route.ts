@@ -3,7 +3,7 @@ import { requestUserCanAccessProjectId } from "@/lib/auth/project-access-server"
 import { getCurrentUser } from "@/lib/auth/session";
 import { getAuditRequestMetadata, recordAuditLog } from "@/lib/audit-log";
 import { uploadDailyReportToProcore } from "@/lib/procore/documents";
-import { getProjects } from "@/lib/procore/projects";
+import { getProjects } from "@/lib/project-catalog/projects";
 
 export const runtime = "nodejs";
 

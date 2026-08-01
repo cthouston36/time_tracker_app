@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getAuditRequestMetadata, recordAuditLog } from "@/lib/audit-log";
 import { addOrUpdateProjectFromNetSuite } from "@/lib/netsuite/projects";
+import { readProjectCatalog } from "@/lib/project-catalog/cache";
 import { readProjectControls } from "@/lib/project-controls-store";
-import { readProcoreCache } from "@/lib/procore/cache";
 
 export const runtime = "nodejs";
 
@@ -24,7 +24,7 @@ export async function POST(_request: NextRequest, context: RouteContext) {
 
   try {
     const projects = await addOrUpdateProjectFromNetSuite(projectId);
-    const cache = await readProcoreCache();
+    const cache = await readProjectCatalog();
     const projectControls = await readProjectControls();
 
     await recordAuditLog({

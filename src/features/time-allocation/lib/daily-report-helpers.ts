@@ -2,7 +2,7 @@ import {
   TWO_SERIES_PRODUCTION_CODES,
   type DailyReportTemplate
 } from "@/lib/daily-report-templates";
-import type { PayItem } from "@/lib/procore/types";
+import type { PayItem } from "@/lib/domain/types";
 import type {
   DailyReport,
   DailyReportAnswers,

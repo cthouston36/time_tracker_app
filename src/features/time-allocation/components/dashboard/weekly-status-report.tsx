@@ -29,7 +29,7 @@ import type {
   DailyReportsByKey,
   DaySubmissionsByKey
 } from "@/features/time-allocation/types";
-import type { AllocationEntry, Project } from "@/lib/procore/types";
+import type { AllocationEntry, Project } from "@/lib/domain/types";
 
 export function WeeklyStatusReport({
   canExportWeeklyDailyReports,

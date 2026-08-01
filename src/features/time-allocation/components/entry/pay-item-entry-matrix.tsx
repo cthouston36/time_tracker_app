@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Users } from "lucide-react";
 import { MobileOptionPicker } from "@/features/time-allocation/components/mobile-option-picker";
-import type { AllocationEntry, CrewLaborType, PayItem, Project } from "@/lib/procore/types";
+import type { AllocationEntry, CrewLaborType, PayItem, Project } from "@/lib/domain/types";
 import type {
   CrewMember,
   DraftsByPayItem,

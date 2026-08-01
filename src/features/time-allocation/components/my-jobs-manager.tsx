@@ -2,7 +2,7 @@
 
 import { EmptyState } from "@/features/time-allocation/components/workspace-primitives";
 import { sortProjectsByName } from "@/features/time-allocation/lib/selectors";
-import type { Project } from "@/lib/procore/types";
+import type { Project } from "@/lib/domain/types";
 
 export function MyJobsManager({
   automaticJobIds = [],

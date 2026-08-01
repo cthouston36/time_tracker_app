@@ -1,5 +1,5 @@
 import { getSql } from "@/lib/db";
-import type { AllocationEntry, CrewAllocation, CrewLaborType } from "@/lib/procore/types";
+import type { AllocationEntry, CrewAllocation, CrewLaborType } from "@/lib/domain/types";
 
 export type AppStateMirrorStatus = "not_configured" | "success";
 

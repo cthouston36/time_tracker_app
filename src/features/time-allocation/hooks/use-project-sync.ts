@@ -21,7 +21,7 @@ import type {
   ProjectsResponse,
   SyncLogEntry
 } from "@/features/time-allocation/types";
-import type { Project } from "@/lib/procore/types";
+import type { Project } from "@/lib/domain/types";
 
 type ApplySyncedProjectsOptions = {
   preferredProjectIdentifier?: string;
@@ -124,7 +124,7 @@ export function useProjectSync({
 
     try {
       const { data, response } = await postProjectsWithTimeout(
-        "/api/procore/sync",
+        "/api/netsuite/sync",
         "Sync New Projects timed out before the server returned. Try again, or use Add/Update Project for a specific job."
       );
 
@@ -182,7 +182,7 @@ export function useProjectSync({
 
     try {
       const { data, response } = await postProjectsWithTimeout(
-        "/api/procore/sync-all",
+        "/api/netsuite/sync-all",
         "Sync All Projects timed out before the server returned. Try again, or use Add/Update Project for a specific job."
       );
 
@@ -246,7 +246,7 @@ export function useProjectSync({
     setSyncSummary(null);
 
     try {
-      const response = await fetch(`/api/procore/projects/${encodeURIComponent(trimmedProjectId)}/sync`, {
+      const response = await fetch(`/api/netsuite/projects/${encodeURIComponent(trimmedProjectId)}/sync`, {
         method: "POST"
       });
       const data = (await readApiJson(response)) as ProjectsResponse;

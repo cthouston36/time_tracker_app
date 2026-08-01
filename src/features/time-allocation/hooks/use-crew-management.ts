@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import type { AuthUser } from "@/lib/auth/types";
-import type { AllocationEntry, CrewLaborType, Project } from "@/lib/procore/types";
+import type { AllocationEntry, CrewLaborType, Project } from "@/lib/domain/types";
 import {
   addDatabaseCrewMemberToProject,
   mergeDatabaseCrewMembers,

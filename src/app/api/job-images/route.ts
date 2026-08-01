@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requestUserCanAccessProjectId } from "@/lib/auth/project-access-server";
 import { getCurrentUser } from "@/lib/auth/session";
 import { readJobImageUploads } from "@/lib/job-image-store";
-import { getProjects } from "@/lib/procore/projects";
+import { getProjects } from "@/lib/project-catalog/projects";
 
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 

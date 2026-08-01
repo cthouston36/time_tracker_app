@@ -9,7 +9,7 @@ import type {
   DailyReportProcoreStatus,
   DaySubmission
 } from "@/features/time-allocation/types";
-import type { AllocationEntry } from "@/lib/procore/types";
+import type { AllocationEntry } from "@/lib/domain/types";
 
 type EditingEntry = {
   entryId: string;

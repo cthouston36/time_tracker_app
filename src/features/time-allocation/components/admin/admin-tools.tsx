@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { isTwoSeriesProject } from "@/lib/daily-report-templates";
 import type { AuthUser } from "@/lib/auth/types";
-import type { AllocationEntry, Project } from "@/lib/procore/types";
+import type { AllocationEntry, Project } from "@/lib/domain/types";
 import {
   formatRole,
   formatUserName,
@@ -33,7 +33,7 @@ import type {
   ManagedAppUser,
   NetSuiteProjectManagerOption,
   NetSuiteVendor,
-  ProcoreSyncSummary,
+  ProjectSyncSummary,
   ProjectArchiveById,
   ProjectBlacklistById,
   SyncLogEntry,
@@ -112,7 +112,7 @@ export function AdminToolsDrawer({
   adminUsers,
   adminUsersNotice,
   adminMaintenanceNotice,
-  clearingProjectCache,
+  clearingProjectCatalog,
   clearingStagingData,
   crewDirectory,
   crewMembersByProject,
@@ -125,7 +125,7 @@ export function AdminToolsDrawer({
   netSuiteVendorsSyncedAt,
   onAddOrUpdateProject,
   onCancelAdminUserEdit,
-  onClearProjectCache,
+  onClearProjectCatalog,
   onClearStagingData,
   onConfigureProcoreUpload,
   onCreatePasswordResetToken,
@@ -161,7 +161,7 @@ export function AdminToolsDrawer({
   adminUsers: ManagedAppUser[];
   adminUsersNotice: string;
   adminMaintenanceNotice: { message: string; status: "success" | "error" } | null;
-  clearingProjectCache: boolean;
+  clearingProjectCatalog: boolean;
   clearingStagingData: boolean;
   crewDirectory: CrewMember[];
   crewMembersByProject: CrewMembersByProject;
@@ -174,7 +174,7 @@ export function AdminToolsDrawer({
   netSuiteVendorsSyncedAt: string | null;
   onAddOrUpdateProject: () => void;
   onCancelAdminUserEdit: () => void;
-  onClearProjectCache: () => void;
+  onClearProjectCatalog: () => void;
   onClearStagingData: () => void;
   onConfigureProcoreUpload: () => void;
   onCreatePasswordResetToken: (user: ManagedAppUser) => void;
@@ -200,7 +200,7 @@ export function AdminToolsDrawer({
   syncing: boolean;
   syncingAll: boolean;
   syncingNetSuiteVendors: boolean;
-  syncSummary?: ProcoreSyncSummary;
+  syncSummary?: ProjectSyncSummary;
   updatingProject: boolean;
 }) {
   return (
@@ -286,11 +286,11 @@ export function AdminToolsDrawer({
         />
         <AdminMaintenancePanel
           clearing={clearingStagingData}
-          clearingProjectCache={clearingProjectCache}
+          clearingProjectCatalog={clearingProjectCatalog}
           netSuiteVendorCount={allNetSuiteVendors.length}
           netSuiteVendorsSyncedAt={netSuiteVendorsSyncedAt}
           notice={adminMaintenanceNotice}
-          onClearProjectCache={onClearProjectCache}
+          onClearProjectCatalog={onClearProjectCatalog}
           onClearStagingData={onClearStagingData}
           onSyncNetSuiteVendors={onSyncNetSuiteVendors}
           syncingNetSuiteVendors={syncingNetSuiteVendors}
@@ -377,7 +377,7 @@ function AdminDataQualityPanel({
   );
 }
 
-function SyncSummaryCard({ summary }: { summary: ProcoreSyncSummary }) {
+function SyncSummaryCard({ summary }: { summary: ProjectSyncSummary }) {
   const dailyReportOnlyProjects = summary.dailyReportOnlyProjects ?? 0;
   const eligibleProjects = summary.eligibleProjects ?? summary.attempted + summary.skippedExisting;
   const inactiveNetSuiteProjects = summary.inactiveNetSuiteProjects ?? 0;
@@ -409,7 +409,7 @@ function SyncSummaryCard({ summary }: { summary: ProcoreSyncSummary }) {
       summary.autoArchivedProjects !== undefined ||
       summary.autoUnarchivedProjects !== undefined ? (
         <span>
-          Inactive NetSuite jobs: {inactiveNetSuiteProjects}. Auto-archived {autoArchivedProjects} cached project
+          Inactive NetSuite jobs: {inactiveNetSuiteProjects}. Auto-archived {autoArchivedProjects} project catalog job
           {autoArchivedProjects === 1 ? "" : "s"}. Auto-unarchived {autoUnarchivedProjects} active project
           {autoUnarchivedProjects === 1 ? "" : "s"}.
         </span>
@@ -838,7 +838,7 @@ function ProjectBlacklistPanel({
         Project Blacklist ({blacklistedProjectCount})
       </summary>
       {sortedProjects.length === 0 ? (
-        <div className="field-note">No cached projects are available to blacklist yet.</div>
+        <div className="field-note">No project catalog jobs are available to blacklist yet.</div>
       ) : (
         <>
           <div className="field-note">Blacklisted projects stay cached, but are hidden from entry screens and reports.</div>
@@ -879,7 +879,7 @@ function ProjectArchivePanel({
         Project Archive ({archivedProjectCount})
       </summary>
       {sortedProjects.length === 0 ? (
-        <div className="field-note">No cached projects are available to archive yet.</div>
+        <div className="field-note">No project catalog jobs are available to archive yet.</div>
       ) : (
         <>
           <div className="field-note">
@@ -1176,21 +1176,21 @@ function AdminUsersPanel({
 
 function AdminMaintenancePanel({
   clearing,
-  clearingProjectCache,
+  clearingProjectCatalog,
   netSuiteVendorCount,
   netSuiteVendorsSyncedAt,
   notice,
-  onClearProjectCache,
+  onClearProjectCatalog,
   onClearStagingData,
   onSyncNetSuiteVendors,
   syncingNetSuiteVendors
 }: {
   clearing: boolean;
-  clearingProjectCache: boolean;
+  clearingProjectCatalog: boolean;
   netSuiteVendorCount: number;
   netSuiteVendorsSyncedAt: string | null;
   notice: { message: string; status: "success" | "error" } | null;
-  onClearProjectCache: () => void;
+  onClearProjectCatalog: () => void;
   onClearStagingData: () => void;
   onSyncNetSuiteVendors: () => void;
   syncingNetSuiteVendors: boolean;
@@ -1220,23 +1220,23 @@ function AdminMaintenancePanel({
         </button>
         <p className="field-note">
           Clears daily entries, day statuses, notes, daily reports, upload statuses, and crew records. Preserves users,
-          cached jobs/pay items, sync log, project blacklist, and My Projects.
+          project catalog jobs/pay items, sync log, project blacklist, and My Projects.
         </p>
         <button className="secondary-button admin-clear-button" disabled={clearing} onClick={onClearStagingData} type="button">
           <Trash2 aria-hidden="true" size={16} />
           {clearing ? "Clearing..." : "Clear staging daily data"}
         </button>
         <p className="field-note">
-          Clears only cached jobs/pay items and the old project cache fallback. Use this before the first NetSuite sync.
+          Clears only project catalog jobs/pay items and the legacy catalog fallback. Use this before the first NetSuite sync.
         </p>
         <button
           className="secondary-button admin-clear-button"
-          disabled={clearingProjectCache}
-          onClick={onClearProjectCache}
+          disabled={clearingProjectCatalog}
+          onClick={onClearProjectCatalog}
           type="button"
         >
           <Trash2 aria-hidden="true" size={16} />
-          {clearingProjectCache ? "Clearing..." : "Clear cached jobs/pay items"}
+          {clearingProjectCatalog ? "Clearing..." : "Clear project catalog"}
         </button>
       </div>
     </details>
@@ -1346,10 +1346,10 @@ function buildDataQualityIssues({
 
   if (projects.length === 0) {
     issues.push({
-      detail: "No cached projects are available. Run Sync New Projects, Sync All Projects, or Add/Update Project.",
+      detail: "No project catalog jobs are available. Run Sync New Projects, Sync All Projects, or Add/Update Project.",
       id: "no-cached-projects",
       severity: "info",
-      title: "No cached projects"
+      title: "No project catalog jobs"
     });
   }
 
@@ -1388,18 +1388,18 @@ function formatDataQualitySamples(values: string[], maxItems = 4) {
   return `${samples.join(", ")}${remainingCount > 0 ? `, +${remainingCount} more` : ""}`;
 }
 
-function getSyncFailedProjects(summary: Partial<ProcoreSyncSummary> | undefined) {
+function getSyncFailedProjects(summary: Partial<ProjectSyncSummary> | undefined) {
   return Array.isArray(summary?.failedProjects) ? summary.failedProjects.map(readTextValue).filter(Boolean) : [];
 }
 
-function hasSyncWarnings(summary: ProcoreSyncSummary | undefined) {
+function hasSyncWarnings(summary: ProjectSyncSummary | undefined) {
   return Boolean(
     summary &&
       (summary.failed > 0 || (summary.remainingNewProjects ?? 0) > 0 || (summary.autoArchivedProjects ?? 0) > 0)
   );
 }
 
-function formatSyncSummaryLine(summary: ProcoreSyncSummary) {
+function formatSyncSummaryLine(summary: ProjectSyncSummary) {
   const eligibleText = summary.eligibleProjects !== undefined ? `, ${summary.eligibleProjects} eligible` : "";
   const remainingNewProjects = summary.remainingNewProjects ?? 0;
   const queuedText = remainingNewProjects > 0 ? `, ${remainingNewProjects} queued` : "";

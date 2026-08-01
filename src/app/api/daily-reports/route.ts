@@ -13,7 +13,7 @@ import {
   type StoredDailyReportUploadsByKey,
   type StoredDailyReportsByKey
 } from "@/lib/daily-report-store";
-import { getProjects } from "@/lib/procore/projects";
+import { getProjects } from "@/lib/project-catalog/projects";
 
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 

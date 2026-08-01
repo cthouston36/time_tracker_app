@@ -1,4 +1,4 @@
-import type { AllocationEntry, CrewLaborType, PayItem } from "@/lib/procore/types";
+import type { AllocationEntry, CrewLaborType, PayItem } from "@/lib/domain/types";
 import type {
   CrewMember,
   CrewMembersByProject,

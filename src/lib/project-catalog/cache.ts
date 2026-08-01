@@ -1,56 +1,72 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { getSql, readAppSetting } from "@/lib/db";
-import type { PayItem, Project } from "@/lib/procore/types";
+import type { PayItem, Project } from "@/lib/domain/types";
 
-const CACHE_FILE = join(process.cwd(), ".data", "procore-cache.json");
-const PROCORE_CACHE_SETTING_KEY = "procore_cache";
-const PROCORE_SYNC_STATE_KEY = "procore_cache";
+const CACHE_FILE = join(process.cwd(), ".data", "project-catalog.json");
+const LEGACY_CACHE_FILE = join(process.cwd(), ".data", "procore-cache.json");
+const PROJECT_CATALOG_SETTING_KEY = "project_catalog";
+const PROJECT_CATALOG_SYNC_STATE_KEY = "project_catalog";
+const LEGACY_PROCORE_CACHE_SETTING_KEY = "procore_cache";
 
-let procoreCacheTablesReady = false;
+let projectCatalogTablesReady = false;
 
-export type ProcoreCache = {
+export type ProjectCatalog = {
   syncedAt: string;
   projects: Project[];
 };
 
-export type ProcoreCacheReadOptions = {
+export type ProjectCatalogReadOptions = {
   netSuiteProjectManagerId?: string;
   projectIds?: string[];
 };
 
-export async function readProcoreCache(options: ProcoreCacheReadOptions = {}) {
-  const tableCache = await readProcoreTablesCache(options);
+export async function readProjectCatalog(options: ProjectCatalogReadOptions = {}) {
+  const tableCache = await readProjectCatalogTables(options);
 
   if (tableCache) {
     return tableCache;
   }
 
-  const databaseCache = await readAppSetting<ProcoreCache>(PROCORE_CACHE_SETTING_KEY);
+  const databaseCache =
+    (await readAppSetting<ProjectCatalog>(PROJECT_CATALOG_SETTING_KEY)) ??
+    (await readAppSetting<ProjectCatalog>(LEGACY_PROCORE_CACHE_SETTING_KEY));
 
   if (databaseCache) {
-    if (await writeProcoreTablesCache(databaseCache.projects, databaseCache.syncedAt)) {
-      return readProcoreTablesCache(options);
+    if (await writeProjectCatalogTables(databaseCache.projects, databaseCache.syncedAt)) {
+      return readProjectCatalogTables(options);
     }
 
-    return filterProcoreCache(databaseCache, options);
+    return filterProjectCatalog(databaseCache, options);
   }
 
-  try {
-    const contents = await readFile(CACHE_FILE, "utf8");
-    return filterProcoreCache(JSON.parse(contents) as ProcoreCache, options);
-  } catch {
-    return null;
+  for (const filePath of [CACHE_FILE, LEGACY_CACHE_FILE]) {
+    let fileCatalog: ProjectCatalog;
+
+    try {
+      const contents = await readFile(filePath, "utf8");
+      fileCatalog = JSON.parse(contents) as ProjectCatalog;
+    } catch {
+      continue;
+    }
+
+    if (await writeProjectCatalogTables(fileCatalog.projects, fileCatalog.syncedAt)) {
+      return readProjectCatalogTables(options);
+    }
+
+    return filterProjectCatalog(fileCatalog, options);
   }
+
+  return null;
 }
 
-export async function writeProcoreCache(projects: Project[]) {
-  const cache: ProcoreCache = {
+export async function writeProjectCatalog(projects: Project[]) {
+  const cache: ProjectCatalog = {
     syncedAt: new Date().toISOString(),
     projects: normalizeProjects(projects)
   };
 
-  const tableCache = await writeProcoreTablesCache(cache.projects, cache.syncedAt);
+  const tableCache = await writeProjectCatalogTables(cache.projects, cache.syncedAt);
 
   if (tableCache) {
     return tableCache;
@@ -62,19 +78,19 @@ export async function writeProcoreCache(projects: Project[]) {
   return cache;
 }
 
-export async function updateProcoreCache(updater: (currentProjects: Project[]) => Project[]) {
-  const currentCache = await readProcoreCache();
-  return writeProcoreCache(updater(currentCache?.projects ?? []));
+export async function updateProjectCatalog(updater: (currentProjects: Project[]) => Project[]) {
+  const currentCache = await readProjectCatalog();
+  return writeProjectCatalog(updater(currentCache?.projects ?? []));
 }
 
-async function readProcoreTablesCache(options: ProcoreCacheReadOptions = {}) {
+async function readProjectCatalogTables(options: ProjectCatalogReadOptions = {}) {
   const sql = getSql();
 
   if (!sql) {
     return null;
   }
 
-  await ensureProcoreCacheTables();
+  await ensureProjectCatalogTables();
 
   const netSuiteProjectManagerId = options.netSuiteProjectManagerId?.trim() ?? "";
   const filteredProjectIds = normalizeProjectIdFilter(options.projectIds);
@@ -88,7 +104,7 @@ async function readProcoreTablesCache(options: ProcoreCacheReadOptions = {}) {
       netsuite_project_manager_name,
       procore_project_id,
       source_system
-    from procore_projects
+    from project_catalog
     where (${!netSuiteProjectManagerId} or netsuite_project_manager_id = ${netSuiteProjectManagerId})
       and (
         ${!hasProjectIdFilter}
@@ -98,14 +114,14 @@ async function readProcoreTablesCache(options: ProcoreCacheReadOptions = {}) {
         )
       )
     order by lower(name), id
-  `) as ProcoreProjectRow[];
+  `) as ProjectCatalogProjectRow[];
 
   const syncStateRows = (await sql`
     select synced_at
-    from procore_sync_state
-    where key = ${PROCORE_SYNC_STATE_KEY}
+    from project_catalog_sync_state
+    where key = ${PROJECT_CATALOG_SYNC_STATE_KEY}
     limit 1
-  `) as ProcoreSyncStateRow[];
+  `) as ProjectCatalogSyncStateRow[];
 
   if (projectRows.length === 0) {
     if (!netSuiteProjectManagerId && !hasProjectIdFilter) {
@@ -115,7 +131,7 @@ async function readProcoreTablesCache(options: ProcoreCacheReadOptions = {}) {
     return {
       syncedAt: toIsoDateString(syncStateRows[0]?.synced_at) ?? new Date().toISOString(),
       projects: []
-    } satisfies ProcoreCache;
+    } satisfies ProjectCatalog;
   }
 
   const projectIds = projectRows.map((project) => project.id);
@@ -128,13 +144,13 @@ async function readProcoreTablesCache(options: ProcoreCacheReadOptions = {}) {
       budgeted_quantity,
       unit_of_measure,
       sort_order
-    from procore_pay_items
+    from project_pay_items
     where project_id in (
       select value
       from jsonb_array_elements_text(${JSON.stringify(projectIds)}::jsonb)
     )
     order by project_id, sort_order, lower(code), lower(name), id
-  `) as ProcorePayItemRow[];
+  `) as ProjectCatalogPayItemRow[];
   const payItemsByProjectId = new Map<string, PayItem[]>();
 
   for (const row of payItemRows) {
@@ -161,10 +177,10 @@ async function readProcoreTablesCache(options: ProcoreCacheReadOptions = {}) {
       procoreProjectId: project.procore_project_id || project.id,
       sourceSystem: readSourceSystem(project.source_system)
     }))
-  } satisfies ProcoreCache;
+  } satisfies ProjectCatalog;
 }
 
-function filterProcoreCache(cache: ProcoreCache | null, options: ProcoreCacheReadOptions) {
+function filterProjectCatalog(cache: ProjectCatalog | null, options: ProjectCatalogReadOptions) {
   if (!cache) {
     return null;
   }
@@ -190,14 +206,14 @@ function filterProcoreCache(cache: ProcoreCache | null, options: ProcoreCacheRea
   };
 }
 
-async function writeProcoreTablesCache(projects: Project[], syncedAt: string) {
+async function writeProjectCatalogTables(projects: Project[], syncedAt: string) {
   const sql = getSql();
 
   if (!sql) {
     return null;
   }
 
-  await ensureProcoreCacheTables();
+  await ensureProjectCatalogTables();
 
   const normalizedProjects = normalizeProjects(projects);
   const projectRows = normalizedProjects.map((project) => ({
@@ -225,7 +241,7 @@ async function writeProcoreTablesCache(projects: Project[], syncedAt: string) {
 
   if (projectRows.length > 0) {
     await sql`
-      insert into procore_projects (
+      insert into project_catalog (
         id,
         name,
         netsuite_project_id,
@@ -266,19 +282,19 @@ async function writeProcoreTablesCache(projects: Project[], syncedAt: string) {
 
   if (projectIds.length > 0) {
     await sql`
-      delete from procore_projects
+      delete from project_catalog
       where id not in (
         select value
         from jsonb_array_elements_text(${JSON.stringify(projectIds)}::jsonb)
       )
     `;
   } else {
-    await sql`delete from procore_projects`;
+    await sql`delete from project_catalog`;
   }
 
   if (payItemRows.length > 0) {
     await sql`
-      insert into procore_pay_items (
+      insert into project_pay_items (
         project_id,
         id,
         code,
@@ -325,7 +341,7 @@ async function writeProcoreTablesCache(projects: Project[], syncedAt: string) {
 
     if (payItemIds.length > 0) {
       await sql`
-        delete from procore_pay_items
+        delete from project_pay_items
         where project_id = ${project.id}
           and id not in (
             select value
@@ -334,15 +350,15 @@ async function writeProcoreTablesCache(projects: Project[], syncedAt: string) {
       `;
     } else {
       await sql`
-        delete from procore_pay_items
+        delete from project_pay_items
         where project_id = ${project.id}
       `;
     }
   }
 
   await sql`
-    insert into procore_sync_state (key, synced_at, updated_at)
-    values (${PROCORE_SYNC_STATE_KEY}, ${toIsoDateString(syncedAt) ?? new Date().toISOString()}, now())
+    insert into project_catalog_sync_state (key, synced_at, updated_at)
+    values (${PROJECT_CATALOG_SYNC_STATE_KEY}, ${toIsoDateString(syncedAt) ?? new Date().toISOString()}, now())
     on conflict (key) do update
     set synced_at = excluded.synced_at,
         updated_at = now()
@@ -351,38 +367,38 @@ async function writeProcoreTablesCache(projects: Project[], syncedAt: string) {
   return {
     syncedAt: toIsoDateString(syncedAt) ?? new Date().toISOString(),
     projects: normalizedProjects
-  } satisfies ProcoreCache;
+  } satisfies ProjectCatalog;
 }
 
-async function ensureProcoreCacheTables() {
+async function ensureProjectCatalogTables() {
   const sql = getSql();
 
-  if (!sql || procoreCacheTablesReady) {
+  if (!sql || projectCatalogTablesReady) {
     return;
   }
 
   await sql`
-    create table if not exists procore_projects (
+    create table if not exists project_catalog (
       id text primary key,
       name text not null,
       netsuite_project_id text,
       netsuite_project_manager_id text,
       netsuite_project_manager_name text,
       procore_project_id text,
-      source_system text not null default 'procore',
+      source_system text not null default 'netsuite',
       updated_at timestamptz not null default now()
     )
   `;
 
-  await sql`alter table procore_projects add column if not exists netsuite_project_id text`;
-  await sql`alter table procore_projects add column if not exists netsuite_project_manager_id text`;
-  await sql`alter table procore_projects add column if not exists netsuite_project_manager_name text`;
-  await sql`alter table procore_projects add column if not exists procore_project_id text`;
-  await sql`alter table procore_projects add column if not exists source_system text not null default 'procore'`;
+  await sql`alter table project_catalog add column if not exists netsuite_project_id text`;
+  await sql`alter table project_catalog add column if not exists netsuite_project_manager_id text`;
+  await sql`alter table project_catalog add column if not exists netsuite_project_manager_name text`;
+  await sql`alter table project_catalog add column if not exists procore_project_id text`;
+  await sql`alter table project_catalog add column if not exists source_system text not null default 'netsuite'`;
 
   await sql`
-    create table if not exists procore_pay_items (
-      project_id text not null references procore_projects(id) on delete cascade,
+    create table if not exists project_pay_items (
+      project_id text not null references project_catalog(id) on delete cascade,
       id text not null,
       code text not null,
       name text not null,
@@ -396,18 +412,128 @@ async function ensureProcoreCacheTables() {
   `;
 
   await sql`
-    create table if not exists procore_sync_state (
+    create table if not exists project_catalog_sync_state (
       key text primary key,
       synced_at timestamptz not null,
       updated_at timestamptz not null default now()
     )
   `;
 
-  await sql`create index if not exists procore_projects_name_idx on procore_projects (lower(name))`;
-  await sql`create index if not exists procore_pay_items_project_idx on procore_pay_items (project_id)`;
-  await sql`create index if not exists procore_pay_items_project_code_idx on procore_pay_items (project_id, lower(code))`;
+  await sql`create index if not exists project_catalog_name_idx on project_catalog (lower(name))`;
+  await sql`create index if not exists project_pay_items_project_idx on project_pay_items (project_id)`;
+  await sql`create index if not exists project_pay_items_project_code_idx on project_pay_items (project_id, lower(code))`;
 
-  procoreCacheTablesReady = true;
+  await migrateLegacyProcoreCatalogTables();
+
+  projectCatalogTablesReady = true;
+}
+
+async function migrateLegacyProcoreCatalogTables() {
+  const sql = getSql();
+
+  if (!sql || !(await tableExists("procore_projects"))) {
+    return;
+  }
+
+  await sql`alter table procore_projects add column if not exists netsuite_project_id text`;
+  await sql`alter table procore_projects add column if not exists netsuite_project_manager_id text`;
+  await sql`alter table procore_projects add column if not exists netsuite_project_manager_name text`;
+  await sql`alter table procore_projects add column if not exists procore_project_id text`;
+  await sql`alter table procore_projects add column if not exists source_system text not null default 'procore'`;
+
+  await sql`
+    insert into project_catalog (
+      id,
+      name,
+      netsuite_project_id,
+      netsuite_project_manager_id,
+      netsuite_project_manager_name,
+      procore_project_id,
+      source_system,
+      updated_at
+    )
+    select
+      id,
+      name,
+      netsuite_project_id,
+      netsuite_project_manager_id,
+      netsuite_project_manager_name,
+      coalesce(procore_project_id, id),
+      coalesce(source_system, 'procore'),
+      updated_at
+    from procore_projects
+    on conflict (id) do update
+    set name = excluded.name,
+        netsuite_project_id = excluded.netsuite_project_id,
+        netsuite_project_manager_id = excluded.netsuite_project_manager_id,
+        netsuite_project_manager_name = excluded.netsuite_project_manager_name,
+        procore_project_id = excluded.procore_project_id,
+        source_system = excluded.source_system,
+        updated_at = greatest(project_catalog.updated_at, excluded.updated_at)
+  `;
+
+  if (await tableExists("procore_pay_items")) {
+    await sql`
+      insert into project_pay_items (
+        project_id,
+        id,
+        code,
+        name,
+        budgeted_quantity,
+        unit_of_measure,
+        sort_order,
+        raw_data,
+        updated_at
+      )
+      select
+        project_id,
+        id,
+        code,
+        name,
+        budgeted_quantity,
+        unit_of_measure,
+        sort_order,
+        raw_data,
+        updated_at
+      from procore_pay_items
+      on conflict (project_id, id) do update
+      set code = excluded.code,
+          name = excluded.name,
+          budgeted_quantity = excluded.budgeted_quantity,
+          unit_of_measure = excluded.unit_of_measure,
+          sort_order = excluded.sort_order,
+          raw_data = excluded.raw_data,
+          updated_at = greatest(project_pay_items.updated_at, excluded.updated_at)
+    `;
+  }
+
+  if (await tableExists("procore_sync_state")) {
+    await sql`
+      insert into project_catalog_sync_state (key, synced_at, updated_at)
+      select ${PROJECT_CATALOG_SYNC_STATE_KEY}, synced_at, updated_at
+      from procore_sync_state
+      where key = ${LEGACY_PROCORE_CACHE_SETTING_KEY}
+      order by updated_at desc
+      limit 1
+      on conflict (key) do update
+      set synced_at = excluded.synced_at,
+          updated_at = greatest(project_catalog_sync_state.updated_at, excluded.updated_at)
+    `;
+  }
+}
+
+async function tableExists(tableName: string) {
+  const sql = getSql();
+
+  if (!sql) {
+    return false;
+  }
+
+  const rows = (await sql`
+    select to_regclass(${`public.${tableName}`}) as table_name
+  `) as Array<{ table_name: string | null }>;
+
+  return Boolean(rows[0]?.table_name);
 }
 
 function normalizeProjects(projects: Project[]): Project[] {
@@ -491,7 +617,7 @@ function toIsoDateString(value: unknown) {
   return date.toISOString();
 }
 
-type ProcoreProjectRow = {
+type ProjectCatalogProjectRow = {
   id: string;
   name: string;
   netsuite_project_id: string | null;
@@ -501,7 +627,7 @@ type ProcoreProjectRow = {
   source_system: string | null;
 };
 
-type ProcorePayItemRow = {
+type ProjectCatalogPayItemRow = {
   project_id: string;
   id: string;
   code: string;
@@ -511,7 +637,7 @@ type ProcorePayItemRow = {
   sort_order: number;
 };
 
-type ProcoreSyncStateRow = {
+type ProjectCatalogSyncStateRow = {
   synced_at: string | Date;
 };
 

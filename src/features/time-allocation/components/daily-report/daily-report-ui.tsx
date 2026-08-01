@@ -5,7 +5,7 @@ import {
   TWO_SERIES_PRODUCTION_CODES,
   formatTwoSeriesProductionCodeLabel
 } from "@/lib/daily-report-templates";
-import type { PayItem, Project } from "@/lib/procore/types";
+import type { PayItem, Project } from "@/lib/domain/types";
 import {
   DAILY_REPORT_ITSFM_ITEMS,
   createEmptyDailyReportItsfmRow,

@@ -2,7 +2,7 @@ import { todayInputValue } from "@/lib/date";
 import { isTwoSeriesProject } from "@/lib/daily-report-templates";
 import { buildPayItemReport } from "@/lib/report-builders";
 import type { AuthUser } from "@/lib/auth/types";
-import type { AllocationEntry, Project } from "@/lib/procore/types";
+import type { AllocationEntry, Project } from "@/lib/domain/types";
 import type {
   DailyReportUploadsByKey,
   DailyReportsByKey,

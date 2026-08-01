@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requestUserCanAccessProjectId } from "@/lib/auth/project-access-server";
 import { getCurrentUser } from "@/lib/auth/session";
-import { getCachedProjectPayItems, getProjects } from "@/lib/procore/projects";
+import { getCachedProjectPayItems, getProjects } from "@/lib/project-catalog/projects";
 
 type RouteContext = {
   params: Promise<{

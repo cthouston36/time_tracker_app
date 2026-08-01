@@ -1,7 +1,7 @@
-import { readProcoreCache, updateProcoreCache, writeProcoreCache } from "@/lib/procore/cache";
+import { readProjectCatalog, updateProjectCatalog, writeProjectCatalog } from "@/lib/project-catalog/cache";
 import { projectNameStartsWithTwo } from "@/lib/daily-report-templates";
 import { splitCostCodeDisplay } from "@/lib/pay-items";
-import type { PayItem, Project } from "@/lib/procore/types";
+import type { PayItem, Project } from "@/lib/domain/types";
 import { runSuiteQL, runSuiteQLAll } from "@/lib/netsuite/client";
 import { setProjectArchiveForProjects } from "@/lib/project-controls-store";
 
@@ -77,10 +77,10 @@ export async function syncProjectsFromNetSuite(): Promise<NetSuiteSyncResult> {
     sourceProjects.projects.map((project) => project.id),
     sourceProjects.inactiveNetSuiteProjectIds
   );
-  const cachedProjects = await readProcoreCache();
+  const cachedProjects = await readProjectCatalog();
   const cachedProjectIds = new Set((cachedProjects?.projects ?? []).map((project) => project.id));
   const newProjects = sourceProjects.projects.filter((project) => !cachedProjectIds.has(project.id));
-  const cache = await updateProcoreCache((currentProjects) => [...currentProjects, ...newProjects]);
+  const cache = await updateProjectCatalog((currentProjects) => [...currentProjects, ...newProjects]);
 
   return {
     projects: cache.projects,
@@ -109,13 +109,13 @@ export async function syncAllProjectsFromNetSuite(): Promise<NetSuiteSyncResult>
     sourceProjects.projects.map((project) => project.id),
     sourceProjects.inactiveNetSuiteProjectIds
   );
-  const existingCache = await readProcoreCache();
+  const existingCache = await readProjectCatalog();
   const activeProjectIds = new Set(sourceProjects.projects.map((project) => project.id));
   const inactiveProjectIds = new Set(sourceProjects.inactiveNetSuiteProjectIds);
   const archivedInactiveProjects = (existingCache?.projects ?? []).filter(
     (project) => inactiveProjectIds.has(project.id) && !activeProjectIds.has(project.id)
   );
-  const cache = await writeProcoreCache([...sourceProjects.projects, ...archivedInactiveProjects]);
+  const cache = await writeProjectCatalog([...sourceProjects.projects, ...archivedInactiveProjects]);
 
   return {
     projects: cache.projects,
@@ -178,7 +178,7 @@ export async function addOrUpdateProjectFromNetSuite(projectIdentifier: string) 
     throw new Error("NetSuite returned no budget pay items for the selected project.");
   }
 
-  const updatedCache = await updateProcoreCache((currentProjects) => {
+  const updatedCache = await updateProjectCatalog((currentProjects) => {
     const projectExists = currentProjects.some((project) => project.id === mappedProject.id);
 
     if (projectExists) {

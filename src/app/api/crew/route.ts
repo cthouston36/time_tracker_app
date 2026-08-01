@@ -13,7 +13,7 @@ import {
   type StoredCrewMember,
   type StoredCrewMembersByProject
 } from "@/lib/crew-store";
-import { getProjects } from "@/lib/procore/projects";
+import { getProjects } from "@/lib/project-catalog/projects";
 
 export async function GET() {
   const user = await getCurrentUser();

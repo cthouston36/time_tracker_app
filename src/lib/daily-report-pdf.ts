@@ -5,7 +5,7 @@ import {
   TWO_SERIES_PRODUCTION_CODES,
   getDailyReportTemplateForProject
 } from "@/lib/daily-report-templates";
-import type { Project } from "@/lib/procore/types";
+import type { Project } from "@/lib/domain/types";
 
 export type DailyReportPdfPayload = {
   project: Project;

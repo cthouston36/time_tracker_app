@@ -11,7 +11,7 @@ type HealthCheck = {
   status: "ok" | "warn" | "error" | "skipped";
 };
 
-type ProcoreStorageCheck = HealthCheck & {
+type ProjectCatalogCheck = HealthCheck & {
   tables?: {
     payItems: boolean;
     projects: boolean;
@@ -21,9 +21,9 @@ type ProcoreStorageCheck = HealthCheck & {
 
 export async function GET() {
   const database = await checkDatabase();
-  const procoreStorage = database.status === "ok" ? await checkProcoreStorageTables() : skippedCheck("Database check did not pass.");
-  const hasError = [database, procoreStorage].some((check) => check.status === "error");
-  const hasWarning = [database, procoreStorage].some((check) => check.status === "warn" || check.status === "skipped");
+  const projectCatalog = database.status === "ok" ? await checkProjectCatalogTables() : skippedCheck("Database check did not pass.");
+  const hasError = [database, projectCatalog].some((check) => check.status === "error");
+  const hasWarning = [database, projectCatalog].some((check) => check.status === "warn" || check.status === "skipped");
   const status = hasError ? "unhealthy" : hasWarning ? "degraded" : "ok";
 
   return NextResponse.json(
@@ -38,7 +38,7 @@ export async function GET() {
           status: "ok"
         },
         database,
-        procoreStorage
+        projectCatalog
       }
     },
     {
@@ -78,7 +78,7 @@ async function checkDatabase(): Promise<HealthCheck> {
   }
 }
 
-async function checkProcoreStorageTables(): Promise<ProcoreStorageCheck> {
+async function checkProjectCatalogTables(): Promise<ProjectCatalogCheck> {
   const startedAt = Date.now();
   const sql = getSql();
 
@@ -90,13 +90,13 @@ async function checkProcoreStorageTables(): Promise<ProcoreStorageCheck> {
     const rows = (await withTimeout(
       sql`
         select
-          to_regclass('public.procore_projects') is not null as projects,
-          to_regclass('public.procore_pay_items') is not null as pay_items,
-          to_regclass('public.procore_sync_state') is not null as sync_state
+          to_regclass('public.project_catalog') is not null as projects,
+          to_regclass('public.project_pay_items') is not null as pay_items,
+          to_regclass('public.project_catalog_sync_state') is not null as sync_state
       `,
       HEALTH_CHECK_TIMEOUT_MS,
-      "Procore storage table check timed out."
-    )) as ProcoreStorageRow[];
+      "Project catalog table check timed out."
+    )) as ProjectCatalogRow[];
     const row = rows[0];
     const tables = {
       payItems: Boolean(row?.pay_items),
@@ -107,14 +107,14 @@ async function checkProcoreStorageTables(): Promise<ProcoreStorageCheck> {
 
     return {
       latencyMs: Date.now() - startedAt,
-      message: allTablesReady ? undefined : "Procore storage tables have not all been created yet.",
+      message: allTablesReady ? undefined : "Project catalog tables have not all been created yet.",
       status: allTablesReady ? "ok" : "warn",
       tables
     };
   } catch (error) {
     return {
       latencyMs: Date.now() - startedAt,
-      message: error instanceof Error ? error.message : "Procore storage check failed.",
+      message: error instanceof Error ? error.message : "Project catalog check failed.",
       status: "warn"
     };
   }
@@ -144,7 +144,7 @@ async function withTimeout<TValue>(promise: Promise<TValue>, timeoutMs: number, 
   }
 }
 
-type ProcoreStorageRow = {
+type ProjectCatalogRow = {
   pay_items: boolean;
   projects: boolean;
   sync_state: boolean;

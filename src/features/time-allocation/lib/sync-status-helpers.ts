@@ -1,6 +1,6 @@
-import type { ProcoreSyncSummary } from "@/features/time-allocation/types";
+import type { ProjectSyncSummary } from "@/features/time-allocation/types";
 
-export function buildSyncStatus(prefix: string, summary: ProcoreSyncSummary | undefined) {
+export function buildSyncStatus(prefix: string, summary: ProjectSyncSummary | undefined) {
   if (!summary) {
     return `${prefix} complete`;
   }
@@ -17,7 +17,7 @@ export function buildSyncStatus(prefix: string, summary: ProcoreSyncSummary | un
   return `${prefix}: ${summary.synced} synced, ${summary.failed} failed${dailyReportOnlyText}${queuedText}${archivedText}${unarchivedText}`;
 }
 
-export function hasSyncWarnings(summary: ProcoreSyncSummary | undefined) {
+export function hasSyncWarnings(summary: ProjectSyncSummary | undefined) {
   return Boolean(
     summary &&
       (summary.failed > 0 || (summary.remainingNewProjects ?? 0) > 0 || (summary.autoArchivedProjects ?? 0) > 0)

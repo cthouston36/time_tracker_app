@@ -1,7 +1,7 @@
 import type { AuthUser } from "@/lib/auth/types";
-import type { AllocationEntry, CrewLaborType, Project } from "@/lib/procore/types";
+import type { AllocationEntry, CrewLaborType, Project } from "@/lib/domain/types";
 
-export type ProcoreSyncSummary = {
+export type ProjectSyncSummary = {
   attempted: number;
   synced: number;
   failed: number;
@@ -23,7 +23,7 @@ export type ProjectsResponse = {
   projectArchiveById?: ProjectArchiveById;
   projects: Project[];
   syncedAt?: string | null;
-  summary?: ProcoreSyncSummary;
+  summary?: ProjectSyncSummary;
   error?: string;
 };
 
@@ -33,7 +33,7 @@ export type SyncLogEntry = {
   status: "success" | "warning" | "error";
   createdAt: string;
   message: string;
-  summary?: ProcoreSyncSummary;
+  summary?: ProjectSyncSummary;
 };
 
 export type SharedAppState = {
