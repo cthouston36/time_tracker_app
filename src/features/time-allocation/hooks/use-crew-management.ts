@@ -32,7 +32,7 @@ import type {
   NetSuiteVendor
 } from "@/features/time-allocation/types";
 
-type EditingCrewMember = {
+export type EditingCrewMember = {
   crewMemberId: string;
   laborType: CrewLaborType;
   name: string;
