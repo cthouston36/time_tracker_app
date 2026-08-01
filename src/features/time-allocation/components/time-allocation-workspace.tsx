@@ -8,7 +8,6 @@ import {
   Maximize2,
   Save,
   Send,
-  Trash2,
   UploadCloud
 } from "lucide-react";
 import { todayInputValue } from "@/lib/date";
@@ -39,7 +38,7 @@ import {
 } from "@/features/time-allocation/components/entry/pay-item-entry-matrix";
 import { MatrixFullscreenModal } from "@/features/time-allocation/components/entry/matrix-fullscreen-modal";
 import { JobImagesPanel } from "@/features/time-allocation/components/entry/job-images-panel";
-import { SubmittedDayReview } from "@/features/time-allocation/components/entry/submitted-day-review";
+import { ReviewSubmitPanel } from "@/features/time-allocation/components/entry/review-submit-panel";
 import {
   clearDatabaseProjectCache,
   clearDatabaseStagingOperationalData,
@@ -90,7 +89,6 @@ import {
   buildCrewSummary,
   draftHasAnyInput,
   draftIsSaveable,
-  formatEntryCrew,
   getExistingDraft,
   normalizeDraftCrewHours,
   splitCrewHoursEvenly
@@ -1800,124 +1798,31 @@ export function TimeAllocationWorkspace() {
               {entryNotice ? <div className={getEntryNoticeClassName(entryNotice)}>{entryNotice}</div> : null}
             </div>
 
-            <div className="panel workflow-panel">
-              <div className="panel-heading">
-                <h2 className="workflow-title">
-                  <span className="workflow-step">2</span>
-                  {dayIsSubmitted ? "Submitted Day Summary" : "Review & Submit"}
-                </h2>
-                {!dayIsSubmitted ? (
-                  <button
-                    className="primary-button prominent-action"
-                    disabled={visibleEntries.length === 0 || submittingDay || savingEntries}
-                    onClick={submitDay}
-                    type="button"
-                  >
-                    {submittingDay ? <InlineSpinner /> : <Send aria-hidden="true" size={18} />}
-                    {submittingDay ? "Submitting..." : "Submit day"}
-                  </button>
-                ) : null}
-              </div>
-              <div className="daily-actions">
-                <span className="field-note">
-                  {dayIsSubmitted && currentDaySubmission.submittedByName && currentDaySubmission.submittedAt
-                    ? `Submitted by ${currentDaySubmission.submittedByName} on ${formatDate(currentDaySubmission.submittedAt)}`
-                    : "Draft day"}
-                </span>
-                {dayIsSubmitted && currentUser.role === "admin" ? (
-                  <div className="admin-day-actions">
-                    <button className="secondary-button" disabled={reopeningDay || deletingSubmittedDay} onClick={reopenSubmittedDay} type="button">
-                      {reopeningDay ? <InlineSpinner /> : null}
-                      {reopeningDay ? "Reopening..." : "Reopen day"}
-                    </button>
-                    <button className="secondary-button" disabled={reopeningDay || deletingSubmittedDay} onClick={deleteSubmittedDay} type="button">
-                      {deletingSubmittedDay ? <InlineSpinner /> : <Trash2 aria-hidden="true" size={18} />}
-                      {deletingSubmittedDay ? "Deleting..." : "Delete submitted day"}
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-              {dayIsSubmitted ? (
-                <SubmittedDayReview
-                  crewSummaryRows={crewSummaryRows}
-                  dailyReport={currentDailyReport}
-                  entries={visibleEntries}
-                  procoreStatus={currentDailyReportProcoreStatus}
-                  showPayItemEntries={selectedProjectUsesPayItems}
-                  totalHours={totalHours}
-                />
-              ) : (
-                <div className="entry-list">
-                  {visibleEntries.length === 0 ? (
-                    <EmptyState title="No saved pay item rows">
-                      Saved rows for this job and date will appear here before submission.
-                    </EmptyState>
-                  ) : (
-                    visibleEntries.map((entry) => (
-                      <div className="entry-row" key={entry.id}>
-                        <span>
-                          <strong>{entry.payItemCode}</strong> {entry.payItemName}
-                        </span>
-                        {editingEntry?.entryId === entry.id ? (
-                          <>
-                            <input
-                              aria-label={`Edit hours for ${entry.payItemCode}`}
-                              className="compact-input number-entry"
-                              min="0"
-                              placeholder="Hours"
-                              step="0.25"
-                              type="number"
-                              value={editingEntry.hours}
-                              onChange={(event) => updateEditingEntry("hours", event.target.value)}
-                              onWheel={(event) => event.currentTarget.blur()}
-                            />
-                            <input
-                              aria-label={`Edit quantity for ${entry.payItemCode}`}
-                              className="compact-input number-entry"
-                              min="0"
-                              placeholder="Quantity"
-                              step="0.01"
-                              type="number"
-                              value={editingEntry.quantity}
-                              onChange={(event) => updateEditingEntry("quantity", event.target.value)}
-                              onWheel={(event) => event.currentTarget.blur()}
-                            />
-                            <button className="secondary-button" disabled={savingEditedEntry} onClick={saveEditedEntry} type="button">
-                              {savingEditedEntry ? <InlineSpinner /> : null}
-                              {savingEditedEntry ? "Saving..." : "Save"}
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <span>{entry.hours.toFixed(2)} hrs</span>
-                            <span>{entry.quantityCompleted.toFixed(2)} qty</span>
-                            <span className="entry-crew">{formatEntryCrew(entry)}</span>
-                            <button
-                              aria-label={`Edit ${entry.payItemCode}`}
-                              className="icon-button"
-                              disabled={dayIsSubmitted}
-                              onClick={() => startEditingEntry(entry)}
-                              type="button"
-                            >
-                              <Edit3 aria-hidden="true" size={17} />
-                            </button>
-                          </>
-                        )}
-                        <button
-                          aria-label={`Remove ${entry.payItemCode}`}
-                          className="icon-button"
-                          disabled={dayIsSubmitted || removingEntryId === entry.id}
-                          onClick={() => removeEntry(entry.id)}
-                          type="button"
-                        >
-                          {removingEntryId === entry.id ? <InlineSpinner /> : <Trash2 aria-hidden="true" size={17} />}
-                        </button>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
+            <ReviewSubmitPanel
+              canManageSubmittedDay={currentUser.role === "admin"}
+              crewSummaryRows={crewSummaryRows}
+              currentDailyReport={currentDailyReport}
+              currentDaySubmission={currentDaySubmission}
+              dayIsSubmitted={dayIsSubmitted}
+              deletingSubmittedDay={deletingSubmittedDay}
+              editingEntry={editingEntry}
+              entries={visibleEntries}
+              procoreStatus={currentDailyReportProcoreStatus}
+              removingEntryId={removingEntryId}
+              reopeningDay={reopeningDay}
+              savingEditedEntry={savingEditedEntry}
+              savingEntries={savingEntries}
+              showPayItemEntries={selectedProjectUsesPayItems}
+              submittingDay={submittingDay}
+              totalHours={totalHours}
+              onDeleteSubmittedDay={deleteSubmittedDay}
+              onRemoveEntry={removeEntry}
+              onReopenSubmittedDay={reopenSubmittedDay}
+              onSaveEditedEntry={saveEditedEntry}
+              onStartEditingEntry={startEditingEntry}
+              onSubmitDay={submitDay}
+              onUpdateEditingEntry={updateEditingEntry}
+            />
               </>
             ) : null}
 
