@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuditRequestMetadata, recordAuditLog } from "@/lib/audit-log";
 import type { AuthUser } from "@/lib/auth/types";
-import { syncAllProjectsFromNetSuite, type NetSuiteSyncSummary } from "@/lib/netsuite/projects";
-import { syncNetSuiteVendors } from "@/lib/netsuite/vendors";
-import { readProjectCatalog } from "@/lib/project-catalog/cache";
 import { insertSyncLogEntry, type StoredSyncLogEntry } from "@/lib/project-controls-store";
+import { enqueueTask } from "@/lib/task-queue";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 10;
 export const runtime = "nodejs";
 
 const CRON_ACTOR: AuthUser = {
@@ -17,20 +15,6 @@ const CRON_ACTOR: AuthUser = {
   role: "admin"
 };
 
-type NightlySyncSummary = {
-  projects?: NetSuiteSyncSummary;
-  syncedAt?: string | null;
-  vendors?: {
-    synced: number;
-    syncedAt: string | null;
-  };
-};
-
-type NightlySyncFailure = {
-  error: string;
-  task: "projects" | "vendors";
-};
-
 export async function GET(request: NextRequest) {
   const authorizationError = authorizeCronRequest(request);
 
@@ -38,73 +22,69 @@ export async function GET(request: NextRequest) {
     return authorizationError;
   }
 
-  const failures: NightlySyncFailure[] = [];
-  const summary: NightlySyncSummary = {};
+  const projectTask = await enqueueTask({
+    actorName: "System Cron",
+    actorUserId: "system",
+    dedupeKey: "netsuite-nightly-sync-all",
+    maxAttempts: 4,
+    payload: {
+      actionName: "Nightly NetSuite Project Sync",
+      actor: CRON_ACTOR,
+      source: "nightly"
+    },
+    priority: 3,
+    targetType: "netsuite_sync",
+    taskType: "netsuite.sync_all"
+  });
+  const vendorTask = await enqueueTask({
+    actorName: "System Cron",
+    actorUserId: "system",
+    dedupeKey: "netsuite-nightly-vendors-sync",
+    maxAttempts: 4,
+    payload: {
+      actionName: "Nightly NetSuite Vendor Sync",
+      actor: CRON_ACTOR,
+      source: "nightly"
+    },
+    priority: 2,
+    targetType: "netsuite_sync",
+    taskType: "netsuite.vendors_sync"
+  });
 
-  try {
-    const projectResult = await syncAllProjectsFromNetSuite();
-    const cache = await readProjectCatalog();
-
-    summary.projects = projectResult.summary;
-    summary.syncedAt = cache?.syncedAt ?? null;
-  } catch (error) {
-    failures.push({
-      error: error instanceof Error ? error.message : "Unable to sync NetSuite project data.",
-      task: "projects"
-    });
+  if (!projectTask || !vendorTask) {
+    return NextResponse.json({ error: "Database is not configured for queued NetSuite syncs." }, { status: 503 });
   }
 
-  try {
-    const vendorResult = await syncNetSuiteVendors();
-
-    summary.vendors = {
-      synced: vendorResult.vendors.length,
-      syncedAt: vendorResult.syncedAt
-    };
-  } catch (error) {
-    failures.push({
-      error: error instanceof Error ? error.message : "Unable to sync NetSuite vendors.",
-      task: "vendors"
-    });
-  }
-
-  const status = failures.length === 0 ? "success" : summary.projects || summary.vendors ? "warning" : "error";
-  const message = buildNightlySyncMessage(summary, failures);
   const syncLogEntry: StoredSyncLogEntry = {
     action: "Nightly NetSuite Sync",
     createdAt: new Date().toISOString(),
     id: crypto.randomUUID(),
-    message,
-    status,
+    message: "Nightly NetSuite sync queued.",
+    status: "success",
     summary: {
-      ...summary,
-      ...(failures.length ? { failures } : {})
+      projectTaskId: projectTask.id,
+      vendorTaskId: vendorTask.id
     }
   };
 
   await insertSyncLogEntry(syncLogEntry);
   await recordAuditLog({
-    action:
-      status === "success"
-        ? "netsuite.nightly_sync_completed"
-        : status === "warning"
-          ? "netsuite.nightly_sync_partially_completed"
-          : "netsuite.nightly_sync_failed",
+    action: "netsuite.nightly_sync_queued",
     actor: CRON_ACTOR,
-    metadata: syncLogEntry.summary as Record<string, unknown>,
+    metadata: {
+      projectTaskId: projectTask.id,
+      vendorTaskId: vendorTask.id
+    },
     targetType: "netsuite_sync",
     ...getAuditRequestMetadata(request.headers)
   });
 
-  return NextResponse.json(
-    {
-      ok: status !== "error",
-      message,
-      status,
-      summary: syncLogEntry.summary
-    },
-    { status: status === "error" ? 502 : 200 }
-  );
+  return NextResponse.json({
+    ok: true,
+    projectTaskId: projectTask.id,
+    status: "queued",
+    vendorTaskId: vendorTask.id
+  });
 }
 
 function authorizeCronRequest(request: NextRequest) {
@@ -125,31 +105,4 @@ function authorizeCronRequest(request: NextRequest) {
   }
 
   return null;
-}
-
-function buildNightlySyncMessage(summary: NightlySyncSummary, failures: NightlySyncFailure[]) {
-  const parts: string[] = [];
-
-  if (summary.projects) {
-    const archivedText =
-      (summary.projects.autoArchivedProjects ?? 0) > 0
-        ? `, ${summary.projects.autoArchivedProjects} archived inactive`
-        : "";
-    const unarchivedText =
-      (summary.projects.autoUnarchivedProjects ?? 0) > 0
-        ? `, ${summary.projects.autoUnarchivedProjects} unarchived active`
-        : "";
-
-    parts.push(`projects ${summary.projects.synced} synced, ${summary.projects.failed} failed${archivedText}${unarchivedText}`);
-  }
-
-  if (summary.vendors) {
-    parts.push(`vendors ${summary.vendors.synced} synced`);
-  }
-
-  if (failures.length > 0) {
-    parts.push(`failures: ${failures.map((failure) => `${failure.task}: ${failure.error}`).join("; ")}`);
-  }
-
-  return `Nightly NetSuite sync: ${parts.length > 0 ? parts.join("; ") : "no tasks completed"}`;
 }

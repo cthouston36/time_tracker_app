@@ -418,6 +418,7 @@ export function TimeAllocationWorkspace() {
     dailyReportDraftNotice,
     dailyReportModalOpen,
     dailyReportNeedsUpload,
+    dailyReportUploadPending,
     dailyReportsByKey,
     dailyReportUploadNotice,
     dailyReportUploadRetryQueue,
@@ -1826,6 +1827,7 @@ export function TimeAllocationWorkspace() {
               <DailyReportPanel
                 currentDailyReport={currentDailyReport}
                 dailyReportNeedsUpload={dailyReportNeedsUpload}
+                dailyReportUploadPending={dailyReportUploadPending}
                 dailyReportUploadNotice={dailyReportUploadNotice}
                 dailyReportUploadRetryQueue={dailyReportUploadRetryQueue}
                 downloadingDailyReportPdf={downloadingDailyReportPdf}

@@ -2,12 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuditRequestMetadata, recordAuditLog } from "@/lib/audit-log";
 import { requestUserCanAccessProjectId } from "@/lib/auth/project-access-server";
 import { getCurrentUser } from "@/lib/auth/session";
-import { countJobImageUploads, upsertJobImageUploads, type StoredJobImageUpload } from "@/lib/job-image-store";
-import { uploadJobImagesToProcore, type JobImageUploadInput } from "@/lib/procore/documents";
+import {
+  countJobImageUploads,
+  countReservedJobImageUploadSlots,
+  upsertJobImageUploads,
+  type StoredJobImageUpload
+} from "@/lib/job-image-store";
 import { getProjects } from "@/lib/project-catalog/projects";
+import { enqueueTask } from "@/lib/task-queue";
+import { scheduleQueuedTaskProcessing } from "@/lib/task-queue-scheduler";
 import type { Project } from "@/lib/domain/types";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const JOB_IMAGE_DAILY_UPLOAD_LIMIT = 50;
@@ -53,7 +60,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `Upload ${MAX_IMAGES_PER_REQUEST} images or fewer at a time.` }, { status: 400 });
     }
 
-    const images: JobImageUploadInput[] = [];
+    const images: Array<{
+      caption?: string;
+      clientId: string;
+      contentType: string;
+      file: Uint8Array;
+      fileSizeBytes: number;
+      originalFileName: string;
+    }> = [];
 
     for (const [index, file] of files.entries()) {
       if (!file.type.startsWith("image/")) {
@@ -77,19 +91,20 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const existingImageCount = await countJobImageUploads(project.id, date);
+    const existingUploadedImageCount = await countJobImageUploads(project.id, date);
+    const reservedImageSlotCount = await countReservedJobImageUploadSlots(project.id, date);
 
-    if (existingImageCount === null) {
+    if (existingUploadedImageCount === null || reservedImageSlotCount === null) {
       return NextResponse.json({ error: "Database is not configured for job image upload tracking." }, { status: 503 });
     }
 
-    const remainingImageSlots = Math.max(0, JOB_IMAGE_DAILY_UPLOAD_LIMIT - existingImageCount);
+    const remainingImageSlots = Math.max(0, JOB_IMAGE_DAILY_UPLOAD_LIMIT - reservedImageSlotCount);
 
     if (remainingImageSlots === 0) {
       return NextResponse.json(
         {
           error: `This job/day already has the maximum ${JOB_IMAGE_DAILY_UPLOAD_LIMIT} uploaded images.`,
-          uploadedImageCount: existingImageCount,
+          uploadedImageCount: existingUploadedImageCount,
           uploadedImageLimit: JOB_IMAGE_DAILY_UPLOAD_LIMIT
         },
         { status: 400 }
@@ -99,41 +114,36 @@ export async function POST(request: NextRequest) {
     if (images.length > remainingImageSlots) {
       return NextResponse.json(
         {
-          error: `This job/day has ${existingImageCount} uploaded images. Upload ${remainingImageSlots} image${
+          error: `This job/day has ${reservedImageSlotCount} uploaded or queued images. Upload ${remainingImageSlots} image${
             remainingImageSlots === 1 ? "" : "s"
           } or fewer.`,
-          uploadedImageCount: existingImageCount,
+          uploadedImageCount: existingUploadedImageCount,
           uploadedImageLimit: JOB_IMAGE_DAILY_UPLOAD_LIMIT
         },
         { status: 400 }
       );
     }
 
-    const uploadResult = await uploadJobImagesToProcore({
-      date,
-      images,
-      project,
-      startingImageNumber: existingImageCount + 1
-    });
     const now = new Date().toISOString();
-    const uploads: StoredJobImageUpload[] = uploadResult.uploads.map((upload) => ({
+    const uploads: StoredJobImageUpload[] = images.map((image, index) => ({
       attemptedAt: now,
-      caption: upload.caption,
-      clientId: upload.clientId,
-      contentType: upload.contentType,
+      caption: image.caption,
+      clientId: image.clientId,
+      contentType: image.contentType,
       date,
-      error: upload.error,
-      fileName: upload.fileName,
-      fileSizeBytes: upload.fileSizeBytes,
-      folderId: upload.folderId,
-      folderPath: upload.folderPath,
-      folderUrl: upload.folderUrl,
+      fileName: buildJobImageFileName({
+        contentType: image.contentType,
+        date,
+        imageNumber: reservedImageSlotCount + index + 1,
+        originalFileName: image.originalFileName,
+        projectName: project.name
+      }),
+      fileSizeBytes: image.fileSizeBytes,
+      folderPath: "Daily Reports/Job Images",
       id: crypto.randomUUID(),
-      originalFileName: upload.originalFileName,
-      procoreFileId: upload.procoreFileId,
+      originalFileName: image.originalFileName,
       projectId: project.id,
-      status: upload.status,
-      uploadedAt: upload.status === "uploaded" ? now : undefined,
+      status: "queued",
       uploadedByName: formatUserName(user),
       uploadedByUserId: user.id
     }));
@@ -144,26 +154,54 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Database is not configured for job image upload tracking." }, { status: 503 });
     }
 
-    const uploadedCount = uploads.filter((upload) => upload.status === "uploaded").length;
-    const failedCount = uploads.length - uploadedCount;
+    const queuedTasks = await Promise.all(
+      uploads.map((upload, index) =>
+        enqueueTask({
+          actorName: formatUserName(user),
+          actorUserId: user.id,
+          dedupeKey: `job-image-upload:${upload.id}`,
+          maxAttempts: 6,
+          payload: {
+            actor: user,
+            date,
+            fileName: upload.fileName,
+            image: {
+              caption: images[index].caption,
+              clientId: images[index].clientId,
+              contentType: images[index].contentType,
+              fileBase64: Buffer.from(images[index].file).toString("base64"),
+              fileSizeBytes: images[index].fileSizeBytes,
+              originalFileName: images[index].originalFileName
+            },
+            project,
+            startingImageNumber: reservedImageSlotCount + index + 1,
+            uploadId: upload.id
+          },
+          priority: 10,
+          targetId: `${project.id}|${date}`,
+          targetType: "project_day",
+          taskType: "procore.job_image_upload"
+        })
+      )
+    );
+
+    if (queuedTasks.some((task) => !task)) {
+      return NextResponse.json({ error: "Database is not configured for queued job image uploads." }, { status: 503 });
+    }
+
+    scheduleQueuedTaskProcessing({
+      limit: 10,
+      timeBudgetMs: 35_000
+    });
 
     await recordAuditLog({
-      action:
-        failedCount === 0
-          ? "procore.job_images_uploaded"
-          : uploadedCount > 0
-            ? "procore.job_images_upload_partially_failed"
-            : "procore.job_images_upload_failed",
+      action: "procore.job_images_upload_queued",
       actor: user,
       metadata: {
         date,
-        failedCount,
-        folderId: uploadResult.folderId,
-        folderPath: uploadResult.folderPath,
-        folderUrl: uploadResult.folderUrl,
+        queuedCount: uploads.length,
         projectId: project.id,
-        procoreProjectId: uploadResult.projectId,
-        uploadedCount
+        taskIds: queuedTasks.flatMap((task) => (task ? [task.id] : []))
       },
       targetId: `${project.id}|${date}`,
       targetType: "project_day",
@@ -172,16 +210,17 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       databaseConfigured: true,
-      failedCount,
-      folderId: uploadResult.folderId,
-      folderPath: uploadResult.folderPath,
-      folderUrl: uploadResult.folderUrl,
-      ok: failedCount === 0,
-      uploadedImageCount: existingImageCount + uploadedCount,
+      failedCount: 0,
+      folderPath: "Daily Reports/Job Images",
+      ok: true,
+      queued: true,
+      queuedCount: uploads.length,
+      taskIds: queuedTasks.flatMap((task) => (task ? [task.id] : [])),
+      uploadedImageCount: existingUploadedImageCount,
       uploadedImageLimit: JOB_IMAGE_DAILY_UPLOAD_LIMIT,
-      uploadedCount,
+      uploadedCount: 0,
       uploads
-    });
+    }, { status: 202 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to upload job images to Procore.";
 
@@ -224,4 +263,52 @@ function readFormString(value: FormDataEntryValue | null) {
 
 function formatUserName(user: { firstName: string; lastName: string }) {
   return `${user.firstName} ${user.lastName}`;
+}
+
+function buildJobImageFileName({
+  contentType,
+  date,
+  imageNumber,
+  originalFileName,
+  projectName
+}: {
+  contentType: string;
+  date: string;
+  imageNumber: number;
+  originalFileName: string;
+  projectName: string;
+}) {
+  const projectNumber = projectName.trim().split(/\s+/)[0]?.slice(0, 8) || "Project";
+  const paddedImageNumber = String(Math.max(1, imageNumber)).padStart(3, "0");
+  const extension = readImageFileExtension(contentType, originalFileName);
+
+  return `${date}_${sanitizeFileName(projectNumber)}_Job_Image_${paddedImageNumber}.${extension}`;
+}
+
+function readImageFileExtension(contentType: string, originalFileName: string) {
+  const normalizedContentType = contentType.trim().toLowerCase();
+
+  if (normalizedContentType === "image/jpeg" || normalizedContentType === "image/jpg") {
+    return "jpg";
+  }
+
+  if (normalizedContentType === "image/png") {
+    return "png";
+  }
+
+  if (normalizedContentType === "image/webp") {
+    return "webp";
+  }
+
+  if (normalizedContentType === "image/heic") {
+    return "heic";
+  }
+
+  const extension = originalFileName.split(".").pop()?.trim().toLowerCase();
+
+  return extension && /^[a-z0-9]{2,5}$/.test(extension) ? extension : "jpg";
+}
+
+function sanitizeFileName(value: string) {
+  return value.replace(/[<>:"/\\|?*\u0000-\u001F]/g, "_");
 }

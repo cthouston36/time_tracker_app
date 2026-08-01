@@ -1,6 +1,6 @@
 import { getSql } from "@/lib/db";
 
-export type StoredJobImageUploadStatus = "failed" | "uploaded";
+export type StoredJobImageUploadStatus = "failed" | "processing" | "queued" | "uploaded";
 
 export type StoredJobImageUpload = {
   caption?: string;
@@ -118,6 +118,33 @@ export async function countJobImageUploads(projectId: string, date: string) {
     where project_id = ${normalizedProjectId}
       and work_date = ${normalizedDate}::date
       and status = 'uploaded'
+  `) as Array<{ count: number }>;
+
+  return rows[0]?.count ?? 0;
+}
+
+export async function countReservedJobImageUploadSlots(projectId: string, date: string) {
+  const sql = getSql();
+
+  if (!sql) {
+    return null;
+  }
+
+  const normalizedProjectId = readPlainString(projectId);
+  const normalizedDate = readPlainString(date);
+
+  if (!normalizedProjectId || !isIsoDate(normalizedDate)) {
+    return 0;
+  }
+
+  await ensureJobImageUploadTable();
+
+  const rows = (await sql`
+    select count(*)::int as count
+    from job_image_uploads
+    where project_id = ${normalizedProjectId}
+      and work_date = ${normalizedDate}::date
+      and status in ('uploaded', 'queued', 'processing')
   `) as Array<{ count: number }>;
 
   return rows[0]?.count ?? 0;
@@ -333,7 +360,7 @@ function normalizeJobImageUpload(upload: StoredJobImageUpload) {
     folderPath: readPlainString(upload.folderPath),
     id: readPlainString(upload.id),
     projectId: readPlainString(upload.projectId),
-    status: upload.status === "uploaded" ? "uploaded" : "failed"
+    status: normalizeUploadStatus(upload.status)
   } satisfies StoredJobImageUpload;
 
   if (
@@ -365,7 +392,7 @@ function normalizeJobImageUploadRow(row: JobImageUploadRow): StoredJobImageUploa
     folderPath: readString(rawUpload, "folderPath") || row.folder_path,
     folderUrl: readOptionalString(rawUpload, "folderUrl") ?? row.folder_url ?? undefined,
     procoreFileId: readOptionalString(rawUpload, "procoreFileId") ?? row.procore_file_id ?? undefined,
-    status: row.status === "uploaded" ? "uploaded" : "failed",
+    status: normalizeUploadStatus(row.status),
     error: readOptionalString(rawUpload, "error") ?? row.error ?? undefined,
     uploadedByUserId: readOptionalString(rawUpload, "uploadedByUserId") ?? row.uploaded_by_user_id ?? undefined,
     uploadedByName: readOptionalString(rawUpload, "uploadedByName") ?? row.uploaded_by_name ?? undefined,
@@ -416,4 +443,12 @@ function readTimestampString(value: unknown) {
 
 function isIsoDate(value: unknown): value is string {
   return typeof value === "string" && ISO_DATE_PATTERN.test(value);
+}
+
+function normalizeUploadStatus(value: unknown): StoredJobImageUploadStatus {
+  if (value === "uploaded" || value === "queued" || value === "processing") {
+    return value;
+  }
+
+  return "failed";
 }

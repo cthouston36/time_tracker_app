@@ -12,6 +12,9 @@ export type DailyReportUploadResponse = {
   folderPath?: string;
   folderUrl?: string;
   procoreFileId?: string;
+  queued?: boolean;
+  status?: "failed" | "processing" | "queued" | "uploaded";
+  taskId?: string;
   procoreUpload?: {
     createFilePath?: string;
     createFilePayload?: string;
@@ -27,6 +30,9 @@ export type JobImageUploadResponse = {
   folderPath?: string;
   folderUrl?: string;
   ok?: boolean;
+  queued?: boolean;
+  queuedCount?: number;
+  taskIds?: string[];
   uploadedCount?: number;
   uploadedImageCount?: number;
   uploadedImageLimit?: number;

@@ -201,7 +201,7 @@ export function JobImagesPanel({
                     <div>
                       <strong>{upload.fileName}</strong>
                       <span>
-                        {upload.status === "uploaded" ? "Uploaded" : "Failed"}
+                        {formatJobImageUploadStatus(upload.status)}
                         {upload.uploadedAt || upload.attemptedAt
                           ? ` ${new Date(upload.uploadedAt ?? upload.attemptedAt ?? "").toLocaleString()}`
                           : ""}
@@ -231,4 +231,20 @@ export function JobImagesPanel({
       </div>
     </div>
   );
+}
+
+function formatJobImageUploadStatus(status: JobImageUpload["status"]) {
+  if (status === "uploaded") {
+    return "Uploaded";
+  }
+
+  if (status === "processing") {
+    return "Processing";
+  }
+
+  if (status === "queued") {
+    return "Queued";
+  }
+
+  return "Failed";
 }

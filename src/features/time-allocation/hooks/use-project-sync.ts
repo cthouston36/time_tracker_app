@@ -132,6 +132,19 @@ export function useProjectSync({
         throw new Error(data.error ?? "Unable to sync NetSuite project data.");
       }
 
+      if (data.queued) {
+        const message = data.message ?? "Sync New Projects queued. The sync log will update when it finishes.";
+
+        onConnectionStatus("Project sync queued");
+        addSyncLog({
+          action: "Sync New Projects",
+          status: "success",
+          message,
+          summary: data.summary
+        });
+        return;
+      }
+
       const nextProjectArchiveById = data.projectArchiveById ?? projectArchiveById;
       const summary = normalizeSyncSummary(data.summary);
       const message = buildSyncStatus("New project sync", summary);
@@ -188,6 +201,19 @@ export function useProjectSync({
 
       if (!response.ok) {
         throw new Error(data.error ?? "Unable to sync all NetSuite projects.");
+      }
+
+      if (data.queued) {
+        const message = data.message ?? "Sync All Projects queued. The sync log will update when it finishes.";
+
+        onConnectionStatus("Full sync queued");
+        addSyncLog({
+          action: "Sync All Projects",
+          status: "success",
+          message,
+          summary: data.summary
+        });
+        return;
       }
 
       const nextProjectArchiveById = data.projectArchiveById ?? projectArchiveById;

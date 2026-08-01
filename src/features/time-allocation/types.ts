@@ -20,11 +20,14 @@ export type ProjectSyncSummary = {
 };
 
 export type ProjectsResponse = {
+  error?: string;
+  message?: string;
   projectArchiveById?: ProjectArchiveById;
   projects: Project[];
+  queued?: boolean;
   syncedAt?: string | null;
   summary?: ProjectSyncSummary;
-  error?: string;
+  taskId?: string;
 };
 
 export type SyncLogEntry = {
@@ -175,7 +178,7 @@ export type DailyReport = DailyReportAnswers & {
 
 export type DailyReportsByKey = Record<string, DailyReport>;
 
-export type DailyReportUploadStatus = "failed" | "uploaded";
+export type DailyReportUploadStatus = "failed" | "processing" | "queued" | "uploaded";
 
 export type DailyReportUpload = {
   attemptedAt?: string;
@@ -199,7 +202,7 @@ export type DailyReportProcoreStatus = {
   message: string;
 };
 
-export type JobImageUploadStatus = "failed" | "uploaded";
+export type JobImageUploadStatus = "failed" | "processing" | "queued" | "uploaded";
 
 export type JobImageUpload = {
   attemptedAt?: string;

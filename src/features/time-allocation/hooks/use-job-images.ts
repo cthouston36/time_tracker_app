@@ -65,7 +65,11 @@ export function useJobImages({
     () => currentJobImageUploads.filter((upload) => upload.status === "uploaded").length,
     [currentJobImageUploads]
   );
-  const remainingJobImageSlots = Math.max(0, JOB_IMAGE_DAILY_UPLOAD_LIMIT - uploadedJobImageCount);
+  const reservedJobImageCount = useMemo(
+    () => currentJobImageUploads.filter((upload) => upload.status === "uploaded" || upload.status === "queued" || upload.status === "processing").length,
+    [currentJobImageUploads]
+  );
+  const remainingJobImageSlots = Math.max(0, JOB_IMAGE_DAILY_UPLOAD_LIMIT - reservedJobImageCount);
   const remainingQueueableJobImageSlots = Math.max(0, remainingJobImageSlots - queuedJobImages.length);
   const jobImageDailyLimitReached = remainingJobImageSlots === 0;
   const showJobImageDetails = Boolean(
@@ -325,6 +329,7 @@ export function useJobImages({
 
       let uploadedCount = 0;
       let failedCount = 0;
+      let queuedCount = 0;
 
       try {
         const batches = chunkJobImagesForUpload(imagesToUpload);
@@ -370,23 +375,32 @@ export function useJobImages({
 
             uploadedCount += returnedUploads.filter((upload) => upload.status === "uploaded").length;
             failedCount += returnedUploads.filter((upload) => upload.status === "failed").length;
+            queuedCount += data.queued ? data.queuedCount ?? returnedUploads.length : 0;
 
-            setJobImageQueue((current) =>
-              current.map((item) => {
-                const upload = uploadedByClientId.get(item.id);
+            if (data.queued) {
+              for (const item of batch) {
+                revokeJobImagePreview(item.previewUrl);
+              }
 
-                if (!upload) {
-                  return item;
-                }
+              setJobImageQueue((current) => current.filter((item) => !batch.some((image) => image.id === item.id)));
+            } else {
+              setJobImageQueue((current) =>
+                current.map((item) => {
+                  const upload = uploadedByClientId.get(item.id);
 
-                return {
-                  ...item,
-                  error: upload.error,
-                  status: upload.status,
-                  uploadedFileName: upload.fileName
-                };
-              })
-            );
+                  if (!upload) {
+                    return item;
+                  }
+
+                  return {
+                    ...item,
+                    error: upload.error,
+                    status: upload.status === "processing" ? "uploading" : upload.status,
+                    uploadedFileName: upload.fileName
+                  };
+                })
+              );
+            }
             setJobImageUploadsByDay((current) => ({
               ...current,
               [currentDayKey]: mergeJobImageUploads(current[currentDayKey] ?? [], returnedUploads)
@@ -409,7 +423,12 @@ export function useJobImages({
           }
         }
 
-        if (uploadedCount > 0 && failedCount === 0) {
+        if (queuedCount > 0 && uploadedCount === 0 && failedCount === 0) {
+          setJobImageNotice({
+            message: `Queued ${queuedCount} job image${queuedCount === 1 ? "" : "s"} for Procore upload. They will retry automatically if Procore is busy.`,
+            status: "success"
+          });
+        } else if (uploadedCount > 0 && failedCount === 0) {
           setJobImageNotice({
             message: `Uploaded ${uploadedCount} job image${uploadedCount === 1 ? "" : "s"} to Procore.`,
             status: "success"
@@ -429,7 +448,7 @@ export function useJobImages({
         setUploadingJobImages(false);
       }
     },
-    [currentDayKey, remainingJobImageSlots, selectedProject, userIsOffline, workDate]
+    [currentDayKey, remainingJobImageSlots, revokeJobImagePreview, selectedProject, userIsOffline, workDate]
   );
 
   const uploadQueuedJobImages = useCallback(async () => {

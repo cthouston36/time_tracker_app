@@ -859,6 +859,13 @@ function getDailyReportCalendarStatus(
     };
   }
 
+  if (upload?.status === "queued" || upload?.status === "processing") {
+    return {
+      className: "created",
+      label: "Pending"
+    };
+  }
+
   if (dailyReport) {
     return {
       className: "created",

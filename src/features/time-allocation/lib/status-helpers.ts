@@ -96,6 +96,13 @@ export function getDailyReportCalendarStatus(
     };
   }
 
+  if (upload?.status === "queued" || upload?.status === "processing") {
+    return {
+      className: "created",
+      label: "Pending"
+    };
+  }
+
   if (dailyReport) {
     return {
       className: "created",
@@ -151,6 +158,17 @@ export function getDailyReportProcoreStatus(
       className: "failed",
       label: "Upload failed",
       message: `Last Procore upload failed${attemptedAt}: ${upload.error ?? "Unknown error."}`
+    };
+  }
+
+  if (upload?.status === "queued" || upload?.status === "processing") {
+    return {
+      className: "pending",
+      label: "Pending",
+      message:
+        upload.status === "processing"
+          ? "Procore upload is processing in the background."
+          : "Procore upload is queued and will retry automatically."
     };
   }
 

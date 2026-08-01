@@ -25,6 +25,7 @@ type DailyReportUploadRetryItem = {
 export function DailyReportPanel({
   currentDailyReport,
   dailyReportNeedsUpload,
+  dailyReportUploadPending,
   dailyReportUploadNotice,
   dailyReportUploadRetryQueue,
   downloadingDailyReportPdf,
@@ -41,6 +42,7 @@ export function DailyReportPanel({
 }: {
   currentDailyReport: DailyReport | undefined;
   dailyReportNeedsUpload: boolean;
+  dailyReportUploadPending: boolean;
   dailyReportUploadNotice: DailyReportUploadNotice;
   dailyReportUploadRetryQueue: DailyReportUploadRetryItem[];
   downloadingDailyReportPdf: boolean;
@@ -83,12 +85,12 @@ export function DailyReportPanel({
           {currentDailyReport ? (
             <button
               className={dailyReportNeedsUpload ? "primary-button prominent-action" : "secondary-button"}
-              disabled={!selectedProject || uploadingDailyReport}
+              disabled={!selectedProject || uploadingDailyReport || dailyReportUploadPending}
               onClick={onUploadToProcore}
               type="button"
             >
               {uploadingDailyReport ? <InlineSpinner /> : <UploadCloud aria-hidden="true" size={18} />}
-              {uploadingDailyReport ? "Uploading..." : "Upload to Procore"}
+              {uploadingDailyReport ? "Queueing..." : dailyReportUploadPending ? "Queued for upload" : "Upload to Procore"}
             </button>
           ) : null}
         </div>

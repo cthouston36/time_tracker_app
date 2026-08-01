@@ -1714,6 +1714,11 @@ a.daily-report-procore-status:hover {
   border-color: #245f45;
 }
 
+.job-image-history-row.processing,
+.job-image-history-row.queued {
+  border-color: #9f7b2c;
+}
+
 .job-image-history-row.failed {
   border-color: #6e2f38;
 }

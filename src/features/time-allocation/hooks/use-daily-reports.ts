@@ -121,7 +121,10 @@ export function useDailyReports({
     selectedProject?.id,
     currentUser?.role ?? "standard"
   );
-  const dailyReportNeedsUpload = Boolean(currentDailyReport && currentDailyReportProcoreStatus.className !== "uploaded");
+  const dailyReportUploadPending = currentDailyReportUpload?.status === "queued" || currentDailyReportUpload?.status === "processing";
+  const dailyReportNeedsUpload = Boolean(
+    currentDailyReport && currentDailyReportProcoreStatus.className !== "uploaded" && !dailyReportUploadPending
+  );
   const previousDailyReportCrewTime = useMemo(
     () => (selectedProject ? findPreviousDailyReportWithCrewTime(dailyReportsByKey, selectedProject.id, workDate) : null),
     [dailyReportsByKey, selectedProject, workDate]
@@ -688,16 +691,23 @@ export function useDailyReports({
           throw new Error(data.error ?? "Unable to upload daily report to Procore.");
         }
 
-        const dailyReportUpload: DailyReportUpload = {
-          companyId: data.companyId,
-          fileName: data.fileName ?? "daily report",
-          folderId: data.folderId,
-          folderPath: data.folderPath ?? "Daily Reports",
-          folderUrl: data.folderUrl ?? buildProcoreDocumentsFolderUrl(data.companyId, project.id, data.folderId),
-          procoreFileId: data.procoreFileId,
-          status: "uploaded",
-          uploadedAt: new Date().toISOString()
-        };
+        const dailyReportUpload: DailyReportUpload = data.queued
+          ? {
+              attemptedAt: new Date().toISOString(),
+              fileName: data.fileName ?? buildDailyReportUploadFileName(project.name, date),
+              folderPath: data.folderPath ?? "Daily Reports",
+              status: "queued"
+            }
+          : {
+              companyId: data.companyId,
+              fileName: data.fileName ?? "daily report",
+              folderId: data.folderId,
+              folderPath: data.folderPath ?? "Daily Reports",
+              folderUrl: data.folderUrl ?? buildProcoreDocumentsFolderUrl(data.companyId, project.id, data.folderId),
+              procoreFileId: data.procoreFileId,
+              status: "uploaded",
+              uploadedAt: new Date().toISOString()
+            };
 
         setDailyReportUploadsByKey((current) => ({
           ...current,
@@ -714,7 +724,9 @@ export function useDailyReports({
           return;
         }
         showDailyReportUploadMessage(
-          getDailyReportProcoreStatus(report, dailyReportUpload, project.id, currentUser?.role ?? "standard").message,
+          data.queued
+            ? "Daily report upload queued. It will retry automatically if Procore is busy."
+            : getDailyReportProcoreStatus(report, dailyReportUpload, project.id, currentUser?.role ?? "standard").message,
           "success",
           showCurrentDayNotice
         );
@@ -873,6 +885,7 @@ export function useDailyReports({
     dailyReportDraftNotice,
     dailyReportModalOpen,
     dailyReportNeedsUpload,
+    dailyReportUploadPending,
     dailyReportsByKey,
     dailyReportUploadNotice,
     dailyReportUploadRetryQueue,
