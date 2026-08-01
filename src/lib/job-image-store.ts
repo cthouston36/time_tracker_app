@@ -1,4 +1,5 @@
 import { getSql } from "@/lib/db";
+import { rebuildPmSummaryRollups, refreshPmSummaryRollupsForDays } from "@/lib/report-rollups";
 
 export type StoredJobImageUploadStatus = "failed" | "processing" | "queued" | "uploaded";
 
@@ -285,6 +286,14 @@ export async function upsertJobImageUploads(jobImageUploads: StoredJobImageUploa
   `);
 
   await sql.transaction(queries);
+  await refreshJobImageRollupsAfterWrite(() =>
+    refreshPmSummaryRollupsForDays(
+      normalizedUploads.map((upload) => ({
+        date: upload.date,
+        projectId: upload.projectId
+      }))
+    )
+  );
 
   return normalizedUploads.length;
 }
@@ -302,10 +311,19 @@ export async function clearJobImageUploadData() {
     delete from job_image_uploads
     returning id
   `) as Array<{ id: string }>;
+  await refreshJobImageRollupsAfterWrite(rebuildPmSummaryRollups);
 
   return {
     jobImageUploads: rows.length
   };
+}
+
+async function refreshJobImageRollupsAfterWrite(refresh: () => Promise<unknown>) {
+  try {
+    await refresh();
+  } catch (error) {
+    console.error("Unable to refresh job image report rollups.", error);
+  }
 }
 
 async function ensureJobImageUploadTable() {

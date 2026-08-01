@@ -1,4 +1,9 @@
 import { getSql } from "@/lib/db";
+import {
+  rebuildDailyReportRollups,
+  refreshDailyReportRollupsForDays,
+  refreshPmSummaryRollupsForDays
+} from "@/lib/report-rollups";
 
 export type StoredDailyReportsByKey = Record<string, Record<string, unknown>>;
 export type StoredDailyReportUploadsByKey = Record<string, Record<string, unknown>>;
@@ -185,6 +190,7 @@ export async function replaceDailyReportData(
   }
 
   await sql.transaction(queries);
+  await refreshDailyReportRollupsAfterWrite(rebuildDailyReportRollups);
 
   return {
     dailyReportUploads: normalizedUploads.length,
@@ -242,6 +248,9 @@ export async function upsertDailyReport(projectId: string, date: string, dailyRe
         report = excluded.report,
         updated_at = now()
   `;
+  await refreshDailyReportRollupsAfterWrite(() =>
+    refreshDailyReportRollupsForDays([{ date: normalizedDate, projectId: normalizedProjectId }])
+  );
 
   return true;
 }
@@ -296,6 +305,9 @@ export async function upsertDailyReportUpload(
         upload = excluded.upload,
         updated_at = now()
   `;
+  await refreshDailyReportRollupsAfterWrite(() =>
+    refreshPmSummaryRollupsForDays([{ date: normalizedDate, projectId: normalizedProjectId }])
+  );
 
   return true;
 }
@@ -321,8 +333,19 @@ export async function deleteDailyReportUpload(projectId: string, date: string) {
     where project_id = ${normalizedProjectId}
       and work_date = ${normalizedDate}::date
   `;
+  await refreshDailyReportRollupsAfterWrite(() =>
+    refreshPmSummaryRollupsForDays([{ date: normalizedDate, projectId: normalizedProjectId }])
+  );
 
   return true;
+}
+
+async function refreshDailyReportRollupsAfterWrite(refresh: () => Promise<unknown>) {
+  try {
+    await refresh();
+  } catch (error) {
+    console.error("Unable to refresh daily report rollups.", error);
+  }
 }
 
 async function ensureDailyReportTables() {

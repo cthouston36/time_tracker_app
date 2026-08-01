@@ -1,4 +1,9 @@
 import { getSql } from "@/lib/db";
+import {
+  clearReportRollups,
+  rebuildDailyReportRollups,
+  rebuildEntryReportRollups
+} from "@/lib/report-rollups";
 import type { AllocationEntry, CrewAllocation, CrewLaborType } from "@/lib/domain/types";
 
 export type AppStateMirrorStatus = "not_configured" | "success";
@@ -43,6 +48,7 @@ export async function mirrorSharedAppStateToTables(state: unknown): Promise<AppS
   await mirrorProjectArchive(appState);
   await mirrorProjectBlacklist(appState);
   await mirrorSyncLog(appState);
+  await rebuildReportRollupsAfterMirror();
 
   return "success";
 }
@@ -245,6 +251,24 @@ async function clearNormalizedAppStateTables() {
   await sql`delete from project_archive`;
   await sql`delete from project_blacklist`;
   await sql`delete from sync_log_entries`;
+  await clearReportRollupsAfterMirror();
+}
+
+async function rebuildReportRollupsAfterMirror() {
+  try {
+    await rebuildEntryReportRollups();
+    await rebuildDailyReportRollups();
+  } catch (error) {
+    console.error("Unable to rebuild report rollups after app-state mirror.", error);
+  }
+}
+
+async function clearReportRollupsAfterMirror() {
+  try {
+    await clearReportRollups();
+  } catch (error) {
+    console.error("Unable to clear report rollups during app-state mirror.", error);
+  }
 }
 
 async function mirrorCrewDirectory(appState: SharedAppStateRecord) {

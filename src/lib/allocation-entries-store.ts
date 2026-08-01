@@ -1,5 +1,10 @@
 import { getSql } from "@/lib/db";
 import { normalizeNumericCostCode } from "@/lib/pay-items";
+import {
+  rebuildEntryReportRollups,
+  refreshEntryReportRollupsForDays,
+  type ReportRollupDayKey
+} from "@/lib/report-rollups";
 import type { AllocationEntry, CrewAllocation, CrewLaborType } from "@/lib/domain/types";
 
 type EntryRow = {
@@ -273,6 +278,7 @@ export async function replaceAllocationEntries(entries: AllocationEntry[]) {
   }
 
   await sql.transaction(queries);
+  await refreshEntryRollupsAfterWrite(rebuildEntryReportRollups);
 
   return {
     crewAllocations: normalizedEntries.reduce((total, entry) => total + entry.crewAllocations.length, 0),
@@ -299,6 +305,7 @@ export async function upsertAllocationEntries(entries: AllocationEntry[]) {
   }
 
   const queries = [];
+  const existingDays = await readExistingEntryDays(normalizedEntries.map((entry) => entry.id));
 
   for (const entry of normalizedEntries) {
     queries.push(sql`delete from daily_entry_crew_allocations where entry_id = ${entry.id}`);
@@ -386,6 +393,15 @@ export async function upsertAllocationEntries(entries: AllocationEntry[]) {
   }
 
   await sql.transaction(queries);
+  await refreshEntryRollupsAfterWrite(() =>
+    refreshEntryReportRollupsForDays([
+      ...existingDays,
+      ...normalizedEntries.map((entry) => ({
+        date: entry.date,
+        projectId: entry.projectId
+      }))
+    ])
+  );
 
   return {
     crewAllocations: normalizedEntries.reduce((total, entry) => total + entry.crewAllocations.length, 0),
@@ -402,10 +418,13 @@ export async function deleteAllocationEntry(entryId: string) {
 
   await ensureDailyEntryTables();
 
+  const existingDays = await readExistingEntryDays([entryId]);
+
   await sql.transaction([
     sql`delete from daily_entry_crew_allocations where entry_id = ${entryId}`,
     sql`delete from daily_entries where id = ${entryId}`
   ]);
+  await refreshEntryRollupsAfterWrite(() => refreshEntryReportRollupsForDays(existingDays));
 
   return true;
 }
@@ -435,8 +454,41 @@ export async function deleteAllocationEntriesForDay(projectId: string, date: str
         and work_date = ${date}::date
     `
   ]);
+  await refreshEntryRollupsAfterWrite(() => refreshEntryReportRollupsForDays([{ date, projectId }]));
 
   return true;
+}
+
+async function readExistingEntryDays(entryIds: string[]): Promise<ReportRollupDayKey[]> {
+  const sql = getSql();
+  const normalizedEntryIds = normalizeStringList(entryIds);
+
+  if (!sql || normalizedEntryIds.length === 0) {
+    return [];
+  }
+
+  const entryIdsJson = JSON.stringify(normalizedEntryIds);
+  const rows = (await sql`
+    select distinct project_id, to_char(work_date, 'YYYY-MM-DD') as date
+    from daily_entries
+    where id in (
+      select value
+      from jsonb_array_elements_text(${entryIdsJson}::jsonb)
+    )
+  `) as Array<{ date: string; project_id: string }>;
+
+  return rows.map((row) => ({
+    date: row.date,
+    projectId: row.project_id
+  }));
+}
+
+async function refreshEntryRollupsAfterWrite(refresh: () => Promise<unknown>) {
+  try {
+    await refresh();
+  } catch (error) {
+    console.error("Unable to refresh entry report rollups.", error);
+  }
 }
 
 async function ensureDailyEntryTables() {

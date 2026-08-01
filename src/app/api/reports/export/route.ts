@@ -15,8 +15,8 @@ import {
   type ReportMode
 } from "@/lib/report-builders";
 import { todayInputValue } from "@/lib/date";
-import { readDailyReportsForRange } from "@/lib/daily-report-store";
 import { getProjects } from "@/lib/project-catalog/projects";
+import { backfillReportRollupsIfEmpty, readDailyWorkRollupSourceRows } from "@/lib/report-rollups";
 import type { AllocationEntry, CrewLaborType, Project } from "@/lib/domain/types";
 
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
   };
 
   if (mode === "daily_work") {
-    const dailyReportRows = await readDailyReportsForRange(baseFilters);
+    const dailyReportRows = await readDailyWorkRollupSourceRows(baseFilters);
 
     if (!dailyReportRows) {
       return NextResponse.json({ error: "Database storage is not configured for report exports." }, { status: 503 });
@@ -69,6 +69,8 @@ export async function POST(request: NextRequest) {
       }
     });
   }
+
+  await backfillReportRollupsForRequest();
 
   const entries = await readAllocationEntriesForReport(baseFilters);
 
@@ -86,6 +88,14 @@ export async function POST(request: NextRequest) {
       "Content-Type": "text/csv; charset=utf-8"
     }
   });
+}
+
+async function backfillReportRollupsForRequest() {
+  try {
+    await backfillReportRollupsIfEmpty();
+  } catch (error) {
+    console.error("Unable to backfill report rollups for report export.", error);
+  }
 }
 
 async function buildReportCsv(

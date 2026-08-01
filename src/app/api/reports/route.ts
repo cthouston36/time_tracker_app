@@ -20,6 +20,7 @@ import {
 } from "@/lib/report-builders";
 import { readDailyReportsForRange } from "@/lib/daily-report-store";
 import { getProjects } from "@/lib/project-catalog/projects";
+import { backfillReportRollupsIfEmpty, readDailyWorkRollupSourceRows } from "@/lib/report-rollups";
 import type { CrewLaborType, Project } from "@/lib/domain/types";
 
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -65,7 +66,7 @@ export async function POST(request: NextRequest) {
     startDate: parseIsoDate(body.startDate)
   };
 
-  if (mode === "daily_work" || mode === "employee_hours") {
+  if (mode === "employee_hours") {
     const dailyReportRows = await readDailyReportsForRange(baseFilters);
 
     if (!dailyReportRows) {
@@ -81,22 +82,37 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    if (mode === "employee_hours") {
-      const reportRows = buildEmployeeHoursReportRows(
-        dailyReportRows,
-        projects,
-        parseEmployeeHoursGrouping(body.employeeHoursGrouping)
-      );
-      const pagedRows = paginateRows(reportRows, page, pageSize);
+    const reportRows = buildEmployeeHoursReportRows(
+      dailyReportRows,
+      projects,
+      parseEmployeeHoursGrouping(body.employeeHoursGrouping)
+    );
+    const pagedRows = paginateRows(reportRows, page, pageSize);
 
+    return NextResponse.json({
+      databaseConfigured: true,
+      filteredEntryCount: dailyReportRows.length,
+      mode,
+      page: pagedRows.page,
+      pageSize: pagedRows.pageSize,
+      rows: pagedRows.rows,
+      totalRows: pagedRows.totalRows
+    });
+  }
+
+  if (mode === "daily_work") {
+    const dailyReportRows = await readDailyWorkRollupSourceRows(baseFilters);
+
+    if (!dailyReportRows) {
       return NextResponse.json({
-        databaseConfigured: true,
-        filteredEntryCount: dailyReportRows.length,
+        databaseConfigured: false,
+        filteredEntryCount: 0,
         mode,
-        page: pagedRows.page,
-        pageSize: pagedRows.pageSize,
-        rows: pagedRows.rows,
-        totalRows: pagedRows.totalRows
+        page,
+        pageSize,
+        payItemOptions: [],
+        rows: [],
+        totalRows: 0
       });
     }
 
@@ -113,6 +129,8 @@ export async function POST(request: NextRequest) {
       totalRows: pagedRows.totalRows
     });
   }
+
+  await backfillReportRollupsForRequest();
 
   const entries = await readAllocationEntriesForReport(baseFilters);
 
@@ -186,6 +204,14 @@ export async function POST(request: NextRequest) {
     rows: pagedRows.rows,
     totalRows: pagedRows.totalRows
   });
+}
+
+async function backfillReportRollupsForRequest() {
+  try {
+    await backfillReportRollupsIfEmpty();
+  } catch (error) {
+    console.error("Unable to backfill report rollups for report request.", error);
+  }
 }
 
 function resolveProjectIds(body: ReportRequestBody, cachedProjectIds: string[], myProjectIds: string[]) {
