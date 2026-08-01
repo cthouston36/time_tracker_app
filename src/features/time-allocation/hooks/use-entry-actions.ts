@@ -17,7 +17,7 @@ import {
 } from "@/features/time-allocation/lib/conflict-helpers";
 import {
   buildCrewAllocations,
-  confirmQuantityOverrun,
+  buildQuantityOverrunConfirmationDetails,
   draftIsIncomplete,
   draftIsSaveable,
   getCrewAllocationError,
@@ -30,6 +30,7 @@ import {
   formatPayItemQuantity,
   formatPayItemUnitOfMeasure
 } from "@/features/time-allocation/lib/pay-item-helpers";
+import type { ConfirmationOptions } from "@/features/time-allocation/hooks/use-confirmation-dialog";
 import type {
   CrewMember,
   DayEntryNotesByKey,
@@ -45,6 +46,7 @@ type EditingEntry = {
 };
 
 export function useEntryActions({
+  confirmAction,
   currentUser,
   dayIsSubmitted,
   daySubmissions,
@@ -62,6 +64,7 @@ export function useEntryActions({
   visibleEntries,
   workDate
 }: {
+  confirmAction: (options: ConfirmationOptions) => Promise<boolean>;
   currentUser: AuthUser | null;
   dayIsSubmitted: boolean;
   daySubmissions: DaySubmissionsByKey;
@@ -159,6 +162,23 @@ export function useEntryActions({
     setEntryNotice("Draft inputs cleared.");
   }, [setDraftsByPayItem, setEntryNotice]);
 
+  const confirmQuantityOverrun = useCallback(
+    (warnings: string[]) => {
+      const { hiddenWarning, visibleWarnings } = buildQuantityOverrunConfirmationDetails(warnings);
+
+      return confirmAction({
+        cancelLabel: "Review quantities",
+        confirmLabel: "Save anyway",
+        description:
+          "One or more quantities exceed the remaining quantity for this job. This is allowed, but should be intentional.",
+        details: hiddenWarning ? [...visibleWarnings, hiddenWarning] : visibleWarnings,
+        title: "Quantity overrun warning",
+        tone: "warning"
+      });
+    },
+    [confirmAction]
+  );
+
   const saveAllocationEntries = useCallback(async () => {
     if (!selectedProject || !currentUser || dayIsSubmitted || savingEntries) {
       return;
@@ -194,7 +214,7 @@ export function useEntryActions({
       remainingQuantitiesByPayItem
     );
 
-    if (overrunWarnings.length > 0 && !confirmQuantityOverrun(overrunWarnings)) {
+    if (overrunWarnings.length > 0 && !(await confirmQuantityOverrun(overrunWarnings))) {
       setEntryNotice("Save cancelled. Adjust quantities or save again to confirm the overrun.");
       return;
     }
@@ -264,6 +284,7 @@ export function useEntryActions({
     dayIsSubmitted,
     draftsByPayItem,
     ensureEntriesAreCurrent,
+    confirmQuantityOverrun,
     remainingQuantitiesByPayItem,
     savingEntries,
     selectedProject,
@@ -311,6 +332,18 @@ export function useEntryActions({
       return;
     }
 
+    if (
+      !(await confirmAction({
+        cancelLabel: "Keep submitted day",
+        confirmLabel: "Delete day",
+        description: `Delete all saved pay item rows and submitted status for ${selectedProject.name} on ${formatDate(workDate)}? This cannot be undone.`,
+        title: "Delete submitted day",
+        tone: "danger"
+      }))
+    ) {
+      return;
+    }
+
     setDeletingSubmittedDay(true);
     setEntryNotice("Deleting submitted day...");
 
@@ -351,6 +384,7 @@ export function useEntryActions({
       setDeletingSubmittedDay(false);
     }
   }, [
+    confirmAction,
     currentUser?.role,
     deletingSubmittedDay,
     ensureDaySubmissionIsCurrent,
@@ -400,9 +434,9 @@ export function useEntryActions({
       if (
         remainingQuantity !== undefined &&
         quantity > remainingQuantity + 0.0001 &&
-        !confirmQuantityOverrun([
+        !(await confirmQuantityOverrun([
           `${entryToEdit.payItemCode}: ${formatPayItemQuantity(quantity)} entered, ${formatPayItemQuantity(remainingQuantity)} remaining.`
-        ])
+        ]))
       ) {
         setEntryNotice("Update cancelled. Adjust the quantity or save again to confirm the overrun.");
         return;
@@ -447,6 +481,7 @@ export function useEntryActions({
     editingEntry,
     entries,
     ensureEntriesAreCurrent,
+    confirmQuantityOverrun,
     remainingQuantitiesByPayItem,
     savingEditedEntry,
     selectedProject?.id,
@@ -469,7 +504,15 @@ export function useEntryActions({
         return;
       }
 
-      if (!window.confirm(`Submit ${selectedProject.name} for ${formatDate(workDate)}? This will lock the day for field edits.`)) {
+      if (
+        !(await confirmAction({
+          cancelLabel: "Keep editing",
+          confirmLabel: "Submit day",
+          description: `Submit ${selectedProject.name} for ${formatDate(workDate)}? This will lock the day for field edits.`,
+          title: "Submit daily entries",
+          tone: "warning"
+        }))
+      ) {
         return;
       }
 
@@ -499,6 +542,7 @@ export function useEntryActions({
       setSubmittingDay(false);
     }
   }, [
+    confirmAction,
     currentUser,
     ensureDaySubmissionIsCurrent,
     ensureEntriesAreCurrent,

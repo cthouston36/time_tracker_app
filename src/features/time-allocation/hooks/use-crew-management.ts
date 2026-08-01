@@ -31,6 +31,7 @@ import type {
   DraftsByPayItem,
   NetSuiteVendor
 } from "@/features/time-allocation/types";
+import type { ConfirmationOptions } from "@/features/time-allocation/hooks/use-confirmation-dialog";
 
 export type EditingCrewMember = {
   crewMemberId: string;
@@ -41,6 +42,7 @@ export type EditingCrewMember = {
 };
 
 export function useCrewManagement({
+  confirmAction,
   clearSubcontractorVendorSelection,
   currentUser,
   entries,
@@ -51,6 +53,7 @@ export function useCrewManagement({
   setEntries,
   setEntryNotice
 }: {
+  confirmAction: (options: ConfirmationOptions) => Promise<boolean>;
   clearSubcontractorVendorSelection: () => void;
   currentUser: AuthUser | null;
   entries: AllocationEntry[];
@@ -453,7 +456,7 @@ export function useCrewManagement({
     [entries, selectedProject, setDraftsByPayItem, setEntryNotice]
   );
 
-  const mergeCrewMembers = useCallback(() => {
+  const mergeCrewMembers = useCallback(async () => {
     if (currentUser?.role !== "admin") {
       return;
     }
@@ -471,11 +474,20 @@ export function useCrewManagement({
       return;
     }
 
-    const confirmed = window.confirm(
-      `Merge ${getCrewDisplayName(sourceCrewMember)} into ${getCrewDisplayName(targetCrewMember)}? This updates saved entries, reports, project crew lists, and draft allocations.`
-    );
-
-    if (!confirmed) {
+    if (
+      !(await confirmAction({
+        cancelLabel: "Cancel merge",
+        confirmLabel: "Merge crew",
+        description: `Merge ${getCrewDisplayName(sourceCrewMember)} into ${getCrewDisplayName(targetCrewMember)}?`,
+        details: [
+          "Saved entries will be reassigned.",
+          "Daily reports, project crew lists, and draft allocations will be updated.",
+          `${getCrewDisplayName(sourceCrewMember)} will be removed from the crew directory.`
+        ],
+        title: "Merge duplicate crew members",
+        tone: "danger"
+      }))
+    ) {
       return;
     }
 
@@ -500,6 +512,7 @@ export function useCrewManagement({
     setMergeTargetCrewMemberId(targetCrewMember.id);
     setEntryNotice(`${getCrewDisplayName(sourceCrewMember)} merged into ${getCrewDisplayName(targetCrewMember)}.`);
   }, [
+    confirmAction,
     crewDirectory,
     currentUser?.role,
     entries,

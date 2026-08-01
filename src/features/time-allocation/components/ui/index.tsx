@@ -15,7 +15,7 @@ function cx(...classNames: Array<string | false | null | undefined>) {
   return classNames.filter(Boolean).join(" ");
 }
 
-type ButtonVariant = "primary" | "secondary" | "text" | "icon";
+type ButtonVariant = "primary" | "secondary" | "danger" | "text" | "icon";
 type ButtonSize = "default" | "compact";
 
 function buttonClassName({
@@ -32,6 +32,7 @@ function buttonClassName({
   return cx(
     variant === "primary" && "primary-button",
     variant === "secondary" && "secondary-button",
+    variant === "danger" && "danger-button",
     variant === "text" && "text-button",
     variant === "icon" && "icon-button",
     size === "compact" && "compact-button",
@@ -197,6 +198,7 @@ export function Drawer({
 export function ConfirmDialog({
   cancelLabel = "Cancel",
   children,
+  className,
   confirmLabel = "Confirm",
   confirmVariant = "primary",
   disabled = false,
@@ -206,8 +208,9 @@ export function ConfirmDialog({
 }: {
   cancelLabel?: string;
   children?: ReactNode;
+  className?: string;
   confirmLabel?: string;
-  confirmVariant?: "primary" | "secondary";
+  confirmVariant?: "primary" | "secondary" | "danger";
   disabled?: boolean;
   title: string;
   onCancel: () => void;
@@ -215,7 +218,7 @@ export function ConfirmDialog({
 }) {
   return (
     <div className="modal-backdrop" role="presentation">
-      <div aria-modal="true" className="modal-panel confirm-dialog" role="dialog">
+      <div aria-modal="true" className={cx("modal-panel confirm-dialog", className)} role="dialog">
         <div className="modal-heading">
           <h2>{title}</h2>
           <Button aria-label="Close dialog" onClick={onCancel} variant="icon">

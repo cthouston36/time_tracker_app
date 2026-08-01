@@ -50,6 +50,7 @@ import {
 } from "@/features/time-allocation/lib/status-helpers";
 import { formatUserName } from "@/features/time-allocation/lib/auth-ui-helpers";
 import type { DailyReportUploadResponse } from "@/features/time-allocation/lib/workspace-api-types";
+import type { ConfirmationOptions } from "@/features/time-allocation/hooks/use-confirmation-dialog";
 import type {
   DailyReport,
   DailyReportAnswers,
@@ -76,6 +77,7 @@ type ResetDailyReportStateOptions = {
 };
 
 type UseDailyReportsOptions = {
+  confirmAction: (options: ConfirmationOptions) => Promise<boolean>;
   currentDayEntryNotes: DayEntryNotes;
   currentUser: AuthUser | null;
   dayEntryNotesByKey: DayEntryNotesByKey;
@@ -88,6 +90,7 @@ type UseDailyReportsOptions = {
 };
 
 export function useDailyReports({
+  confirmAction,
   currentDayEntryNotes,
   currentUser,
   dayEntryNotesByKey,
@@ -301,13 +304,21 @@ export function useDailyReports({
     setDailyReportModalOpen(true);
   }, [currentDailyReport, currentDayEntryNotes.inventory, currentDayEntryNotes.notes, currentUser, selectedProject, workDate]);
 
-  const closeDailyReportModal = useCallback(() => {
-    if (!window.confirm("Close the daily report without saving? Unsaved report edits will be discarded.")) {
+  const closeDailyReportModal = useCallback(async () => {
+    if (
+      !(await confirmAction({
+        cancelLabel: "Continue editing",
+        confirmLabel: "Discard edits",
+        description: "Close the daily report without saving? Unsaved report edits will be discarded.",
+        title: "Discard daily report edits",
+        tone: "warning"
+      }))
+    ) {
       return;
     }
 
     clearDailyReportDraftForCurrentContext();
-  }, [clearDailyReportDraftForCurrentContext]);
+  }, [clearDailyReportDraftForCurrentContext, confirmAction]);
 
   const updateDailyReportDraft = useCallback((field: keyof DailyReportAnswers, value: string) => {
     setDailyReportDraft((current) => {
@@ -406,7 +417,7 @@ export function useDailyReports({
     []
   );
 
-  const copyPreviousDailyReportCrewTime = useCallback(() => {
+  const copyPreviousDailyReportCrewTime = useCallback(async () => {
     if (!previousDailyReportCrewTime) {
       setEntryNotice("No previous crew/time setup found for this job.");
       return;
@@ -415,7 +426,13 @@ export function useDailyReports({
     const currentHasCrewTime = dailyReportDraft.employeeRows.some(dailyReportEmployeeRowHasContent);
     if (
       currentHasCrewTime &&
-      !window.confirm(`Replace current crew/time rows with the setup from ${formatDate(previousDailyReportCrewTime.date)}?`)
+      !(await confirmAction({
+        cancelLabel: "Keep current rows",
+        confirmLabel: "Replace crew/time",
+        description: `Replace current crew/time rows with the setup from ${formatDate(previousDailyReportCrewTime.date)}?`,
+        title: "Replace crew/time rows",
+        tone: "warning"
+      }))
     ) {
       return;
     }
@@ -428,9 +445,9 @@ export function useDailyReports({
       }))
     }));
     setEntryNotice(`Copied crew/time from ${formatDate(previousDailyReportCrewTime.date)}.`);
-  }, [dailyReportDraft.employeeRows, previousDailyReportCrewTime, setEntryNotice]);
+  }, [confirmAction, dailyReportDraft.employeeRows, previousDailyReportCrewTime, setEntryNotice]);
 
-  const copySavedEntriesToDailyReportWorkRows = useCallback(() => {
+  const copySavedEntriesToDailyReportWorkRows = useCallback(async () => {
     if (!selectedProject || visibleEntries.length === 0) {
       setDailyReportDraftNotice("No saved pay item entries are available for this job/day.");
       return;
@@ -440,7 +457,13 @@ export function useDailyReports({
 
     if (
       currentHasWorkRows &&
-      !window.confirm("Replace current Work Performed pay item rows with the saved entries for this job/day?")
+      !(await confirmAction({
+        cancelLabel: "Keep current rows",
+        confirmLabel: "Replace work rows",
+        description: "Replace current Work Performed pay item rows with the saved entries for this job/day?",
+        title: "Replace Work Performed rows",
+        tone: "warning"
+      }))
     ) {
       return;
     }
@@ -464,7 +487,7 @@ export function useDailyReports({
         ? "Copied the first 8 saved pay item entries. Add remaining items manually if needed."
         : "Copied saved pay item entries into Work Performed rows."
     );
-  }, [dailyReportDraft.payItemRows, selectedProject, visibleEntries]);
+  }, [confirmAction, dailyReportDraft.payItemRows, selectedProject, visibleEntries]);
 
   const saveDailyReport = useCallback(async () => {
     if (!selectedProject || !currentUser) {

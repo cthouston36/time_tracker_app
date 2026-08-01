@@ -625,25 +625,16 @@ export function getDraftQuantityOverrunWarnings(
   return warnings;
 }
 
-export function confirmQuantityOverrun(warnings: string[]) {
+export function buildQuantityOverrunConfirmationDetails(warnings: string[]) {
   const visibleWarnings = warnings.slice(0, 6);
   const hiddenWarningCount = warnings.length - visibleWarnings.length;
-  const hiddenText = hiddenWarningCount > 0 ? `\n${hiddenWarningCount} more overrun${hiddenWarningCount === 1 ? "" : "s"} not shown.` : "";
+  const hiddenWarning =
+    hiddenWarningCount > 0 ? `${hiddenWarningCount} more overrun${hiddenWarningCount === 1 ? "" : "s"} not shown.` : "";
 
-  return window.confirm(
-    [
-      "Quantity overrun warning",
-      "",
-      "One or more quantities exceed the remaining quantity for this job. This is allowed, but should be intentional.",
-      "",
-      ...visibleWarnings,
-      hiddenText,
-      "",
-      "Save anyway?"
-    ]
-      .filter(Boolean)
-      .join("\n")
-  );
+  return {
+    hiddenWarning,
+    visibleWarnings
+  };
 }
 
 function formatPayItemQuantity(value: number) {

@@ -114,6 +114,7 @@ import { useAuthForms } from "@/features/time-allocation/hooks/use-auth-forms";
 import { useCrewManagement } from "@/features/time-allocation/hooks/use-crew-management";
 import { useDailyReports } from "@/features/time-allocation/hooks/use-daily-reports";
 import { useEntryActions } from "@/features/time-allocation/hooks/use-entry-actions";
+import { useConfirmationDialog } from "@/features/time-allocation/hooks/use-confirmation-dialog";
 import { useFieldProjectAssignments } from "@/features/time-allocation/hooks/use-field-project-assignments";
 import { useJobImages } from "@/features/time-allocation/hooks/use-job-images";
 import { useNetSuiteVendors } from "@/features/time-allocation/hooks/use-netsuite-vendors";
@@ -193,6 +194,7 @@ export function TimeAllocationWorkspace() {
   const myProjectsFilterInitializedRef = useRef(false);
   const saveDailyReportRef = useRef<(() => Promise<void>) | null>(null);
   const saveAllocationEntriesRef = useRef<(() => Promise<void>) | null>(null);
+  const { confirmAction, confirmationDialog } = useConfirmationDialog();
 
   const handleLoginSuccess = useCallback((user: AuthUser) => {
     setCurrentUser(user);
@@ -326,6 +328,7 @@ export function TimeAllocationWorkspace() {
     updateEditingCrewMember
   } = useCrewManagement({
     clearSubcontractorVendorSelection,
+    confirmAction,
     currentUser,
     entries,
     filteredSubcontractorVendors,
@@ -386,6 +389,7 @@ export function TimeAllocationWorkspace() {
     submittingDay,
     updateEditingEntry
   } = useEntryActions({
+    confirmAction,
     currentUser,
     dayIsSubmitted,
     daySubmissions,
@@ -437,6 +441,7 @@ export function TimeAllocationWorkspace() {
     uploadDailyReportToProcoreDocuments,
     uploadingDailyReport
   } = useDailyReports({
+    confirmAction,
     currentDayEntryNotes,
     currentUser,
     dayEntryNotesByKey,
@@ -623,12 +628,17 @@ export function TimeAllocationWorkspace() {
 
   function confirmDiscardUnsavedChanges(actionDescription: string) {
     if (!hasUnsavedChanges) {
-      return true;
+      return Promise.resolve(true);
     }
 
-    return window.confirm(
-      `You have unsaved changes. Continue to ${actionDescription}? Unsaved pay item inputs, queued images, or daily report edits will be discarded.`
-    );
+    return confirmAction({
+      cancelLabel: "Stay here",
+      confirmLabel: "Discard changes",
+      description: `You have unsaved changes. Continue to ${actionDescription}?`,
+      details: ["Unsaved pay item inputs, queued images, or daily report edits will be discarded."],
+      title: "Discard unsaved changes",
+      tone: "warning"
+    });
   }
 
   function clearTransientEntryState() {
@@ -640,12 +650,12 @@ export function TimeAllocationWorkspace() {
     clearDailyReportDraftForCurrentContext();
   }
 
-  function changeSelectedProject(nextProjectId: string) {
+  async function changeSelectedProject(nextProjectId: string) {
     if (nextProjectId === selectedProjectId) {
       return;
     }
 
-    if (!confirmDiscardUnsavedChanges("change jobs")) {
+    if (!(await confirmDiscardUnsavedChanges("change jobs"))) {
       return;
     }
 
@@ -653,12 +663,12 @@ export function TimeAllocationWorkspace() {
     setSelectedProjectId(nextProjectId);
   }
 
-  function changeWorkDate(nextWorkDate: string) {
+  async function changeWorkDate(nextWorkDate: string) {
     if (nextWorkDate === workDate) {
       return;
     }
 
-    if (!confirmDiscardUnsavedChanges("change dates")) {
+    if (!(await confirmDiscardUnsavedChanges("change dates"))) {
       return;
     }
 
@@ -666,12 +676,12 @@ export function TimeAllocationWorkspace() {
     setWorkDate(nextWorkDate);
   }
 
-  function changeViewMode(nextViewMode: ViewMode) {
+  async function changeViewMode(nextViewMode: ViewMode) {
     if (nextViewMode === viewMode) {
       return;
     }
 
-    if (nextViewMode !== "entry" && !confirmDiscardUnsavedChanges("leave the entry view")) {
+    if (nextViewMode !== "entry" && !(await confirmDiscardUnsavedChanges("leave the entry view"))) {
       return;
     }
 
@@ -1054,7 +1064,7 @@ export function TimeAllocationWorkspace() {
   }, [currentUser, syncLog]);
 
   async function logout() {
-    if (!confirmDiscardUnsavedChanges("sign out")) {
+    if (!(await confirmDiscardUnsavedChanges("sign out"))) {
       return;
     }
 
@@ -1091,17 +1101,19 @@ export function TimeAllocationWorkspace() {
       return;
     }
 
-    const confirmed = window.confirm(
-      [
-        "Clear staging daily data?",
-        "",
-        "This will permanently remove daily pay item entries, submitted/draft day statuses, daily notes, daily reports, daily report upload status, and all crew members/crew project assignments.",
-        "",
-        "It will keep user profiles/passwords, project catalog jobs/pay items, sync state/log, project blacklist, and My Projects."
-      ].join("\n")
-    );
-
-    if (!confirmed) {
+    if (
+      !(await confirmAction({
+        cancelLabel: "Keep staging data",
+        confirmLabel: "Clear staging data",
+        description: "Clear staging daily data?",
+        details: [
+          "This permanently removes daily pay item entries, submitted/draft day statuses, daily notes, daily reports, daily report upload status, and all crew members/crew project assignments.",
+          "It keeps user profiles/passwords, project catalog jobs/pay items, sync state/log, project blacklist, and My Projects."
+        ],
+        title: "Clear staging daily data",
+        tone: "danger"
+      }))
+    ) {
       return;
     }
 
@@ -1146,17 +1158,19 @@ export function TimeAllocationWorkspace() {
       return;
     }
 
-    const confirmed = window.confirm(
-      [
-        "Clear project catalog jobs and pay items?",
-        "",
-        "This will permanently remove the current project catalog jobs/pay items and the legacy catalog fallback.",
-        "",
-        "It will keep users, passwords, daily entries, daily reports, crew records, sync log, project blacklist, and My Projects."
-      ].join("\n")
-    );
-
-    if (!confirmed) {
+    if (
+      !(await confirmAction({
+        cancelLabel: "Keep project catalog",
+        confirmLabel: "Clear catalog",
+        description: "Clear project catalog jobs and pay items?",
+        details: [
+          "This permanently removes the current project catalog jobs/pay items and the legacy catalog fallback.",
+          "It keeps users, passwords, daily entries, daily reports, crew records, sync log, project blacklist, and My Projects."
+        ],
+        title: "Clear project catalog",
+        tone: "danger"
+      }))
+    ) {
       return;
     }
 
@@ -1255,14 +1269,14 @@ export function TimeAllocationWorkspace() {
     });
   }
 
-  function openDailyEntry(projectId: string, date: string) {
+  async function openDailyEntry(projectId: string, date: string) {
     if (!projects.some((project) => project.id === projectId)) {
       return;
     }
 
     if (
       (projectId !== selectedProject?.id || date !== workDate || viewMode !== "entry") &&
-      !confirmDiscardUnsavedChanges("open that day")
+      !(await confirmDiscardUnsavedChanges("open that day"))
     ) {
       return;
     }
@@ -1276,12 +1290,12 @@ export function TimeAllocationWorkspace() {
     setDraftsByPayItem({});
   }
 
-  function connectProcore(intent: PendingProcoreReturn["intent"] = "connect") {
+  async function connectProcore(intent: PendingProcoreReturn["intent"] = "connect") {
     if (shouldBlockOfflineAction(setProjectLoadError)) {
       return;
     }
 
-    if (!confirmDiscardUnsavedChanges("connect to Procore")) {
+    if (!(await confirmDiscardUnsavedChanges("connect to Procore"))) {
       return;
     }
 
@@ -1959,6 +1973,7 @@ export function TimeAllocationWorkspace() {
           onSave={saveDailyReport}
         />
       ) : null}
+      {confirmationDialog}
     </main>
   );
 }
