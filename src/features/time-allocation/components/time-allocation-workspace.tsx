@@ -12,8 +12,7 @@ import {
   Save,
   Send,
   Trash2,
-  UploadCloud,
-  X
+  UploadCloud
 } from "lucide-react";
 import { todayInputValue } from "@/lib/date";
 import { canAccessReports, getAccessibleProjectsForUser } from "@/lib/auth/project-access";
@@ -43,6 +42,7 @@ import {
   MobilePayItemEntry,
   PayItemMatrix
 } from "@/features/time-allocation/components/entry/pay-item-entry-matrix";
+import { MatrixFullscreenModal } from "@/features/time-allocation/components/entry/matrix-fullscreen-modal";
 import { SubmittedDayReview } from "@/features/time-allocation/components/entry/submitted-day-review";
 import {
   clearDatabaseProjectCache,
@@ -1582,69 +1582,26 @@ export function TimeAllocationWorkspace() {
       <NetworkStatusBanner status={networkStatus} />
 
       {matrixFullscreenOpen && selectedProject && selectedProjectUsesPayItems ? (
-        <div className="modal-backdrop matrix-fullscreen-backdrop" role="presentation">
-          <div aria-modal="true" className="modal-panel matrix-fullscreen-panel" role="dialog">
-            <div className="modal-heading matrix-fullscreen-heading">
-              <div>
-                <h2>Pay Item Entry</h2>
-                <span>
-                  {selectedProject.name} - {formatDate(workDate)}
-                </span>
-              </div>
-              <button
-                aria-label="Close expanded pay item matrix"
-                className="icon-button"
-                onClick={() => setMatrixFullscreenOpen(false)}
-                type="button"
-              >
-                <X aria-hidden="true" size={18} />
-              </button>
-            </div>
-            <div className="matrix-fullscreen-toolbar">
-              <span className="field-note">
-                {draftEntryCount} row{draftEntryCount === 1 ? "" : "s"} ready to save
-              </span>
-            </div>
-            <div className="matrix-fullscreen-body">
-              {displayedPayItems.length > 0 ? (
-                <PayItemMatrix
-                  ariaLabel="Expanded pay item entry matrix"
-                  crewMembers={selectedProjectCrewMembers}
-                  dayIsSubmitted={dayIsSubmitted}
-                  draftsByPayItem={draftsByPayItem}
-                  payItems={displayedPayItems}
-                  remainingQuantitiesByPayItem={remainingQuantitiesByPayItem}
-                  savedEntries={visibleEntries}
-                  variant="fullscreen"
-                  onCrewHoursChange={updateDraftCrewHours}
-                  onCrewToggle={toggleDraftCrewMember}
-                  onDraftChange={updateDraft}
-                  onSplitEvenly={splitDraftCrewHoursEvenly}
-                />
-              ) : null}
-            </div>
-            <div className="matrix-fullscreen-actions">
-              <button
-                className="secondary-button"
-                disabled={Object.keys(draftsByPayItem).length === 0 || dayIsSubmitted || savingEntries}
-                onClick={clearDraftInputs}
-                type="button"
-              >
-                Clear draft inputs
-              </button>
-              <button
-                className="primary-button prominent-action"
-                disabled={draftEntryCount === 0 || dayIsSubmitted || savingEntries}
-                onClick={saveAllocationEntries}
-                type="button"
-              >
-                {savingEntries ? <InlineSpinner /> : <Save aria-hidden="true" size={18} />}
-                {savingEntries ? "Saving..." : "Save entries"}
-              </button>
-            </div>
-            {entryNotice ? <div className={getEntryNoticeClassName(entryNotice)}>{entryNotice}</div> : null}
-          </div>
-        </div>
+        <MatrixFullscreenModal
+          crewMembers={selectedProjectCrewMembers}
+          dayIsSubmitted={dayIsSubmitted}
+          draftEntryCount={draftEntryCount}
+          draftsByPayItem={draftsByPayItem}
+          entryNotice={entryNotice}
+          payItems={displayedPayItems}
+          project={selectedProject}
+          remainingQuantitiesByPayItem={remainingQuantitiesByPayItem}
+          savedEntries={visibleEntries}
+          savingEntries={savingEntries}
+          workDate={workDate}
+          onClearDraftInputs={clearDraftInputs}
+          onClose={() => setMatrixFullscreenOpen(false)}
+          onCrewHoursChange={updateDraftCrewHours}
+          onCrewToggle={toggleDraftCrewMember}
+          onDraftChange={updateDraft}
+          onSaveEntries={saveAllocationEntries}
+          onSplitEvenly={splitDraftCrewHoursEvenly}
+        />
       ) : null}
 
       <div
