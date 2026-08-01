@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CalendarDays,
   ChevronDown,
-  Download,
   Edit3,
   ExternalLink,
   Maximize2,
@@ -33,10 +32,8 @@ import {
   NetworkStatusBanner
 } from "@/features/time-allocation/components/status-banners";
 import { ReportsView } from "@/features/time-allocation/components/reports/reports-view";
-import {
-  DailyReportModal,
-  DailyReportProcoreStatusValue
-} from "@/features/time-allocation/components/daily-report/daily-report-ui";
+import { DailyReportModal } from "@/features/time-allocation/components/daily-report/daily-report-ui";
+import { DailyReportPanel } from "@/features/time-allocation/components/daily-report/daily-report-panel";
 import { DashboardView } from "@/features/time-allocation/components/dashboard/dashboard-view";
 import {
   MobilePayItemEntry,
@@ -59,7 +56,6 @@ import {
 } from "@/features/time-allocation/lib/api-client";
 import {
   filterDailyReportsByProjectIds,
-  formatYesNoAnswer,
   getDailyReportEmployeeTotalHours
 } from "@/features/time-allocation/lib/daily-report-helpers";
 import { exportEntriesToCsv } from "@/features/time-allocation/lib/entry-csv-export";
@@ -1976,137 +1972,23 @@ export function TimeAllocationWorkspace() {
             ) : null}
 
             {showDailyReportDetails ? (
-            <div className="panel">
-              <div className="panel-heading">
-                <h2>Daily Report</h2>
-                <div className="panel-heading-actions">
-                  <button
-                    className={!currentDailyReport ? "primary-button prominent-action" : "secondary-button"}
-                    disabled={!selectedProject}
-                    onClick={openDailyReportModal}
-                    type="button"
-                  >
-                    <Edit3 aria-hidden="true" size={18} />
-                    {currentDailyReport ? "Edit Daily Report" : "Create Daily Report"}
-                  </button>
-                  {currentDailyReport ? (
-                    <button
-                      className="secondary-button"
-                      disabled={!selectedProject || downloadingDailyReportPdf}
-                      onClick={downloadDailyReportPdf}
-                      type="button"
-                    >
-                      {downloadingDailyReportPdf ? <InlineSpinner /> : <Download aria-hidden="true" size={18} />}
-                      {downloadingDailyReportPdf ? "Downloading..." : "Download PDF"}
-                    </button>
-                  ) : null}
-                  {currentDailyReport ? (
-                    <button
-                      className={dailyReportNeedsUpload ? "primary-button prominent-action" : "secondary-button"}
-                      disabled={!selectedProject || uploadingDailyReport}
-                      onClick={uploadDailyReportToProcoreDocuments}
-                      type="button"
-                    >
-                      {uploadingDailyReport ? <InlineSpinner /> : <UploadCloud aria-hidden="true" size={18} />}
-                      {uploadingDailyReport ? "Uploading..." : "Upload to Procore"}
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-              {currentDailyReport ? (
-                <div className="daily-report-summary">
-                  <div className="daily-report-summary-card">
-                    <span>Status</span>
-                    <strong>Saved</strong>
-                  </div>
-                  <div className="daily-report-summary-card">
-                    <span>Procore Upload</span>
-                    <DailyReportProcoreStatusValue status={currentDailyReportProcoreStatus} />
-                  </div>
-                  <div className="daily-report-summary-card">
-                    <span>Updated</span>
-                    <strong>{new Date(currentDailyReport.updatedAt).toLocaleString()}</strong>
-                  </div>
-                  {selectedProjectUsesTwoSeriesDailyReport ? (
-                    <div className="daily-report-summary-card daily-report-summary-secondary">
-                      <span>Template</span>
-                      <strong>Field Report</strong>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="daily-report-summary-card daily-report-summary-secondary">
-                        <span>Inspector Quantities</span>
-                        <strong>{formatYesNoAnswer(currentDailyReport.quantitiesTurnedIn)}</strong>
-                      </div>
-                      <div className="daily-report-summary-card daily-report-summary-secondary">
-                        <span>Incidents</span>
-                        <strong>{formatYesNoAnswer(currentDailyReport.incidentOccurred)}</strong>
-                      </div>
-                    </>
-                  )}
-                </div>
-              ) : null}
-              {currentDailyReport ? (
-                <div className="daily-report-upload-status">
-                  {dailyReportUploadNotice ? (
-                    <div className={dailyReportUploadNotice.status === "error" ? "inline-alert" : "success-alert"}>
-                      {dailyReportUploadNotice.message}
-                    </div>
-                  ) : (
-                    <div
-                      className={
-                        currentDailyReportProcoreStatus.className === "failed"
-                          ? "inline-alert"
-                          : currentDailyReportProcoreStatus.className === "uploaded"
-                            ? "success-alert"
-                            : "field-note"
-                      }
-                    >
-                      {currentDailyReportProcoreStatus.message}
-                    </div>
-                  )}
-                </div>
-              ) : null}
-              {dailyReportUploadRetryQueue.length > 0 ? (
-                <div className="daily-report-retry-queue">
-                  <div className="retry-queue-heading">
-                    <h3>Upload Retry Queue</h3>
-                    <span>
-                      {dailyReportUploadRetryQueue.length} failed upload
-                      {dailyReportUploadRetryQueue.length === 1 ? "" : "s"}
-                    </span>
-                  </div>
-                  <div className="retry-queue-list">
-                    {dailyReportUploadRetryQueue.map((item) => (
-                      <div className="retry-queue-row" key={item.dayKey}>
-                        <div>
-                          <strong>{item.project.name}</strong>
-                          <span>
-                            {formatDate(item.date)}
-                            {item.upload.attemptedAt ? ` - last tried ${new Date(item.upload.attemptedAt).toLocaleString()}` : ""}
-                          </span>
-                          <p>{item.upload.error ?? "Upload failed."}</p>
-                        </div>
-                        <div className="retry-queue-actions">
-                          <button className="secondary-button" onClick={() => openDailyEntry(item.project.id, item.date)} type="button">
-                            Open day
-                          </button>
-                          <button
-                            className="primary-button"
-                            disabled={retryingDailyReportUploadKey === item.dayKey}
-                            onClick={() => retryDailyReportUpload(item.dayKey)}
-                            type="button"
-                          >
-                            <UploadCloud aria-hidden="true" size={18} />
-                            {retryingDailyReportUploadKey === item.dayKey ? "Retrying..." : "Retry upload"}
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-            </div>
+              <DailyReportPanel
+                currentDailyReport={currentDailyReport}
+                dailyReportNeedsUpload={dailyReportNeedsUpload}
+                dailyReportUploadNotice={dailyReportUploadNotice}
+                dailyReportUploadRetryQueue={dailyReportUploadRetryQueue}
+                downloadingDailyReportPdf={downloadingDailyReportPdf}
+                procoreStatus={currentDailyReportProcoreStatus}
+                retryingDailyReportUploadKey={retryingDailyReportUploadKey}
+                selectedProject={selectedProject}
+                selectedProjectUsesTwoSeriesDailyReport={selectedProjectUsesTwoSeriesDailyReport}
+                uploadingDailyReport={uploadingDailyReport}
+                onDownloadPdf={downloadDailyReportPdf}
+                onOpenDailyEntry={openDailyEntry}
+                onOpenDailyReportModal={openDailyReportModal}
+                onRetryDailyReportUpload={retryDailyReportUpload}
+                onUploadToProcore={uploadDailyReportToProcoreDocuments}
+              />
             ) : null}
 
             {showJobImageDetails ? (
