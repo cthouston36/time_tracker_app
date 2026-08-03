@@ -10,9 +10,7 @@ import type {
   DayEntryNotesByKey,
   DaySubmissionsByKey,
   JobImageUpload,
-  NetSuiteVendor,
-  ProjectsResponse,
-  VendorBlacklistById
+  ProjectsResponse
 } from "@/features/time-allocation/types";
 import { isAbortError, readApiJson, type OkResponse } from "@/features/time-allocation/lib/api-utils";
 
@@ -28,6 +26,11 @@ export {
   saveDatabaseProjectFieldUsers,
   saveDatabaseSyncLogEntry
 } from "@/features/time-allocation/lib/project-controls-api";
+export {
+  loadDatabaseNetSuiteVendors,
+  saveDatabaseNetSuiteVendorBlacklist,
+  syncDatabaseNetSuiteVendors
+} from "@/features/time-allocation/lib/netsuite-vendors-api";
 
 const PROCORE_SYNC_REQUEST_TIMEOUT_MS = 55_000;
 
@@ -62,16 +65,6 @@ type DayRecordsResponse = {
   daySubmissions?: DaySubmissionsByKey;
   databaseConfigured?: boolean;
   error?: string;
-};
-
-type NetSuiteVendorsResponse = {
-  allVendors?: NetSuiteVendor[];
-  databaseConfigured?: boolean;
-  error?: string;
-  ok?: boolean;
-  syncedAt?: string | null;
-  vendorBlacklistById?: VendorBlacklistById;
-  vendors?: NetSuiteVendor[];
 };
 
 export async function loadDatabaseEntries() {
@@ -369,56 +362,6 @@ export async function deleteDatabaseDaySubmission(projectId: string, date: strin
   }
 }
 
-export async function loadDatabaseNetSuiteVendors() {
-  try {
-    const response = await fetch("/api/netsuite/vendors", {
-      cache: "no-store"
-    });
-    const data = (await readApiJson(response)) as NetSuiteVendorsResponse;
-
-    if (!response.ok || !data.databaseConfigured) {
-      return null;
-    }
-
-    return buildNetSuiteVendorResult(data);
-  } catch {
-    return null;
-  }
-}
-
-export async function syncDatabaseNetSuiteVendors() {
-  const response = await fetch("/api/netsuite/vendors", {
-    method: "POST"
-  });
-  const data = (await readApiJson(response)) as NetSuiteVendorsResponse;
-
-  if (!response.ok || data.ok === false) {
-    throw new Error(data.error ?? "Unable to sync NetSuite vendors.");
-  }
-
-  return buildNetSuiteVendorResult(data);
-}
-
-export async function saveDatabaseNetSuiteVendorBlacklist(vendorId: string, blacklisted: boolean) {
-  const response = await fetch("/api/netsuite/vendors", {
-    body: JSON.stringify({
-      blacklisted,
-      vendorId
-    }),
-    headers: {
-      "Content-Type": "application/json"
-    },
-    method: "PATCH"
-  });
-  const data = (await readApiJson(response)) as NetSuiteVendorsResponse;
-
-  if (!response.ok || data.ok === false) {
-    throw new Error(data.error ?? "Unable to save NetSuite vendor blacklist.");
-  }
-
-  return data.databaseConfigured === false ? null : buildNetSuiteVendorResult(data);
-}
-
 export async function postProjectsWithTimeout(path: string, timeoutMessage: string) {
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), PROCORE_SYNC_REQUEST_TIMEOUT_MS);
@@ -440,13 +383,4 @@ export async function postProjectsWithTimeout(path: string, timeoutMessage: stri
   } finally {
     window.clearTimeout(timeoutId);
   }
-}
-
-function buildNetSuiteVendorResult(data: NetSuiteVendorsResponse) {
-  return {
-    allVendors: data.allVendors ?? data.vendors ?? [],
-    syncedAt: data.syncedAt ?? null,
-    vendorBlacklistById: data.vendorBlacklistById ?? {},
-    vendors: data.vendors ?? []
-  };
 }
