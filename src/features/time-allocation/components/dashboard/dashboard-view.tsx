@@ -14,9 +14,9 @@ import {
   ExecutiveProjectNavigator,
   ExecutiveReviewQueue,
   ExecutiveSummaryStrip,
-  FieldProjectAssignmentPanel,
   PmComplianceRanking
 } from "@/features/time-allocation/components/dashboard/dashboard-components";
+import { FieldProjectAssignmentPanel } from "@/features/time-allocation/components/dashboard/field-project-assignment-panel";
 import {
   addDaysToInputDate,
   formatDate,
