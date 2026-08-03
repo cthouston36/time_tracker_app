@@ -67,6 +67,7 @@ import {
   type PendingProcoreReturn,
   type ViewMode
 } from "@/features/time-allocation/lib/client-storage";
+import { restoreWorkspaceSelection } from "@/features/time-allocation/lib/workspace-selection-helpers";
 import {
   formatDate,
   getDayKey,
@@ -734,24 +735,22 @@ export function TimeAllocationWorkspace() {
         const sortedProjects = sortProjectsByName(data.projects);
         const lastSelectedProjectId = window.localStorage.getItem(getLastProjectStorageKey(currentUserId));
         const pendingProcoreReturn = readPendingProcoreReturn();
-        const nextSelectedProjectId = sortedProjects.some((project) => project.id === lastSelectedProjectId)
-          ? lastSelectedProjectId ?? ""
-          : sortedProjects[0]?.id ?? "";
-        const restoredProjectId =
-          pendingProcoreReturn?.projectId && sortedProjects.some((project) => project.id === pendingProcoreReturn.projectId)
-            ? pendingProcoreReturn.projectId
-            : nextSelectedProjectId;
+        const restoredSelection = restoreWorkspaceSelection({
+          lastSelectedProjectId,
+          pendingProcoreReturn,
+          projects: sortedProjects
+        });
 
         setAllProjects(sortedProjects);
-        setSelectedProjectId(restoredProjectId);
-        if (pendingProcoreReturn?.date) {
-          setWorkDate(pendingProcoreReturn.date);
+        setSelectedProjectId(restoredSelection.selectedProjectId);
+        if (restoredSelection.workDate) {
+          setWorkDate(restoredSelection.workDate);
         }
-        if (pendingProcoreReturn?.viewMode) {
-          setViewMode(pendingProcoreReturn.viewMode);
+        if (restoredSelection.viewMode) {
+          setViewMode(restoredSelection.viewMode);
         }
-        if (pendingProcoreReturn?.mobilePayItemId) {
-          setMobileSelectedPayItemId(pendingProcoreReturn.mobilePayItemId);
+        if (restoredSelection.mobileSelectedPayItemId) {
+          setMobileSelectedPayItemId(restoredSelection.mobileSelectedPayItemId);
         }
         if (pendingProcoreReturn) {
           clearPendingProcoreReturn();
