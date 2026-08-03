@@ -20,23 +20,24 @@ import {
   writeDailyReportAutosaveDraft
 } from "@/features/time-allocation/lib/client-storage";
 import {
-  calculateDailyReportTotalHours,
   createEmptyDailyReportAnswers,
-  createEmptyDailyReportPayItemRows,
   dailyReportEmployeeRowHasContent,
   dailyReportPayItemRowHasContent,
   findPreviousDailyReportWithCrewTime,
   formatDailyReportValidationMessage,
   getDailyReportAnswers,
-  isDailyReportTimeField,
   normalizeDailyReportAnswersForSave,
-  normalizeDailyReportEmployeeRows,
-  normalizeDailyReportItsfmRows,
-  normalizeDailyReportPayItemRows,
-  normalizeDailyReportTimeInput,
-  sanitizeDailyReportTimeInput,
   validateDailyReportAnswers
 } from "@/features/time-allocation/lib/daily-report-helpers";
+import {
+  applyDailyReportEmployeeRowChange,
+  applyDailyReportEmployeeTimeNormalization,
+  applyDailyReportFieldChange,
+  applyDailyReportItsfmRowChange,
+  applyDailyReportPayItemRowChange,
+  buildDailyReportWorkRowsFromSavedEntries,
+  buildPreviousDailyReportCrewRows
+} from "@/features/time-allocation/lib/daily-report-draft-updates";
 import { buildDailyReportConflictSignature } from "@/features/time-allocation/lib/conflict-helpers";
 import { formatDate, getDayKey, parseDayKey } from "@/features/time-allocation/lib/date-helpers";
 import { getDailyReportProcoreStatus } from "@/features/time-allocation/lib/status-helpers";
@@ -314,98 +315,27 @@ export function useDailyReports({
   }, [clearDailyReportDraftForCurrentContext, confirmAction]);
 
   const updateDailyReportDraft = useCallback((field: keyof DailyReportAnswers, value: string) => {
-    setDailyReportDraft((current) => {
-      const updatedDraft = {
-        ...current,
-        [field]: value
-      };
-
-      if (field === "quantitiesTurnedIn" && value !== "yes") {
-        updatedDraft.inspectorName = "";
-        updatedDraft.inspectorQuantityDetails = "";
-      }
-
-      if (field === "incidentOccurred" && value !== "yes") {
-        updatedDraft.accidentReportFiled = "";
-        updatedDraft.incidentDetails = "";
-      }
-
-      return updatedDraft;
-    });
+    setDailyReportDraft((current) => applyDailyReportFieldChange(current, field, value));
   }, []);
 
   const updateDailyReportEmployeeDraft = useCallback(
     (rowIndex: number, field: keyof DailyReportEmployeeRow, value: string | boolean) => {
-      setDailyReportDraft((current) => ({
-        ...current,
-        employeeRows: current.employeeRows.map((row, index) => {
-          if (index !== rowIndex) {
-            return row;
-          }
-
-          const updatedRow = {
-            ...row,
-            [field]: isDailyReportTimeField(field) && typeof value === "string" ? sanitizeDailyReportTimeInput(value) : value
-          };
-
-          return {
-            ...updatedRow,
-            totalHours: isDailyReportTimeField(field) ? calculateDailyReportTotalHours(updatedRow) : updatedRow.totalHours
-          };
-        })
-      }));
+      setDailyReportDraft((current) => applyDailyReportEmployeeRowChange(current, rowIndex, field, value));
     },
     []
   );
 
   const normalizeDailyReportEmployeeTimeDraft = useCallback((rowIndex: number, field: DailyReportTimeField) => {
-    setDailyReportDraft((current) => ({
-      ...current,
-      employeeRows: current.employeeRows.map((row, index) => {
-        if (index !== rowIndex) {
-          return row;
-        }
-
-        const updatedRow = {
-          ...row,
-          [field]: normalizeDailyReportTimeInput(row[field])
-        };
-
-        return {
-          ...updatedRow,
-          totalHours: calculateDailyReportTotalHours(updatedRow)
-        };
-      })
-    }));
+    setDailyReportDraft((current) => applyDailyReportEmployeeTimeNormalization(current, rowIndex, field));
   }, []);
 
   const updateDailyReportPayItemDraft = useCallback((rowIndex: number, field: keyof DailyReportPayItemRow, value: string) => {
-    setDailyReportDraft((current) => ({
-      ...current,
-      payItemRows: current.payItemRows.map((row, index) =>
-        index === rowIndex
-          ? {
-              ...row,
-              [field]: value
-            }
-          : row
-      )
-    }));
+    setDailyReportDraft((current) => applyDailyReportPayItemRowChange(current, rowIndex, field, value));
   }, []);
 
   const updateDailyReportItsfmDraft = useCallback(
     (itemKey: string, field: keyof Omit<DailyReportItsfmRow, "itemKey">, value: string) => {
-      setDailyReportDraft((current) => ({
-        ...current,
-        itsfmRows: normalizeDailyReportItsfmRows(current.itsfmRows).map((row) =>
-          row.itemKey === itemKey
-            ? {
-                ...row,
-                [field]: value
-              }
-            : row
-        )
-      }));
+      setDailyReportDraft((current) => applyDailyReportItsfmRowChange(current, itemKey, field, value));
     },
     []
   );
@@ -432,10 +362,7 @@ export function useDailyReports({
 
     setDailyReportDraft((current) => ({
       ...current,
-      employeeRows: normalizeDailyReportEmployeeRows(previousDailyReportCrewTime.report.employeeRows).map((row) => ({
-        ...row,
-        totalHours: row.totalHours || calculateDailyReportTotalHours(row)
-      }))
+      employeeRows: buildPreviousDailyReportCrewRows(previousDailyReportCrewTime.report)
     }));
     setEntryNotice(`Copied crew/time from ${formatDate(previousDailyReportCrewTime.date)}.`);
   }, [confirmAction, dailyReportDraft.employeeRows, previousDailyReportCrewTime, setEntryNotice]);
@@ -461,22 +388,14 @@ export function useDailyReports({
       return;
     }
 
-    const sortedEntries = selectedProject.payItems.flatMap((payItem) =>
-      visibleEntries.filter((entry) => entry.payItemId === payItem.id)
-    );
+    const savedEntryRows = buildDailyReportWorkRowsFromSavedEntries(selectedProject, visibleEntries);
 
     setDailyReportDraft((current) => ({
       ...current,
-      payItemRows: normalizeDailyReportPayItemRows(
-        sortedEntries.map((entry) => ({
-          notes: "",
-          payItemId: entry.payItemId,
-          quantity: Number.isFinite(entry.quantityCompleted) ? String(entry.quantityCompleted) : ""
-        }))
-      )
+      payItemRows: savedEntryRows.payItemRows
     }));
     setDailyReportDraftNotice(
-      sortedEntries.length > createEmptyDailyReportPayItemRows().length
+      savedEntryRows.sourceEntryCount > savedEntryRows.maxRows
         ? "Copied the first 8 saved pay item entries. Add remaining items manually if needed."
         : "Copied saved pay item entries into Work Performed rows."
     );
