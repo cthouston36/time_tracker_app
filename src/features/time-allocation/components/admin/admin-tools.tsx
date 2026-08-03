@@ -1305,7 +1305,7 @@ function AdminMaintenancePanel({
     <details className="admin-maintenance">
       <summary>
         <ListChecks aria-hidden="true" size={16} />
-        Admin Tools
+        Maintenance
       </summary>
       <div className="admin-maintenance-body">
         {notice ? <div className={notice.status === "error" ? "inline-alert" : "success-alert"}>{notice.message}</div> : null}
