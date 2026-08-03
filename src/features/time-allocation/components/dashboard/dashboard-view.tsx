@@ -9,13 +9,15 @@ import { DashboardLoadingSkeleton, PageHeader } from "@/features/time-allocation
 import {
   DashboardAttentionList,
   DashboardMetric,
-  DashboardWeeklyCalendar,
+  DashboardWeeklyCalendar
+} from "@/features/time-allocation/components/dashboard/dashboard-components";
+import {
   ExecutiveFieldAccessTools,
   ExecutiveProjectNavigator,
   ExecutiveReviewQueue,
   ExecutiveSummaryStrip,
   PmComplianceRanking
-} from "@/features/time-allocation/components/dashboard/dashboard-components";
+} from "@/features/time-allocation/components/dashboard/executive-dashboard-components";
 import { FieldProjectAssignmentPanel } from "@/features/time-allocation/components/dashboard/field-project-assignment-panel";
 import {
   addDaysToInputDate,

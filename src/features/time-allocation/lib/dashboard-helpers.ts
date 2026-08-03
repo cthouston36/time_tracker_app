@@ -21,13 +21,15 @@ import { getFieldUserIdsAssignedToProject } from "@/features/time-allocation/lib
 import { formatUserName } from "@/features/time-allocation/lib/auth-ui-helpers";
 import type {
   DashboardIssue,
+  DashboardProjectWeekRow
+} from "@/features/time-allocation/components/dashboard/dashboard-components";
+import type {
   DashboardProjectNavigationRow,
-  DashboardProjectWeekRow,
   ExecutiveReviewItem,
   FieldAssignmentVisibilityRow,
   PmComplianceRow,
   ProductionPerformanceAlert
-} from "@/features/time-allocation/components/dashboard/dashboard-components";
+} from "@/features/time-allocation/components/dashboard/executive-dashboard-components";
 
 export function buildDashboardProjectRows({
   dailyReportUploadsByKey,
