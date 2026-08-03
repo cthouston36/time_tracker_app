@@ -1,6 +1,4 @@
 import type {
-  CrewMember,
-  CrewMembersByProject,
   DailyReport,
   DailyReportUpload,
   DailyReportsByKey,
@@ -36,15 +34,15 @@ export {
   loadDatabaseEntries,
   saveDatabaseEntries
 } from "@/features/time-allocation/lib/entries-api";
+export {
+  addDatabaseCrewMemberToProject,
+  loadDatabaseCrewData,
+  mergeDatabaseCrewMembers,
+  removeDatabaseCrewMemberFromProject,
+  updateDatabaseCrewMember
+} from "@/features/time-allocation/lib/crew-api";
 
 const PROCORE_SYNC_REQUEST_TIMEOUT_MS = 55_000;
-
-type CrewDataResponse = {
-  crewDirectory?: CrewMember[];
-  crewMembersByProject?: CrewMembersByProject;
-  databaseConfigured?: boolean;
-  error?: string;
-};
 
 type DailyReportsResponse = {
   dailyReportUploadsByKey?: DailyReportUploadsByKey;
@@ -65,96 +63,6 @@ type DayRecordsResponse = {
   databaseConfigured?: boolean;
   error?: string;
 };
-
-export async function loadDatabaseCrewData() {
-  try {
-    const response = await fetch("/api/crew", {
-      cache: "no-store"
-    });
-    const data = (await readApiJson(response)) as CrewDataResponse;
-
-    if (!response.ok || !data.databaseConfigured) {
-      return null;
-    }
-
-    return {
-      crewDirectory: data.crewDirectory ?? [],
-      crewMembersByProject: data.crewMembersByProject ?? {}
-    };
-  } catch {
-    return null;
-  }
-}
-
-export async function addDatabaseCrewMemberToProject(projectId: string, crewMember: CrewMember) {
-  const response = await fetch("/api/crew", {
-    body: JSON.stringify({
-      action: "add_to_project",
-      crewMember,
-      projectId
-    }),
-    headers: {
-      "Content-Type": "application/json"
-    },
-    method: "POST"
-  });
-  const data = (await readApiJson(response)) as OkResponse;
-
-  if (!response.ok || data.ok === false) {
-    throw new Error(data.error ?? "Unable to save crew member.");
-  }
-}
-
-export async function updateDatabaseCrewMember(crewMember: CrewMember) {
-  const response = await fetch("/api/crew", {
-    body: JSON.stringify({
-      action: "update_member",
-      crewMember
-    }),
-    headers: {
-      "Content-Type": "application/json"
-    },
-    method: "PATCH"
-  });
-  const data = (await readApiJson(response)) as OkResponse;
-
-  if (!response.ok || data.ok === false) {
-    throw new Error(data.error ?? "Unable to update crew member.");
-  }
-}
-
-export async function removeDatabaseCrewMemberFromProject(projectId: string, crewMemberId: string) {
-  const response = await fetch(
-    `/api/crew?projectId=${encodeURIComponent(projectId)}&crewMemberId=${encodeURIComponent(crewMemberId)}`,
-    {
-      method: "DELETE"
-    }
-  );
-  const data = (await readApiJson(response)) as OkResponse;
-
-  if (!response.ok || data.ok === false) {
-    throw new Error(data.error ?? "Unable to remove crew member from project.");
-  }
-}
-
-export async function mergeDatabaseCrewMembers(sourceCrewMemberId: string, targetCrewMember: CrewMember) {
-  const response = await fetch("/api/crew", {
-    body: JSON.stringify({
-      action: "merge",
-      sourceCrewMemberId,
-      targetCrewMember
-    }),
-    headers: {
-      "Content-Type": "application/json"
-    },
-    method: "PATCH"
-  });
-  const data = (await readApiJson(response)) as OkResponse;
-
-  if (!response.ok || data.ok === false) {
-    throw new Error(data.error ?? "Unable to merge crew members.");
-  }
-}
 
 export async function loadDatabaseDailyReportData() {
   try {
