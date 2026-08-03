@@ -1,4 +1,3 @@
-import type { AuthUser } from "@/lib/auth/types";
 import type { AllocationEntry } from "@/lib/domain/types";
 import type {
   CrewMember,
@@ -11,14 +10,24 @@ import type {
   DayEntryNotesByKey,
   DaySubmissionsByKey,
   JobImageUpload,
-  MyJobsByUser,
   NetSuiteVendor,
-  ProjectArchiveById,
-  ProjectBlacklistById,
   ProjectsResponse,
-  SyncLogEntry,
   VendorBlacklistById
 } from "@/features/time-allocation/types";
+import { isAbortError, readApiJson, type OkResponse } from "@/features/time-allocation/lib/api-utils";
+
+export { readApiError, readApiJson, readDownloadFileName } from "@/features/time-allocation/lib/api-utils";
+export {
+  clearDatabaseProjectCatalog,
+  clearDatabaseStagingOperationalData,
+  loadAssignableFieldUsers,
+  loadDatabaseProjectControls,
+  saveDatabaseMyJobs,
+  saveDatabaseProjectArchive,
+  saveDatabaseProjectBlacklist,
+  saveDatabaseProjectFieldUsers,
+  saveDatabaseSyncLogEntry
+} from "@/features/time-allocation/lib/project-controls-api";
 
 const PROCORE_SYNC_REQUEST_TIMEOUT_MS = 55_000;
 
@@ -55,15 +64,6 @@ type DayRecordsResponse = {
   error?: string;
 };
 
-type ProjectControlsResponse = {
-  myJobsByUser?: MyJobsByUser;
-  projectArchiveById?: ProjectArchiveById;
-  projectBlacklistById?: ProjectBlacklistById;
-  syncLog?: SyncLogEntry[];
-  databaseConfigured?: boolean;
-  error?: string;
-};
-
 type NetSuiteVendorsResponse = {
   allVendors?: NetSuiteVendor[];
   databaseConfigured?: boolean;
@@ -72,39 +72,6 @@ type NetSuiteVendorsResponse = {
   syncedAt?: string | null;
   vendorBlacklistById?: VendorBlacklistById;
   vendors?: NetSuiteVendor[];
-};
-
-type FieldUsersResponse = {
-  databaseConfigured?: boolean;
-  error?: string;
-  users?: AuthUser[];
-};
-
-type AdminClearStagingDataResponse = {
-  cleared?: Record<string, unknown>;
-  databaseConfigured?: boolean;
-  error?: string;
-  ok?: boolean;
-};
-
-type AdminClearProjectCatalogResponse = {
-  cleared?: {
-    appSettings: number;
-    legacyPayItems: number;
-    legacyProjects: number;
-    legacySyncState: number;
-    payItems: number;
-    projects: number;
-    syncState: number;
-  };
-  databaseConfigured?: boolean;
-  error?: string;
-  ok?: boolean;
-};
-
-type OkResponse = {
-  error?: string;
-  ok?: boolean;
 };
 
 export async function loadDatabaseEntries() {
@@ -402,28 +369,6 @@ export async function deleteDatabaseDaySubmission(projectId: string, date: strin
   }
 }
 
-export async function loadDatabaseProjectControls() {
-  try {
-    const response = await fetch("/api/project-controls", {
-      cache: "no-store"
-    });
-    const data = (await readApiJson(response)) as ProjectControlsResponse;
-
-    if (!response.ok || !data.databaseConfigured) {
-      return null;
-    }
-
-    return {
-      myJobsByUser: data.myJobsByUser ?? {},
-      projectArchiveById: data.projectArchiveById ?? {},
-      projectBlacklistById: data.projectBlacklistById ?? {},
-      syncLog: data.syncLog ?? []
-    };
-  } catch {
-    return null;
-  }
-}
-
 export async function loadDatabaseNetSuiteVendors() {
   try {
     const response = await fetch("/api/netsuite/vendors", {
@@ -474,153 +419,6 @@ export async function saveDatabaseNetSuiteVendorBlacklist(vendorId: string, blac
   return data.databaseConfigured === false ? null : buildNetSuiteVendorResult(data);
 }
 
-export async function saveDatabaseMyJobs(userId: string, projectIds: string[]) {
-  const response = await fetch("/api/project-controls", {
-    body: JSON.stringify({
-      action: "save_my_jobs",
-      projectIds,
-      userId
-    }),
-    headers: {
-      "Content-Type": "application/json"
-    },
-    method: "PATCH"
-  });
-  const data = (await readApiJson(response)) as OkResponse;
-
-  if (!response.ok || data.ok === false) {
-    throw new Error(data.error ?? "Unable to save My Projects.");
-  }
-}
-
-export async function loadAssignableFieldUsers() {
-  const response = await fetch("/api/field-users", {
-    cache: "no-store"
-  });
-  const data = (await readApiJson(response)) as FieldUsersResponse;
-
-  if (!response.ok || data.databaseConfigured === false) {
-    throw new Error(data.error ?? "Unable to load Field users.");
-  }
-
-  return data.users ?? [];
-}
-
-export async function saveDatabaseProjectFieldUsers(projectId: string, fieldUserIds: string[]) {
-  const response = await fetch("/api/project-controls", {
-    body: JSON.stringify({
-      action: "assign_project_field_users",
-      fieldUserIds,
-      projectId
-    }),
-    headers: {
-      "Content-Type": "application/json"
-    },
-    method: "PATCH"
-  });
-  const data = (await readApiJson(response)) as { assignedFieldUserIds?: string[]; error?: string; ok?: boolean };
-
-  if (!response.ok || data.ok === false) {
-    throw new Error(data.error ?? "Unable to save Field project access.");
-  }
-
-  return data.assignedFieldUserIds ?? fieldUserIds;
-}
-
-export async function saveDatabaseProjectBlacklist(projectId: string, blacklisted: boolean) {
-  const response = await fetch("/api/project-controls", {
-    body: JSON.stringify({
-      action: "set_blacklist",
-      blacklisted,
-      projectId
-    }),
-    headers: {
-      "Content-Type": "application/json"
-    },
-    method: "PATCH"
-  });
-  const data = (await readApiJson(response)) as OkResponse;
-
-  if (!response.ok || data.ok === false) {
-    throw new Error(data.error ?? "Unable to save project blacklist.");
-  }
-}
-
-export async function saveDatabaseProjectArchive(projectId: string, archived: boolean) {
-  const response = await fetch("/api/project-controls", {
-    body: JSON.stringify({
-      action: "set_archive",
-      archived,
-      projectId
-    }),
-    headers: {
-      "Content-Type": "application/json"
-    },
-    method: "PATCH"
-  });
-  const data = (await readApiJson(response)) as OkResponse;
-
-  if (!response.ok || data.ok === false) {
-    throw new Error(data.error ?? "Unable to save project archive.");
-  }
-}
-
-export async function saveDatabaseSyncLogEntry(syncLogEntry: SyncLogEntry) {
-  const response = await fetch("/api/project-controls", {
-    body: JSON.stringify({
-      action: "add_sync_log",
-      syncLogEntry
-    }),
-    headers: {
-      "Content-Type": "application/json"
-    },
-    method: "PATCH"
-  });
-  const data = (await readApiJson(response)) as OkResponse;
-
-  if (!response.ok || data.ok === false) {
-    throw new Error(data.error ?? "Unable to save sync log.");
-  }
-}
-
-export async function clearDatabaseStagingOperationalData() {
-  const response = await fetch("/api/admin/clear-staging-data", {
-    body: JSON.stringify({
-      confirmation: "CLEAR_STAGING_DATA"
-    }),
-    headers: {
-      "Content-Type": "application/json"
-    },
-    method: "POST"
-  });
-  const data = (await readApiJson(response)) as AdminClearStagingDataResponse;
-
-  if (!response.ok || data.ok === false) {
-    throw new Error(data.error ?? "Unable to clear staging data.");
-  }
-
-  return data;
-}
-
-export async function clearDatabaseProjectCatalog() {
-  const response = await fetch("/api/admin/clear-project-cache", {
-    body: JSON.stringify({
-      confirmation: "CLEAR_PROJECT_CATALOG"
-    }),
-    headers: {
-      "Content-Type": "application/json"
-    },
-    method: "POST"
-  });
-  const data = (await readApiJson(response)) as AdminClearProjectCatalogResponse;
-
-  if (!response.ok || data.ok === false) {
-    throw new Error(data.error ?? "Unable to clear the project catalog.");
-  }
-
-  return data;
-}
-
 export async function postProjectsWithTimeout(path: string, timeoutMessage: string) {
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), PROCORE_SYNC_REQUEST_TIMEOUT_MS);
@@ -644,51 +442,6 @@ export async function postProjectsWithTimeout(path: string, timeoutMessage: stri
   }
 }
 
-export async function readApiError(response: Response, fallbackMessage: string) {
-  try {
-    const data = (await readApiJson(response)) as { error?: string };
-
-    return data.error ?? fallbackMessage;
-  } catch {
-    return fallbackMessage;
-  }
-}
-
-export async function readApiJson(response: Response) {
-  const text = await response.text();
-
-  if (!text.trim()) {
-    if (response.ok) {
-      return {};
-    }
-
-    throw new Error(`${response.status} ${response.statusText || "Request failed"}`.trim());
-  }
-
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    if (response.ok) {
-      throw new Error("The server returned an unreadable response.");
-    }
-
-    throw new Error(text.slice(0, 300) || `${response.status} ${response.statusText || "Request failed"}`.trim());
-  }
-}
-
-export function readDownloadFileName(headers: Headers) {
-  const contentDisposition = headers.get("content-disposition") ?? "";
-  const encodedMatch = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
-  const quotedMatch = contentDisposition.match(/filename="([^"]+)"/i);
-  const plainMatch = contentDisposition.match(/filename=([^;]+)/i);
-
-  if (encodedMatch) {
-    return decodeURIComponent(encodedMatch[1]);
-  }
-
-  return quotedMatch?.[1] ?? plainMatch?.[1]?.trim();
-}
-
 function buildNetSuiteVendorResult(data: NetSuiteVendorsResponse) {
   return {
     allVendors: data.allVendors ?? data.vendors ?? [],
@@ -696,8 +449,4 @@ function buildNetSuiteVendorResult(data: NetSuiteVendorsResponse) {
     vendorBlacklistById: data.vendorBlacklistById ?? {},
     vendors: data.vendors ?? []
   };
-}
-
-function isAbortError(error: unknown) {
-  return error instanceof DOMException && error.name === "AbortError";
 }
