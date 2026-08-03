@@ -38,7 +38,10 @@ import {
   loadDatabaseDayRecords,
   loadDatabaseEntries,
   loadDatabaseProjectControls,
-  readApiJson,
+  loadCurrentUserSession,
+  loadProcoreUploadStatus,
+  loadProjectCatalog,
+  logoutCurrentUserSession,
   saveDatabaseMyJobs,
   saveDatabaseProjectArchive,
   saveDatabaseProjectBlacklist
@@ -90,10 +93,6 @@ import {
   sortProjectsByName
 } from "@/features/time-allocation/lib/selectors";
 import type {
-  AuthResponse,
-  ProcoreStatusResponse
-} from "@/features/time-allocation/lib/workspace-api-types";
-import type {
   DayEntryNotesByKey,
   DaySubmission,
   DaySubmissionsByKey,
@@ -101,7 +100,6 @@ import type {
   MyJobsByUser,
   ProjectArchiveById,
   ProjectBlacklistById,
-  ProjectsResponse,
   SharedAppState
 } from "@/features/time-allocation/types";
 import { useNetworkStatus } from "@/features/time-allocation/hooks/use-network-status";
@@ -692,8 +690,7 @@ export function TimeAllocationWorkspace() {
 
   useEffect(() => {
     async function loadCurrentUser() {
-      const response = await fetch("/api/auth/me");
-      const data = (await readApiJson(response)) as AuthResponse;
+      const data = await loadCurrentUserSession();
 
       setCurrentUser(data.user);
       setAuthChecked(true);
@@ -718,8 +715,7 @@ export function TimeAllocationWorkspace() {
 
     async function loadProcoreConnectionStatus() {
       try {
-        const response = await fetch("/api/procore/status");
-        const data = (await readApiJson(response)) as ProcoreStatusResponse;
+        const data = await loadProcoreUploadStatus();
 
         if (data.connected && data.connectedBy) {
           setConnectionStatus(`Procore configured by ${data.connectedBy}`);
@@ -734,13 +730,7 @@ export function TimeAllocationWorkspace() {
       setProjectLoadError("");
 
       try {
-        const response = await fetch("/api/project-catalog/projects");
-        const data = (await readApiJson(response)) as ProjectsResponse;
-
-        if (!response.ok) {
-          throw new Error(data.error ?? "Unable to load projects.");
-        }
-
+        const data = await loadProjectCatalog();
         const sortedProjects = sortProjectsByName(data.projects);
         const lastSelectedProjectId = window.localStorage.getItem(getLastProjectStorageKey(currentUserId));
         const pendingProcoreReturn = readPendingProcoreReturn();
@@ -1071,9 +1061,7 @@ export function TimeAllocationWorkspace() {
       return;
     }
 
-    await fetch("/api/auth/logout", {
-      method: "POST"
-    });
+    await logoutCurrentUserSession();
 
     setCurrentUser(null);
     setAllProjects([]);

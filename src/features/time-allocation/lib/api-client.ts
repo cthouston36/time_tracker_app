@@ -1,5 +1,11 @@
 export { readApiError, readApiJson, readDownloadFileName } from "@/features/time-allocation/lib/api-utils";
 export {
+  loadCurrentUserSession,
+  loadProcoreUploadStatus,
+  loadProjectCatalog,
+  logoutCurrentUserSession
+} from "@/features/time-allocation/lib/workspace-bootstrap-api";
+export {
   clearDatabaseProjectCatalog,
   clearDatabaseStagingOperationalData,
   loadAssignableFieldUsers,
