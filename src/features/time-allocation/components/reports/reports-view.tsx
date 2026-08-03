@@ -37,6 +37,15 @@ import { MyJobsManager } from "@/features/time-allocation/components/my-jobs-man
 import { getDefaultMyJobIdsForUser } from "@/features/time-allocation/lib/selectors";
 import { downloadBlob, openDatePicker } from "@/features/time-allocation/lib/browser-actions";
 import { formatCsvIdentifier, formatCsvNumber, rowsToCsv } from "@/features/time-allocation/lib/csv-utils";
+import {
+  formatCrewLaborTypeWithCompany,
+  formatCrewPerformanceStatus,
+  formatDailyWorkDateRange,
+  formatDailyWorkQuantity,
+  formatReportDate,
+  formatReportEntryCount,
+  formatVariance
+} from "@/features/time-allocation/lib/report-formatters";
 import type { AllocationEntry, CrewLaborType, Project } from "@/lib/domain/types";
 
 const CREW_LABOR_TYPE_OPTIONS: Array<{ value: CrewLaborType; label: string }> = [
@@ -44,7 +53,6 @@ const CREW_LABOR_TYPE_OPTIONS: Array<{ value: CrewLaborType; label: string }> = 
   { value: "temp_employee", label: "Temp Employee" },
   { value: "subcontractor", label: "Subcontractor" }
 ];
-const DEFAULT_CREW_LABOR_TYPE: CrewLaborType = "chinchor_employee";
 const ALL_CREW_LABOR_TYPES = CREW_LABOR_TYPE_OPTIONS.map((option) => option.value);
 
 type ReportsDailyReport = {
@@ -55,51 +63,6 @@ type ReportsDailyReport = {
 };
 
 type DailyReportsByKey = Record<string, ReportsDailyReport>;
-
-function getCrewLaborType(source: { laborType?: CrewLaborType } | undefined | null): CrewLaborType {
-  if (source?.laborType === "subcontractor" || source?.laborType === "temp_employee") {
-    return source.laborType;
-  }
-
-  return DEFAULT_CREW_LABOR_TYPE;
-}
-
-function formatCrewLaborType(value: CrewLaborType | undefined) {
-  if (value === "subcontractor") {
-    return "Subcontractor";
-  }
-
-  if (value === "temp_employee") {
-    return "Temp Employee";
-  }
-
-  return "Chinchor Employee";
-}
-
-function formatCrewLaborTypeWithCompany(source: { laborType?: CrewLaborType; subcontractorCompany?: string } | undefined | null) {
-  const laborType = getCrewLaborType(source);
-  const label = formatCrewLaborType(laborType);
-
-  if (laborType === "subcontractor" && source?.subcontractorCompany) {
-    return `${label}: ${source.subcontractorCompany}`;
-  }
-
-  return label;
-}
-
-function formatDate(value: string) {
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return parseInputDate(value).toLocaleDateString();
-  }
-
-  return new Date(value).toLocaleDateString();
-}
-
-function parseInputDate(value: string) {
-  const [year, month, day] = value.split("-").map(Number);
-
-  return new Date(year, month - 1, day);
-}
 
 function isAbortError(error: unknown) {
   return error instanceof DOMException && error.name === "AbortError";
@@ -237,7 +200,7 @@ export function ReportsView({
     allJobsReportLabel;
   const reportDateRangeLabel =
     reportStartDate || reportEndDate
-      ? `${reportStartDate ? formatDate(reportStartDate) : "Any start"} - ${reportEndDate ? formatDate(reportEndDate) : "Any end"}`
+      ? `${reportStartDate ? formatReportDate(reportStartDate) : "Any start"} - ${reportEndDate ? formatReportDate(reportEndDate) : "Any end"}`
       : "All dates";
   const filteredEntries = useMemo(
     () =>
@@ -977,7 +940,7 @@ function DetailedPayItemReport({
           {detailRows.map((row) => (
             <div className="report-row detail-analysis-row" key={row.id}>
               <span data-label="Pay Item">{row.payItemLabel}</span>
-              <span data-label="Date">{row.date ? formatDate(row.date) : "All dates"}</span>
+              <span data-label="Date">{row.date ? formatReportDate(row.date) : "All dates"}</span>
               <span data-label="Job">{row.projectName}</span>
               <span data-label="Crew Member">
                 {row.crewMemberName ? (
@@ -1162,10 +1125,10 @@ function EmployeeHoursReport({
                 {row.detailRows.map((detailRow) => (
                   <div className="report-detail-row employee-hours-detail-row" key={detailRow.id}>
                     <span data-label={detailPrimaryLabel}>
-                      {grouping === "job" ? detailRow.employeeName : formatDate(detailRow.date)}
+                      {grouping === "job" ? detailRow.employeeName : formatReportDate(detailRow.date)}
                     </span>
                     <span data-label={detailSecondaryLabel}>
-                      {grouping === "job" ? formatDate(detailRow.date) : detailRow.jobName}
+                      {grouping === "job" ? formatReportDate(detailRow.date) : detailRow.jobName}
                     </span>
                     <span data-label="Hours">{detailRow.hours.toFixed(2)}</span>
                     <span data-label="Truck">{detailRow.truckNumber || "-"}</span>
@@ -1235,7 +1198,7 @@ function DailyWorkReport({ rows }: { rows: DailyWorkReportRow[] }) {
                 </div>
                 {row.detailRows.map((detailRow) => (
                   <div className="report-detail-row daily-work-detail-row" key={detailRow.id}>
-                    <span data-label="Date">{formatDate(detailRow.date)}</span>
+                    <span data-label="Date">{formatReportDate(detailRow.date)}</span>
                     <span data-label="Quantity">{formatDailyWorkQuantity(detailRow.quantity, row.unitOfMeasure)}</span>
                     <span data-label="Notes">{detailRow.notes || "-"}</span>
                   </div>
@@ -1352,10 +1315,6 @@ function dailyReportMatchesReportFilters(
   return matchesProject && matchesStart && matchesEnd;
 }
 
-function formatReportEntryCount(row: { entryCount: number; excludedEntryCount?: number }) {
-  return row.excludedEntryCount ? `${row.entryCount} (${row.excludedEntryCount} excluded)` : String(row.entryCount);
-}
-
 function payItemMatchesQuery(entry: AllocationEntry, normalizedQuery: string) {
   return `${entry.payItemCode} ${entry.payItemName}`.toLowerCase().includes(normalizedQuery);
 }
@@ -1406,45 +1365,6 @@ function getReportSkeletonRowCount(reportMode: ReportMode) {
   }
 
   return 6;
-}
-
-function formatDailyWorkQuantity(quantity: number, unitOfMeasure: string | undefined) {
-  const formattedQuantity = quantity.toLocaleString(undefined, {
-    maximumFractionDigits: 2,
-    minimumFractionDigits: quantity % 1 === 0 ? 0 : 2
-  });
-
-  return unitOfMeasure ? `${formattedQuantity} ${unitOfMeasure}` : formattedQuantity;
-}
-
-function formatDailyWorkDateRange(firstDate: string, lastDate: string) {
-  return firstDate === lastDate ? formatDate(firstDate) : `${formatDate(firstDate)} - ${formatDate(lastDate)}`;
-}
-
-function formatVariance(variance: number) {
-  const percent = Math.abs(variance * 100);
-
-  if (percent < 0.5) {
-    return "At average";
-  }
-
-  return `${percent.toFixed(1)}% ${variance < 0 ? "better" : "worse"}`;
-}
-
-function formatCrewPerformanceStatus(status: CrewPerformanceRow["status"]) {
-  if (status === "strong") {
-    return "Strong";
-  }
-
-  if (status === "review") {
-    return "Needs review";
-  }
-
-  if (status === "limited") {
-    return "Limited data";
-  }
-
-  return "At average";
 }
 
 function buildReportProjectOptions(projects: Project[], entries: AllocationEntry[], dailyReportsByKey: DailyReportsByKey = {}) {
