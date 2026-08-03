@@ -1,6 +1,8 @@
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import {
   CalendarDays,
+  ChevronLeft,
+  ChevronRight,
   ListChecks
 } from "lucide-react";
 import type { AuthUser } from "@/lib/auth/types";
@@ -9,6 +11,7 @@ import { MobileOptionPicker } from "@/features/time-allocation/components/mobile
 import { MyJobsManager } from "@/features/time-allocation/components/my-jobs-manager";
 import { EmptyState } from "@/features/time-allocation/components/workspace-primitives";
 import { openDatePicker } from "@/features/time-allocation/lib/browser-actions";
+import { addDaysToInputDate } from "@/features/time-allocation/lib/date-helpers";
 
 export function ProjectSetupPanel({
   allProjects,
@@ -137,23 +140,43 @@ export function ProjectSetupPanel({
 
       <div className="field-group">
         <label htmlFor="work-date">Date</label>
-        <div className="date-input-wrap">
-          <input
-            id="work-date"
-            ref={dateInputRef}
-            type="date"
-            value={workDate}
-            onChange={(event) => {
-              onChangeWorkDate(event.target.value);
-            }}
-          />
+        <div className="date-stepper-row">
           <button
-            aria-label="Open date picker"
-            className="date-input-button"
-            onClick={() => openDatePicker(dateInputRef.current)}
+            aria-label="Go to previous day"
+            className="date-step-button"
+            onClick={() => onChangeWorkDate(addDaysToInputDate(workDate, -1))}
             type="button"
+            title="Previous day"
           >
-            <CalendarDays aria-hidden="true" size={18} />
+            <ChevronLeft aria-hidden="true" size={18} />
+          </button>
+          <div className="date-input-wrap">
+            <input
+              id="work-date"
+              ref={dateInputRef}
+              type="date"
+              value={workDate}
+              onChange={(event) => {
+                onChangeWorkDate(event.target.value);
+              }}
+            />
+            <button
+              aria-label="Open date picker"
+              className="date-input-button"
+              onClick={() => openDatePicker(dateInputRef.current)}
+              type="button"
+            >
+              <CalendarDays aria-hidden="true" size={18} />
+            </button>
+          </div>
+          <button
+            aria-label="Go to next day"
+            className="date-step-button"
+            onClick={() => onChangeWorkDate(addDaysToInputDate(workDate, 1))}
+            type="button"
+            title="Next day"
+          >
+            <ChevronRight aria-hidden="true" size={18} />
           </button>
         </div>
       </div>
