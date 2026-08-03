@@ -239,40 +239,8 @@ export function getReportTitle(reportMode: ReportMode) {
   return "Pay Item Production Report";
 }
 
-export function isAbortError(error: unknown) {
-  return error instanceof DOMException && error.name === "AbortError";
-}
-
 export function payItemMatchesQuery(entry: AllocationEntry, normalizedQuery: string) {
   return `${entry.payItemCode} ${entry.payItemName}`.toLowerCase().includes(normalizedQuery);
-}
-
-export async function readApiError(response: Response, fallbackMessage: string) {
-  try {
-    const data = (await readApiJson(response)) as { error?: string };
-
-    return data.error ?? fallbackMessage;
-  } catch {
-    return fallbackMessage;
-  }
-}
-
-export async function readApiJson(response: Response) {
-  const text = await response.text();
-
-  if (!text) {
-    return {};
-  }
-
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    if (response.ok) {
-      throw new Error("The server returned an unreadable response.");
-    }
-
-    throw new Error(text.slice(0, 300) || `${response.status} ${response.statusText || "Request failed"}`.trim());
-  }
 }
 
 function dailyReportMatchesReportFilters(

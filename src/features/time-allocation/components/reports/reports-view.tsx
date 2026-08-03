@@ -51,13 +51,12 @@ import {
   getReportPageSize,
   getReportSkeletonRowCount,
   getReportTitle,
-  isAbortError,
   payItemMatchesQuery,
-  readApiError,
-  readApiJson,
   type DailyReportsByKey,
   type ReportResponse
 } from "@/features/time-allocation/lib/report-view-helpers";
+import { exportServerReportCsv, loadServerReport } from "@/features/time-allocation/lib/reports-api";
+import { isAbortError } from "@/features/time-allocation/lib/api-utils";
 import type { AllocationEntry, CrewLaborType, Project } from "@/lib/domain/types";
 
 const CREW_LABOR_TYPE_OPTIONS: Array<{ value: CrewLaborType; label: string }> = [
@@ -274,37 +273,25 @@ export function ReportsView({
     setReportLoading(true);
     setReportError("");
 
-    fetch("/api/reports", {
-      body: JSON.stringify({
-        allowedProjectIds: allowedReportProjectIds,
-        detailGrouping,
-        detailPayItemQuery,
-        detailSort,
-        employeeHoursGrouping,
-        endDate: reportEndDate,
-        excludeOutliers: excludeReportOutliers,
-        crewLaborTypes: reportCrewLaborTypes,
-        mode: reportMode,
-        myJobIds: reportMyJobIds,
-        page: reportPage,
-        pageSize: reportPageSize,
-        projectId: reportProjectId,
-        reportMetric,
-        startDate: reportStartDate
-      }),
-      headers: {
-        "Content-Type": "application/json"
-      },
-      method: "POST",
-      signal: controller.signal
+    loadServerReport({
+      allowedProjectIds: allowedReportProjectIds,
+      crewLaborTypes: reportCrewLaborTypes,
+      detailGrouping,
+      detailPayItemQuery,
+      detailSort,
+      employeeHoursGrouping,
+      endDate: reportEndDate,
+      excludeOutliers: excludeReportOutliers,
+      mode: reportMode,
+      myJobIds: reportMyJobIds,
+      page: reportPage,
+      pageSize: reportPageSize,
+      projectId: reportProjectId,
+      reportMetric,
+      signal: controller.signal,
+      startDate: reportStartDate
     })
-      .then(async (response) => {
-        const data = (await readApiJson(response)) as ReportResponse;
-
-        if (!response.ok) {
-          throw new Error(data.error ?? "Unable to load report.");
-        }
-
+      .then((data) => {
         setReportData(data);
         setReportsUseServerData(Boolean(data.databaseConfigured));
       })
@@ -356,29 +343,17 @@ export function ReportsView({
     setReportError("");
 
     try {
-      const response = await fetch("/api/reports/export", {
-        body: JSON.stringify({
-          allowedProjectIds: allowedReportProjectIds,
-          crewLaborTypes: reportCrewLaborTypes,
-          endDate: reportEndDate,
-          excludeOutliers: excludeReportOutliers,
-          mode: reportMode === "daily_work" ? "daily_work" : "summary",
-          myJobIds: reportMyJobIds,
-          projectId: reportProjectId,
-          reportMetric,
-          startDate: reportStartDate
-        }),
-        headers: {
-          "Content-Type": "application/json"
-        },
-        method: "POST"
+      const blob = await exportServerReportCsv({
+        allowedProjectIds: allowedReportProjectIds,
+        crewLaborTypes: reportCrewLaborTypes,
+        endDate: reportEndDate,
+        excludeOutliers: excludeReportOutliers,
+        mode: reportMode === "daily_work" ? "daily_work" : "summary",
+        myJobIds: reportMyJobIds,
+        projectId: reportProjectId,
+        reportMetric,
+        startDate: reportStartDate
       });
-
-      if (!response.ok) {
-        throw new Error(await readApiError(response, "Unable to export report CSV."));
-      }
-
-      const blob = await response.blob();
       downloadBlob(
         blob,
         `time-allocation-${reportMode === "daily_work" ? "daily-work" : "summary"}-${todayInputValue()}.csv`
