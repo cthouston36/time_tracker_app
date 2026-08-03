@@ -3,7 +3,7 @@ import type { AuthUser } from "@/lib/auth/types";
 import type { Project } from "@/lib/domain/types";
 import {
   loadDatabaseJobImageUploads,
-  readApiJson
+  uploadJobImageBatchToProcore
 } from "@/features/time-allocation/lib/api-client";
 import {
   chunkJobImagesForUpload,
@@ -12,11 +12,9 @@ import {
   MAX_JOB_IMAGE_QUEUE_ITEMS,
   mergeJobImageUploads,
   prepareJobImageFileForUpload,
-  uploadClientId,
   waitForClientDelay
 } from "@/features/time-allocation/lib/job-image-helpers";
 import type { JobImageQueueItem, JobImageUploadsByDay } from "@/features/time-allocation/types";
-import type { JobImageUploadResponse } from "@/features/time-allocation/lib/workspace-api-types";
 
 type JobImageNotice = { message: string; status: "success" | "error" } | null;
 
@@ -339,45 +337,18 @@ export function useJobImages({
             await waitForClientDelay(JOB_IMAGE_CLIENT_BATCH_DELAY_MS);
           }
 
-          const formData = new FormData();
-
-          formData.set("date", workDate);
-          formData.set(
-            "project",
-            JSON.stringify({
-              id: selectedProject.id,
-              name: selectedProject.name,
-              payItems: [],
-              procoreProjectId: selectedProject.procoreProjectId
-            } satisfies Project)
-          );
-
-          for (const item of batch) {
-            formData.append("images", item.file, item.file.name);
-            formData.append("imageClientIds", item.id);
-            formData.append("imageCaptions", item.caption);
-            formData.append("originalFileNames", item.originalName);
-          }
-
           try {
-            const response = await fetch("/api/procore/job-images/upload", {
-              body: formData,
-              method: "POST"
+            const uploadResult = await uploadJobImageBatchToProcore({
+              date: workDate,
+              images: batch,
+              project: selectedProject
             });
-            const data = (await readApiJson(response)) as JobImageUploadResponse;
 
-            if (!response.ok) {
-              throw new Error(data.error ?? "Unable to upload job images to Procore.");
-            }
+            uploadedCount += uploadResult.uploadedCount;
+            failedCount += uploadResult.failedCount;
+            queuedCount += uploadResult.queuedCount;
 
-            const uploadedByClientId = new Map((data.uploads ?? []).map((upload) => [uploadClientId(upload), upload]));
-            const returnedUploads = data.uploads ?? [];
-
-            uploadedCount += returnedUploads.filter((upload) => upload.status === "uploaded").length;
-            failedCount += returnedUploads.filter((upload) => upload.status === "failed").length;
-            queuedCount += data.queued ? data.queuedCount ?? returnedUploads.length : 0;
-
-            if (data.queued) {
+            if (uploadResult.data.queued) {
               for (const item of batch) {
                 revokeJobImagePreview(item.previewUrl);
               }
@@ -386,7 +357,7 @@ export function useJobImages({
             } else {
               setJobImageQueue((current) =>
                 current.map((item) => {
-                  const upload = uploadedByClientId.get(item.id);
+                  const upload = uploadResult.uploadedByClientId.get(item.id);
 
                   if (!upload) {
                     return item;
@@ -403,7 +374,7 @@ export function useJobImages({
             }
             setJobImageUploadsByDay((current) => ({
               ...current,
-              [currentDayKey]: mergeJobImageUploads(current[currentDayKey] ?? [], returnedUploads)
+              [currentDayKey]: mergeJobImageUploads(current[currentDayKey] ?? [], uploadResult.returnedUploads)
             }));
           } catch (error) {
             const message = error instanceof Error ? error.message : "Unable to upload job images to Procore.";

@@ -45,4 +45,5 @@ export {
   saveDatabaseDaySubmission
 } from "@/features/time-allocation/lib/day-records-api";
 export { loadDatabaseJobImageUploads } from "@/features/time-allocation/lib/job-images-api";
+export { uploadJobImageBatchToProcore } from "@/features/time-allocation/lib/job-image-upload-api";
 export { postProjectsWithTimeout } from "@/features/time-allocation/lib/project-sync-api";
