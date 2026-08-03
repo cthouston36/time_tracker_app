@@ -4,10 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CalendarDays,
   Edit3,
-  ExternalLink,
-  Save,
-  Send,
-  UploadCloud
+  ExternalLink
 } from "lucide-react";
 import { todayInputValue } from "@/lib/date";
 import { canAccessReports, getAccessibleProjectsForUser } from "@/lib/auth/project-access";
@@ -15,7 +12,6 @@ import type { AuthUser } from "@/lib/auth/types";
 import { isTwoSeriesProject } from "@/lib/daily-report-templates";
 import {
   AppLoadingShell,
-  InlineSpinner,
   PageHeader
 } from "@/features/time-allocation/components/workspace-primitives";
 import { DailyStatusStrip } from "@/features/time-allocation/components/daily-status-strip";
@@ -29,11 +25,10 @@ import {
 } from "@/features/time-allocation/components/status-banners";
 import { ReportsView } from "@/features/time-allocation/components/reports/reports-view";
 import { DailyReportModal } from "@/features/time-allocation/components/daily-report/daily-report-ui";
-import { DailyReportPanel } from "@/features/time-allocation/components/daily-report/daily-report-panel";
 import { DashboardView } from "@/features/time-allocation/components/dashboard/dashboard-view";
 import { PayItemEntryPanel } from "@/features/time-allocation/components/entry/pay-item-entry-panel";
 import { MatrixFullscreenModal } from "@/features/time-allocation/components/entry/matrix-fullscreen-modal";
-import { JobImagesPanel } from "@/features/time-allocation/components/entry/job-images-panel";
+import { DailyWrapUpSection } from "@/features/time-allocation/components/entry/daily-wrap-up-section";
 import { ReviewSubmitPanel } from "@/features/time-allocation/components/entry/review-submit-panel";
 import {
   clearDatabaseProjectCatalog,
@@ -1711,124 +1706,54 @@ export function TimeAllocationWorkspace() {
               </>
             ) : null}
 
-            {selectedProjectUsesPayItems ? (
-              <div className="workflow-section-heading">
-                <h2 className="workflow-title">
-                  <span className="workflow-step">3</span>
-                  Daily Wrap-Up
-                </h2>
-              </div>
-            ) : null}
-
-            <input
-              ref={jobImageInputRef}
-              accept="image/*"
-              className="job-image-file-input"
-              multiple
-              type="file"
-              onChange={(event) => void addJobImages(event.target.files)}
+            <DailyWrapUpSection
+              currentDailyReport={currentDailyReport}
+              currentJobImageUploads={currentJobImageUploads}
+              dailyReportNeedsUpload={dailyReportNeedsUpload}
+              dailyReportUploadNotice={dailyReportUploadNotice}
+              dailyReportUploadPending={dailyReportUploadPending}
+              dailyReportUploadRetryQueue={dailyReportUploadRetryQueue}
+              dayIsSubmitted={dayIsSubmitted}
+              downloadingDailyReportPdf={downloadingDailyReportPdf}
+              draftEntryCount={draftEntryCount}
+              failedJobImageUploads={failedJobImageUploads}
+              failedQueuedJobImages={failedQueuedJobImages}
+              jobImageDailyLimitReached={jobImageDailyLimitReached}
+              jobImageHistoryExpanded={jobImageHistoryExpanded}
+              jobImageInputRef={jobImageInputRef}
+              jobImageNotice={jobImageNotice}
+              jobImageQueue={jobImageQueue}
+              loadingJobImageUploads={loadingJobImageUploads}
+              procoreStatus={currentDailyReportProcoreStatus}
+              queuedJobImages={queuedJobImages}
+              retryingDailyReportUploadKey={retryingDailyReportUploadKey}
+              savingEntries={savingEntries}
+              selectedProject={selectedProject}
+              selectedProjectUsesPayItems={selectedProjectUsesPayItems}
+              selectedProjectUsesTwoSeriesDailyReport={selectedProjectUsesTwoSeriesDailyReport}
+              showDailyReportDetails={showDailyReportDetails}
+              showJobImageDetails={showJobImageDetails}
+              submittingDay={submittingDay}
+              uploadedJobImageCount={uploadedJobImageCount}
+              uploadingDailyReport={uploadingDailyReport}
+              uploadingJobImages={uploadingJobImages}
+              visibleEntryCount={visibleEntries.length}
+              onAddJobImages={addJobImages}
+              onClearJobImageQueue={clearJobImageQueue}
+              onClearUploadedJobImagesFromQueue={clearUploadedJobImagesFromQueue}
+              onDownloadDailyReportPdf={downloadDailyReportPdf}
+              onOpenDailyEntry={openDailyEntry}
+              onOpenDailyReportModal={openDailyReportModal}
+              onRemoveJobImageFromQueue={removeJobImageFromQueue}
+              onRetryDailyReportUpload={retryDailyReportUpload}
+              onRetryFailedJobImages={retryFailedJobImages}
+              onSaveAllocationEntries={saveAllocationEntries}
+              onSubmitDay={submitDay}
+              onToggleJobImageHistory={() => setJobImageHistoryExpanded((current) => !current)}
+              onUpdateJobImageCaption={updateJobImageCaption}
+              onUploadDailyReportToProcore={uploadDailyReportToProcoreDocuments}
+              onUploadQueuedJobImages={uploadQueuedJobImages}
             />
-            {!showDailyReportDetails || !showJobImageDetails ? (
-              <div className="wrap-up-action-strip" aria-label="Daily wrap-up actions">
-                {!showDailyReportDetails ? (
-                  <button
-                    className="primary-button prominent-action"
-                    disabled={!selectedProject}
-                    onClick={openDailyReportModal}
-                    type="button"
-                  >
-                    <Edit3 aria-hidden="true" size={18} />
-                    Create Daily Report
-                  </button>
-                ) : null}
-                {!showJobImageDetails ? (
-                  <button
-                    className="secondary-button"
-                    disabled={!selectedProject || uploadingJobImages || jobImageDailyLimitReached}
-                    onClick={() => jobImageInputRef.current?.click()}
-                    type="button"
-                  >
-                    <UploadCloud aria-hidden="true" size={18} />
-                    Add Images
-                  </button>
-                ) : null}
-              </div>
-            ) : null}
-
-            {showDailyReportDetails ? (
-              <DailyReportPanel
-                currentDailyReport={currentDailyReport}
-                dailyReportNeedsUpload={dailyReportNeedsUpload}
-                dailyReportUploadPending={dailyReportUploadPending}
-                dailyReportUploadNotice={dailyReportUploadNotice}
-                dailyReportUploadRetryQueue={dailyReportUploadRetryQueue}
-                downloadingDailyReportPdf={downloadingDailyReportPdf}
-                procoreStatus={currentDailyReportProcoreStatus}
-                retryingDailyReportUploadKey={retryingDailyReportUploadKey}
-                selectedProject={selectedProject}
-                selectedProjectUsesTwoSeriesDailyReport={selectedProjectUsesTwoSeriesDailyReport}
-                uploadingDailyReport={uploadingDailyReport}
-                onDownloadPdf={downloadDailyReportPdf}
-                onOpenDailyEntry={openDailyEntry}
-                onOpenDailyReportModal={openDailyReportModal}
-                onRetryDailyReportUpload={retryDailyReportUpload}
-                onUploadToProcore={uploadDailyReportToProcoreDocuments}
-              />
-            ) : null}
-
-            {showJobImageDetails ? (
-              <JobImagesPanel
-                currentJobImageUploads={currentJobImageUploads}
-                failedJobImageUploads={failedJobImageUploads}
-                failedQueuedJobImages={failedQueuedJobImages}
-                jobImageDailyLimitReached={jobImageDailyLimitReached}
-                jobImageHistoryExpanded={jobImageHistoryExpanded}
-                jobImageNotice={jobImageNotice}
-                jobImageQueue={jobImageQueue}
-                loadingJobImageUploads={loadingJobImageUploads}
-                queuedJobImages={queuedJobImages}
-                selectedProjectExists={Boolean(selectedProject)}
-                uploadedJobImageCount={uploadedJobImageCount}
-                uploadingJobImages={uploadingJobImages}
-                onAddImages={() => jobImageInputRef.current?.click()}
-                onClearQueue={clearJobImageQueue}
-                onClearUploadedFromQueue={clearUploadedJobImagesFromQueue}
-                onRemoveFromQueue={removeJobImageFromQueue}
-                onRetryFailed={() => void retryFailedJobImages()}
-                onToggleHistory={() => setJobImageHistoryExpanded((current) => !current)}
-                onUpdateCaption={updateJobImageCaption}
-                onUploadQueued={uploadQueuedJobImages}
-              />
-            ) : null}
-
-            <div className="mobile-sticky-action-bar" aria-label="Entry actions">
-              {selectedProjectUsesPayItems ? (
-                <>
-                  <button
-                    className="primary-button"
-                    disabled={draftEntryCount === 0 || dayIsSubmitted || savingEntries}
-                    onClick={saveAllocationEntries}
-                    type="button"
-                  >
-                    {savingEntries ? <InlineSpinner /> : <Save aria-hidden="true" size={17} />}
-                    {savingEntries ? "Saving..." : "Save"}
-                  </button>
-                  <button
-                    className="secondary-button"
-                    disabled={dayIsSubmitted || visibleEntries.length === 0 || submittingDay || savingEntries}
-                    onClick={submitDay}
-                    type="button"
-                  >
-                    {submittingDay ? <InlineSpinner /> : <Send aria-hidden="true" size={17} />}
-                    {submittingDay ? "Submitting..." : "Submit"}
-                  </button>
-                </>
-              ) : null}
-              <button className="secondary-button" disabled={!selectedProject} onClick={openDailyReportModal} type="button">
-                <Edit3 aria-hidden="true" size={17} />
-                Daily
-              </button>
-            </div>
           </section>
         ) : viewMode === "calendar" ? (
           <section className="allocation-grid">
