@@ -35,6 +35,11 @@ export {
   saveDatabaseDailyReportUpload
 } from "@/features/time-allocation/lib/daily-reports-api";
 export {
+  buildFailedDailyReportUploadStatus,
+  downloadDailyReportPdfFile,
+  uploadDailyReportPdfToProcore
+} from "@/features/time-allocation/lib/daily-report-document-api";
+export {
   deleteDatabaseDaySubmission,
   loadDatabaseDayRecords,
   saveDatabaseDaySubmission

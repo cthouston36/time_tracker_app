@@ -4,13 +4,13 @@ import type { AllocationEntry, Project } from "@/lib/domain/types";
 import { getDailyReportTemplateForProject } from "@/lib/daily-report-templates";
 import { downloadBlob } from "@/features/time-allocation/lib/browser-actions";
 import {
+  buildFailedDailyReportUploadStatus,
   deleteDatabaseDailyReportUpload,
+  downloadDailyReportPdfFile,
   loadDatabaseDailyReportData,
-  readApiError,
-  readApiJson,
-  readDownloadFileName,
   saveDatabaseDailyReport,
-  saveDatabaseDailyReportUpload
+  saveDatabaseDailyReportUpload,
+  uploadDailyReportPdfToProcore
 } from "@/features/time-allocation/lib/api-client";
 import {
   clearAllDailyReportAutosaveDrafts,
@@ -38,18 +38,9 @@ import {
   validateDailyReportAnswers
 } from "@/features/time-allocation/lib/daily-report-helpers";
 import { buildDailyReportConflictSignature } from "@/features/time-allocation/lib/conflict-helpers";
-import {
-  buildDailyReportUploadFileName,
-  formatDate,
-  getDayKey,
-  parseDayKey
-} from "@/features/time-allocation/lib/date-helpers";
-import {
-  buildProcoreDocumentsFolderUrl,
-  getDailyReportProcoreStatus
-} from "@/features/time-allocation/lib/status-helpers";
+import { formatDate, getDayKey, parseDayKey } from "@/features/time-allocation/lib/date-helpers";
+import { getDailyReportProcoreStatus } from "@/features/time-allocation/lib/status-helpers";
 import { formatUserName } from "@/features/time-allocation/lib/auth-ui-helpers";
-import type { DailyReportUploadResponse } from "@/features/time-allocation/lib/workspace-api-types";
 import type { ConfirmationOptions } from "@/features/time-allocation/hooks/use-confirmation-dialog";
 import type {
   DailyReport,
@@ -59,7 +50,6 @@ import type {
   DailyReportPayItemRow,
   DailyReportsByKey,
   DailyReportTimeField,
-  DailyReportUpload,
   DailyReportUploadsByKey,
   DayEntryNotes,
   DayEntryNotesByKey
@@ -598,25 +588,12 @@ export function useDailyReports({
     setDailyReportUploadNotice(null);
 
     try {
-      const response = await fetch("/api/daily-reports/pdf", {
-        body: JSON.stringify({
-          date: workDate,
-          dayNotes: currentDayEntryNotes,
-          project: selectedProject,
-          report: currentDailyReport
-        }),
-        headers: {
-          "Content-Type": "application/json"
-        },
-        method: "POST"
+      const { blob, fileName } = await downloadDailyReportPdfFile({
+        date: workDate,
+        dayNotes: currentDayEntryNotes,
+        project: selectedProject,
+        report: currentDailyReport
       });
-
-      if (!response.ok) {
-        throw new Error(await readApiError(response, "Unable to download daily report PDF."));
-      }
-
-      const blob = await response.blob();
-      const fileName = readDownloadFileName(response.headers) ?? `daily-report-${workDate}.pdf`;
 
       downloadBlob(blob, fileName);
       setDailyReportUploadNotice({
@@ -673,41 +650,12 @@ export function useDailyReports({
       }
 
       try {
-        const response = await fetch("/api/procore/daily-reports/upload", {
-          body: JSON.stringify({
-            date,
-            dayNotes,
-            project,
-            report
-          }),
-          headers: {
-            "Content-Type": "application/json"
-          },
-          method: "POST"
+        const { data, upload: dailyReportUpload } = await uploadDailyReportPdfToProcore({
+          date,
+          dayNotes,
+          project,
+          report
         });
-        const data = (await readApiJson(response)) as DailyReportUploadResponse;
-
-        if (!response.ok) {
-          throw new Error(data.error ?? "Unable to upload daily report to Procore.");
-        }
-
-        const dailyReportUpload: DailyReportUpload = data.queued
-          ? {
-              attemptedAt: new Date().toISOString(),
-              fileName: data.fileName ?? buildDailyReportUploadFileName(project.name, date),
-              folderPath: data.folderPath ?? "Daily Reports",
-              status: "queued"
-            }
-          : {
-              companyId: data.companyId,
-              fileName: data.fileName ?? "daily report",
-              folderId: data.folderId,
-              folderPath: data.folderPath ?? "Daily Reports",
-              folderUrl: data.folderUrl ?? buildProcoreDocumentsFolderUrl(data.companyId, project.id, data.folderId),
-              procoreFileId: data.procoreFileId,
-              status: "uploaded",
-              uploadedAt: new Date().toISOString()
-            };
 
         setDailyReportUploadsByKey((current) => ({
           ...current,
@@ -732,13 +680,7 @@ export function useDailyReports({
         );
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unable to upload daily report to Procore.";
-        const failedDailyReportUpload: DailyReportUpload = {
-          attemptedAt: new Date().toISOString(),
-          error: message,
-          fileName: buildDailyReportUploadFileName(project.name, date),
-          folderPath: "Daily Reports",
-          status: "failed"
-        };
+        const failedDailyReportUpload = buildFailedDailyReportUploadStatus(project, date, message);
 
         setDailyReportUploadsByKey((current) => ({
           ...current,
