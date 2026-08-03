@@ -14,6 +14,8 @@
   --warning-bg: #fff8c5;
   --warning-line: #d4a72c;
   --warning-text: #9a6700;
+  --skeleton-base: #dde5ee;
+  --skeleton-highlight: #f6f8fa;
   --shadow: 0 14px 36px rgb(31 35 40 / 0.16);
 }
 
@@ -824,7 +826,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
 .loading-skeleton {
   animation: skeleton-shimmer 1.3s ease-in-out infinite;
-  background: linear-gradient(90deg, #162231 0%, #203246 50%, #162231 100%);
+  background: linear-gradient(90deg, var(--skeleton-base) 0%, var(--skeleton-highlight) 50%, var(--skeleton-base) 100%);
   background-size: 200% 100%;
   border-radius: 6px;
   height: 14px;
@@ -843,6 +845,25 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .skeleton-button {
   height: 44px;
   width: 48%;
+}
+
+.skeleton-short {
+  height: 18px;
+  width: 130px;
+}
+
+.skeleton-card {
+  pointer-events: none;
+}
+
+.skeleton-card .loading-skeleton:first-child {
+  height: 11px;
+  width: 42%;
+}
+
+.skeleton-card .skeleton-title {
+  height: 22px;
+  width: 34%;
 }
 
 @keyframes spin {
@@ -2264,6 +2285,11 @@ a.daily-report-procore-status:hover {
   grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
+.dashboard-loading-skeleton {
+  display: grid;
+  gap: 16px;
+}
+
 .dashboard-metric-card {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -2327,6 +2353,28 @@ a.daily-report-procore-status:hover {
 .dashboard-main-grid.executive {
   align-items: start;
   grid-template-columns: minmax(0, 1.05fr) minmax(340px, 0.95fr);
+}
+
+.dashboard-calendar-skeleton {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.dashboard-calendar-skeleton-row {
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(160px, 1.25fr) repeat(4, minmax(80px, 1fr));
+  padding: 10px;
+}
+
+.dashboard-calendar-skeleton-row:last-child {
+  border-bottom: 0;
+}
+
+.dashboard-calendar-skeleton-row .loading-skeleton {
+  height: 30px;
 }
 
 .executive-dashboard-layout {
@@ -4218,6 +4266,19 @@ a.daily-report-procore-status:hover {
   overflow: hidden;
 }
 
+.report-skeleton-header {
+  background: var(--field);
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(180px, 2fr) repeat(3, minmax(90px, 1fr));
+  padding: 12px 14px;
+}
+
+.report-skeleton-header .loading-skeleton {
+  height: 11px;
+}
+
 .report-skeleton-row {
   display: grid;
   gap: 14px;
@@ -4591,6 +4652,15 @@ a.daily-report-procore-status:hover {
 
 .report-controls .field-group {
   margin-bottom: 0;
+}
+
+.report-controls-skeleton {
+  pointer-events: none;
+}
+
+.report-controls-skeleton .skeleton-button {
+  justify-self: end;
+  width: 145px;
 }
 
 .report-clear-button {
@@ -5515,8 +5585,15 @@ a.daily-report-procore-status:hover {
     grid-template-columns: 1fr;
   }
 
+  .dashboard-calendar-skeleton-row,
+  .report-skeleton-header,
   .report-skeleton-row {
     grid-template-columns: 1fr;
+  }
+
+  .report-controls-skeleton .skeleton-button {
+    justify-self: stretch;
+    width: 100%;
   }
 
   .date-input-wrap,

@@ -26,7 +26,12 @@ import {
   type ReportMode,
   type ReportPayItemOption
 } from "@/lib/report-builders";
-import { EmptyState, PageHeader, ReportLoadingSkeleton } from "@/features/time-allocation/components/workspace-primitives";
+import {
+  EmptyState,
+  PageHeader,
+  ReportControlsLoadingSkeleton,
+  ReportLoadingSkeleton
+} from "@/features/time-allocation/components/workspace-primitives";
 import { MobileOptionPicker } from "@/features/time-allocation/components/mobile-option-picker";
 import { MyJobsManager } from "@/features/time-allocation/components/my-jobs-manager";
 import { getDefaultMyJobIdsForUser } from "@/features/time-allocation/lib/selectors";
@@ -564,6 +569,9 @@ export function ReportsView({
           />
         ) : null}
         {reportMode === "crew" && crewPerformanceInfoOpen ? <CrewPerformanceInfo /> : null}
+        {reportLoading && !reportData ? (
+          <ReportControlsLoadingSkeleton />
+        ) : (
         <div className="report-controls">
           <div className="field-group">
             <label htmlFor="report-project">Job</label>
@@ -693,6 +701,7 @@ export function ReportsView({
             Clear filters
           </button>
         </div>
+        )}
         {reportMode === "employee_hours" ? (
           <div className="report-methodology-note">
             Employee Hours uses saved Daily Report employee time rows. Empty employee rows and zero-hour rows are excluded.
@@ -713,7 +722,7 @@ export function ReportsView({
         )}
         {reportError ? <div className="inline-alert">{reportError}</div> : null}
         {reportLoading ? (
-          <ReportLoadingSkeleton />
+          <ReportLoadingSkeleton rows={getReportSkeletonRowCount(reportMode)} />
         ) : reportMode === "summary" ? (
           <>
             <PayItemReportTable rows={payItemRows} />
@@ -1385,6 +1394,18 @@ function getReportPageSize(reportMode: ReportMode) {
   }
 
   return 25;
+}
+
+function getReportSkeletonRowCount(reportMode: ReportMode) {
+  if (reportMode === "detail") {
+    return 7;
+  }
+
+  if (reportMode === "employee_hours" || reportMode === "daily_work") {
+    return 5;
+  }
+
+  return 6;
 }
 
 function formatDailyWorkQuantity(quantity: number, unitOfMeasure: string | undefined) {

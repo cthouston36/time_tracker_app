@@ -153,6 +153,7 @@ export function TimeAllocationWorkspace() {
   const [draftsByPayItem, setDraftsByPayItem] = useState<DraftsByPayItem>({});
   const [connectionStatus, setConnectionStatus] = useState("Mock data active");
   const [projectLoadError, setProjectLoadError] = useState("");
+  const [loadingProjects, setLoadingProjects] = useState(false);
   const [entryNotice, setEntryNotice] = useState("");
   const [clearingStagingData, setClearingStagingData] = useState(false);
   const [clearingProjectCatalog, setClearingProjectCatalog] = useState(false);
@@ -733,6 +734,9 @@ export function TimeAllocationWorkspace() {
     }
 
     async function loadProjects() {
+      setLoadingProjects(true);
+      setProjectLoadError("");
+
       try {
         const response = await fetch("/api/project-catalog/projects");
         const data = (await readApiJson(response)) as ProjectsResponse;
@@ -776,6 +780,8 @@ export function TimeAllocationWorkspace() {
         setConnectionStatus(data.syncedAt ? "Project catalog loaded" : "No project catalog data");
       } catch (error) {
         setProjectLoadError(error instanceof Error ? error.message : "Unable to load projects.");
+      } finally {
+        setLoadingProjects(false);
       }
     }
 
@@ -1686,6 +1692,7 @@ export function TimeAllocationWorkspace() {
             entries={entries}
             fieldAssignmentNotice={fieldAssignmentNotice}
             fieldUsers={fieldUsers}
+            loading={loadingProjects || !appStateHydrated}
             myJobsByUser={myJobsByUser}
             onOpenDay={openDailyEntry}
             onSaveFieldAssignments={saveFieldProjectAssignments}
