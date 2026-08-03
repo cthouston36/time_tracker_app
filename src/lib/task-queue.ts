@@ -36,6 +36,21 @@ export type TaskQueueTask = {
   updatedAt: string;
 };
 
+export type TaskQueueMaintenanceStats = {
+  cleanupCandidates: {
+    completed: number;
+    failed: number;
+  };
+  statuses: Record<TaskQueueStatus, number>;
+  total: number;
+};
+
+export type TaskQueuePurgeResult = {
+  completed: number;
+  failed: number;
+  total: number;
+};
+
 export type EnqueueTaskInput = {
   actorName?: string;
   actorUserId?: string;
@@ -73,6 +88,9 @@ type TaskQueueRow = {
 };
 
 let taskQueueTableReady = false;
+
+const DEFAULT_COMPLETED_TASK_RETENTION_DAYS = 45;
+const DEFAULT_FAILED_TASK_RETENTION_DAYS = 90;
 
 export async function enqueueTask(input: EnqueueTaskInput) {
   const sql = getSql();
@@ -343,6 +361,114 @@ export async function failTask(task: TaskQueueTask, error: string) {
   };
 }
 
+export async function readTaskQueueMaintenanceStats({
+  completedRetentionDays = DEFAULT_COMPLETED_TASK_RETENTION_DAYS,
+  failedRetentionDays = DEFAULT_FAILED_TASK_RETENTION_DAYS
+}: {
+  completedRetentionDays?: number;
+  failedRetentionDays?: number;
+} = {}): Promise<TaskQueueMaintenanceStats | null> {
+  const sql = getSql();
+
+  if (!sql) {
+    return null;
+  }
+
+  await ensureTaskQueueTable();
+
+  const completedDays = normalizeRetentionDays(completedRetentionDays, DEFAULT_COMPLETED_TASK_RETENTION_DAYS);
+  const failedDays = normalizeRetentionDays(failedRetentionDays, DEFAULT_FAILED_TASK_RETENTION_DAYS);
+  const rows = (await sql`
+    select
+      count(*)::int as total,
+      count(*) filter (where status = 'queued')::int as queued,
+      count(*) filter (where status = 'processing')::int as processing,
+      count(*) filter (where status = 'completed')::int as completed,
+      count(*) filter (where status = 'failed')::int as failed,
+      count(*) filter (
+        where status = 'completed'
+          and updated_at < now() - (${completedDays}::int * interval '1 day')
+      )::int as completed_cleanup_candidates,
+      count(*) filter (
+        where status = 'failed'
+          and updated_at < now() - (${failedDays}::int * interval '1 day')
+      )::int as failed_cleanup_candidates
+    from task_queue
+  `) as Array<{
+    completed: number | string;
+    completed_cleanup_candidates: number | string;
+    failed: number | string;
+    failed_cleanup_candidates: number | string;
+    processing: number | string;
+    queued: number | string;
+    total: number | string;
+  }>;
+  const row = rows[0];
+
+  return {
+    cleanupCandidates: {
+      completed: toInteger(row?.completed_cleanup_candidates),
+      failed: toInteger(row?.failed_cleanup_candidates)
+    },
+    statuses: {
+      completed: toInteger(row?.completed),
+      failed: toInteger(row?.failed),
+      processing: toInteger(row?.processing),
+      queued: toInteger(row?.queued)
+    },
+    total: toInteger(row?.total)
+  };
+}
+
+export async function purgeTaskQueueRecords({
+  completedRetentionDays = DEFAULT_COMPLETED_TASK_RETENTION_DAYS,
+  failedRetentionDays = DEFAULT_FAILED_TASK_RETENTION_DAYS
+}: {
+  completedRetentionDays?: number;
+  failedRetentionDays?: number;
+} = {}): Promise<TaskQueuePurgeResult | null> {
+  const sql = getSql();
+
+  if (!sql) {
+    return null;
+  }
+
+  await ensureTaskQueueTable();
+
+  const completedDays = normalizeRetentionDays(completedRetentionDays, DEFAULT_COMPLETED_TASK_RETENTION_DAYS);
+  const failedDays = normalizeRetentionDays(failedRetentionDays, DEFAULT_FAILED_TASK_RETENTION_DAYS);
+  const rows = (await sql`
+    with deleted as (
+      delete from task_queue
+      where (
+          status = 'completed'
+          and updated_at < now() - (${completedDays}::int * interval '1 day')
+        )
+        or (
+          status = 'failed'
+          and updated_at < now() - (${failedDays}::int * interval '1 day')
+        )
+      returning status
+    )
+    select
+      count(*)::int as total,
+      count(*) filter (where status = 'completed')::int as completed,
+      count(*) filter (where status = 'failed')::int as failed
+    from deleted
+  `) as Array<{
+    completed: number | string;
+    failed: number | string;
+    total: number | string;
+  }>;
+  const row = rows[0];
+
+  return {
+    completed: toInteger(row?.completed),
+    failed: toInteger(row?.failed),
+    total: toInteger(row?.total)
+  };
+}
+
 async function releaseStaleProcessingTasks() {
   const sql = getSql();
 
@@ -374,6 +500,18 @@ async function releaseStaleProcessingTasks() {
       and locked_at < now() - interval '15 minutes'
       and attempts >= max_attempts
   `;
+}
+
+function normalizeRetentionDays(value: number, fallback: number) {
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+
+  return Math.min(Math.max(Math.trunc(value), 1), 730);
+}
+
+function toInteger(value: number | string | undefined) {
+  return Number(value ?? 0) || 0;
 }
 
 async function ensureTaskQueueTable() {

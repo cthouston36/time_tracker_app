@@ -200,6 +200,68 @@ export async function listUnresolvedFailedJobImageUploads(limit = 200) {
   return rows.map(normalizeJobImageUploadRow);
 }
 
+export async function countResolvedFailedJobImageUploads(retentionDays = 30) {
+  const sql = getSql();
+
+  if (!sql) {
+    return null;
+  }
+
+  await ensureJobImageUploadTable();
+
+  const safeRetentionDays = normalizeRetentionDays(retentionDays);
+  const rows = (await sql`
+    select count(*)::int as count
+    from job_image_uploads failed
+    where failed.status = 'failed'
+      and failed.updated_at < now() - (${safeRetentionDays}::int * interval '1 day')
+      and exists (
+        select 1
+        from job_image_uploads uploaded
+        where uploaded.status = 'uploaded'
+          and uploaded.project_id = failed.project_id
+          and uploaded.work_date = failed.work_date
+          and lower(coalesce(nullif(uploaded.original_file_name, ''), uploaded.file_name)) =
+            lower(coalesce(nullif(failed.original_file_name, ''), failed.file_name))
+      )
+  `) as Array<{ count: number | string }>;
+
+  return Number(rows[0]?.count ?? 0) || 0;
+}
+
+export async function deleteResolvedFailedJobImageUploads(retentionDays = 30) {
+  const sql = getSql();
+
+  if (!sql) {
+    return null;
+  }
+
+  await ensureJobImageUploadTable();
+
+  const safeRetentionDays = normalizeRetentionDays(retentionDays);
+  const rows = (await sql`
+    with deleted as (
+      delete from job_image_uploads failed
+      where failed.status = 'failed'
+        and failed.updated_at < now() - (${safeRetentionDays}::int * interval '1 day')
+        and exists (
+          select 1
+          from job_image_uploads uploaded
+          where uploaded.status = 'uploaded'
+            and uploaded.project_id = failed.project_id
+            and uploaded.work_date = failed.work_date
+            and lower(coalesce(nullif(uploaded.original_file_name, ''), uploaded.file_name)) =
+              lower(coalesce(nullif(failed.original_file_name, ''), failed.file_name))
+        )
+      returning id
+    )
+    select count(*)::int as count
+    from deleted
+  `) as Array<{ count: number | string }>;
+
+  return Number(rows[0]?.count ?? 0) || 0;
+}
+
 export async function upsertJobImageUploads(jobImageUploads: StoredJobImageUpload[]) {
   const sql = getSql();
 
@@ -469,4 +531,12 @@ function normalizeUploadStatus(value: unknown): StoredJobImageUploadStatus {
   }
 
   return "failed";
+}
+
+function normalizeRetentionDays(value: number) {
+  if (!Number.isFinite(value)) {
+    return 30;
+  }
+
+  return Math.min(Math.max(Math.trunc(value), 1), 730);
 }

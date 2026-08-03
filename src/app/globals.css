@@ -3428,6 +3428,75 @@ a.daily-report-procore-status:hover {
   margin: 0;
 }
 
+.admin-maintenance-section {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+}
+
+.admin-maintenance-section-heading {
+  align-items: flex-start;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.admin-maintenance-section-heading span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.admin-maintenance-section-heading strong {
+  font-size: 0.88rem;
+}
+
+.admin-maintenance-section-heading small,
+.maintenance-detail-grid span,
+.data-quality-issue small {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.admin-maintenance-actions {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.admin-maintenance-actions .secondary-button,
+.admin-maintenance-actions .primary-button {
+  justify-content: center;
+  width: 100%;
+}
+
+.data-maintenance-snapshot {
+  display: grid;
+  gap: 10px;
+}
+
+.maintenance-detail-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.maintenance-detail-grid div {
+  background: var(--background);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 8px;
+}
+
+.maintenance-detail-grid strong {
+  font-size: 0.82rem;
+}
+
 .admin-clear-button {
   border-color: #6e2f38;
   color: #ffc7d1;
@@ -5718,7 +5787,9 @@ a.daily-report-procore-status:hover {
   .admin-panel-actions .secondary-button,
   .admin-panel-actions .primary-button,
   .failed-upload-actions .secondary-button,
-  .failed-upload-actions .primary-button {
+  .failed-upload-actions .primary-button,
+  .admin-maintenance-actions .secondary-button,
+  .admin-maintenance-actions .primary-button {
     justify-content: center;
     width: 100%;
   }
@@ -5726,6 +5797,20 @@ a.daily-report-procore-status:hover {
   .admin-audit-filters,
   .failed-upload-row,
   .audit-log-row {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-maintenance-section-heading,
+  .admin-maintenance-actions {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .admin-maintenance-section-heading {
+    flex-direction: column;
+  }
+
+  .maintenance-detail-grid {
     grid-template-columns: 1fr;
   }
 
