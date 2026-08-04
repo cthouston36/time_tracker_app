@@ -56,12 +56,6 @@ import {
   draftIsSaveable
 } from "@/features/time-allocation/lib/crew-entry-helpers";
 import {
-  setPayItemDraftCrewMember,
-  splitPayItemDraftCrewHoursEvenly,
-  updatePayItemDraftCrewHours,
-  updatePayItemDraftValue
-} from "@/features/time-allocation/lib/pay-item-draft-updates";
-import {
   buildNetSuiteProjectManagerOptions,
   filterActiveProjects,
   getDefaultMyJobIdsForUser
@@ -93,6 +87,7 @@ import { useMobileInstallPrompt } from "@/features/time-allocation/hooks/use-mob
 import { useMobilePayItemSelection } from "@/features/time-allocation/hooks/use-mobile-pay-item-selection";
 import { useMyProjectsFilterDefault } from "@/features/time-allocation/hooks/use-my-projects-filter-default";
 import { useNetSuiteVendors } from "@/features/time-allocation/hooks/use-netsuite-vendors";
+import { usePayItemDraftActions } from "@/features/time-allocation/hooks/use-pay-item-draft-actions";
 import { useProjectCatalogBootstrap } from "@/features/time-allocation/hooks/use-project-catalog-bootstrap";
 import { useProjectControlActions } from "@/features/time-allocation/hooks/use-project-control-actions";
 import { useProjectSelectionGuards } from "@/features/time-allocation/hooks/use-project-selection-guards";
@@ -543,6 +538,16 @@ export function TimeAllocationWorkspace() {
   const draftEntryCount = selectedProject
     ? selectedProject.payItems.filter((item) => draftIsSaveable(draftsByPayItem[item.id])).length
     : 0;
+  const {
+    splitDraftCrewHoursEvenly,
+    toggleDraftCrewMember,
+    updateDraft,
+    updateDraftCrewHours
+  } = usePayItemDraftActions({
+    setDraftsByPayItem,
+    setEntryNotice,
+    visibleEntries
+  });
   const hasUnsavedPayItemDrafts = Object.values(draftsByPayItem).some(draftHasAnyInput);
   const hasUnsavedChanges =
     hasUnsavedPayItemDrafts ||
@@ -829,25 +834,6 @@ export function TimeAllocationWorkspace() {
       viewMode
     });
     window.location.assign("/api/procore/oauth/login");
-  }
-
-  function updateDraft(payItemId: string, field: "hours" | "quantity", value: string) {
-    setEntryNotice("");
-    setDraftsByPayItem((current) => updatePayItemDraftValue(current, payItemId, visibleEntries, field, value));
-  }
-
-  function toggleDraftCrewMember(payItemId: string, crewMemberId: string, checked: boolean) {
-    setEntryNotice("");
-    setDraftsByPayItem((current) => setPayItemDraftCrewMember(current, payItemId, visibleEntries, crewMemberId, checked));
-  }
-
-  function updateDraftCrewHours(payItemId: string, crewMemberId: string, value: string) {
-    setEntryNotice("");
-    setDraftsByPayItem((current) => updatePayItemDraftCrewHours(current, payItemId, visibleEntries, crewMemberId, value));
-  }
-
-  function splitDraftCrewHoursEvenly(payItemId: string) {
-    setDraftsByPayItem((current) => splitPayItemDraftCrewHoursEvenly(current, payItemId, visibleEntries));
   }
 
   function exportAllEntryDetails() {
