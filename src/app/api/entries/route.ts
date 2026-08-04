@@ -13,8 +13,7 @@ import {
 import { readDayRecords } from "@/lib/day-record-store";
 import { getProjects } from "@/lib/project-catalog/projects";
 import type { AllocationEntry } from "@/lib/domain/types";
-
-const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+import { getDayKey, isIsoDate } from "@/lib/day-key";
 
 export async function GET() {
   const user = await getCurrentUser();
@@ -170,7 +169,7 @@ export async function DELETE(request: NextRequest) {
     });
   }
 
-  if (!projectId || !date || !ISO_DATE_PATTERN.test(date)) {
+  if (!projectId || !isIsoDate(date)) {
     return NextResponse.json({ error: "Provide entryId or projectId and date." }, { status: 400 });
   }
 
@@ -231,8 +230,4 @@ async function hasInaccessibleEntry(entries: AllocationEntry[], user: Awaited<Re
   }
 
   return false;
-}
-
-function getDayKey(projectId: string, date: string) {
-  return `${projectId}|${date}`;
 }

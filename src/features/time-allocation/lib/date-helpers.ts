@@ -1,19 +1,4 @@
-export function getDayKey(projectId: string, date: string) {
-  return `${projectId}|${date}`;
-}
-
-export function parseDayKey(dayKey: string) {
-  const [projectId, date] = dayKey.split("|");
-
-  if (!projectId || !date) {
-    return null;
-  }
-
-  return {
-    date,
-    projectId
-  };
-}
+export { getDayKey, parseDayKey } from "@/lib/day-key";
 
 export function formatDate(value: string) {
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {

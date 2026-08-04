@@ -11,11 +11,11 @@ import { readDailyReportsForRange } from "@/lib/daily-report-store";
 import { readDayRecords } from "@/lib/day-record-store";
 import { readProjectControls } from "@/lib/project-controls-store";
 import { getProjects } from "@/lib/project-catalog/projects";
+import { getDayKey, isIsoDate } from "@/lib/day-key";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_COMBINED_DAILY_REPORTS = 120;
 
 type WeeklyDailyReportsPdfRequest = {
@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
     const requestedProjectIds = normalizeStringList(body.projectIds);
     const requestedWeekStart = readString(body.weekStart);
 
-    if (requestedProjectIds.length === 0 || !ISO_DATE_PATTERN.test(requestedWeekStart)) {
+    if (requestedProjectIds.length === 0 || !isIsoDate(requestedWeekStart)) {
       return NextResponse.json({ error: "Select at least one project and a valid week." }, { status: 400 });
     }
 
@@ -169,8 +169,4 @@ function formatInputDate(date: Date) {
   const day = String(date.getDate()).padStart(2, "0");
 
   return `${year}-${month}-${day}`;
-}
-
-function getDayKey(projectId: string, date: string) {
-  return `${projectId}|${date}`;
 }

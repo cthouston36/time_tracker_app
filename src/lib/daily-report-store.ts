@@ -4,6 +4,7 @@ import {
   refreshDailyReportRollupsForDays,
   refreshPmSummaryRollupsForDays
 } from "@/lib/report-rollups";
+import { getDayKey, isIsoDate, parseIsoDayKey } from "@/lib/day-key";
 
 export type StoredDailyReportsByKey = Record<string, Record<string, unknown>>;
 export type StoredDailyReportUploadsByKey = Record<string, Record<string, unknown>>;
@@ -26,8 +27,6 @@ type DailyReportUploadRow = {
   date: string;
   upload: unknown;
 };
-
-const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 let dailyReportTablesReady = false;
 
@@ -396,7 +395,7 @@ async function ensureDailyReportTables() {
 
 function normalizeDailyReportsByKey(dailyReportsByKey: StoredDailyReportsByKey) {
   return Object.entries(dailyReportsByKey).flatMap(([dayKey, value]) => {
-    const parsedDayKey = parseDayKey(dayKey);
+    const parsedDayKey = parseIsoDayKey(dayKey);
     const report = asRecord(value);
     const projectId = readString(report, "projectId") || parsedDayKey?.projectId;
     const date = readString(report, "date") || parsedDayKey?.date;
@@ -421,7 +420,7 @@ function normalizeDailyReportsByKey(dailyReportsByKey: StoredDailyReportsByKey) 
 
 function normalizeDailyReportUploadsByKey(dailyReportUploadsByKey: StoredDailyReportUploadsByKey) {
   return Object.entries(dailyReportUploadsByKey).flatMap(([dayKey, value]) => {
-    const parsedDayKey = parseDayKey(dayKey);
+    const parsedDayKey = parseIsoDayKey(dayKey);
     const upload = asRecord(value);
 
     if (!parsedDayKey || !readString(upload, "fileName") || !readString(upload, "folderPath")) {
@@ -450,20 +449,6 @@ function normalizeReportForClient(report: unknown, projectId: string, date: stri
 
 function normalizeUploadForClient(upload: unknown) {
   return asRecord(upload);
-}
-
-function getDayKey(projectId: string, date: string) {
-  return `${projectId}|${date}`;
-}
-
-function parseDayKey(dayKey: string) {
-  const [projectId, date] = dayKey.split("|");
-
-  if (!projectId || !isIsoDate(date)) {
-    return null;
-  }
-
-  return { date, projectId };
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -500,8 +485,4 @@ function readNullableTimestamp(record: Record<string, unknown>, key: string) {
   }
 
   return Number.isNaN(Date.parse(value)) ? null : value;
-}
-
-function isIsoDate(value: unknown): value is string {
-  return typeof value === "string" && ISO_DATE_PATTERN.test(value);
 }

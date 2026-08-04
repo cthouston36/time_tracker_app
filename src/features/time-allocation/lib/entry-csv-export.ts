@@ -1,4 +1,5 @@
 import { todayInputValue } from "@/lib/date";
+import { getDayKey } from "@/lib/day-key";
 import type { AllocationEntry, Project } from "@/lib/domain/types";
 import type {
   DayEntryNotes,
@@ -152,8 +153,4 @@ function buildEntryCsvRows({
       entry.savedAt ?? ""
     ];
   });
-}
-
-function getDayKey(projectId: string, date: string) {
-  return `${projectId}|${date}`;
 }

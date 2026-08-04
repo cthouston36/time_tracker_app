@@ -1,4 +1,5 @@
 import { getSql } from "@/lib/db";
+import { getDayKey, isIsoDate, parseIsoDayKey } from "@/lib/day-key";
 
 export type StoredDaySubmission = {
   status: "draft" | "submitted";
@@ -30,8 +31,6 @@ type DayNotesRow = {
   notes: string | null;
   inventory: string | null;
 };
-
-const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 let dayRecordTablesReady = false;
 
@@ -336,7 +335,7 @@ async function ensureDayRecordTables() {
 
 function normalizeDaySubmissions(daySubmissions: StoredDaySubmissionsByKey) {
   return Object.entries(daySubmissions).flatMap(([dayKey, value]) => {
-    const parsedDayKey = parseDayKey(dayKey);
+    const parsedDayKey = parseIsoDayKey(dayKey);
 
     if (!parsedDayKey || (value.status !== "draft" && value.status !== "submitted")) {
       return [];
@@ -353,7 +352,7 @@ function normalizeDaySubmissions(daySubmissions: StoredDaySubmissionsByKey) {
 
 function normalizeDayNotes(dayEntryNotesByKey: StoredDayEntryNotesByKey) {
   return Object.entries(dayEntryNotesByKey).flatMap(([dayKey, value]) => {
-    const parsedDayKey = parseDayKey(dayKey);
+    const parsedDayKey = parseIsoDayKey(dayKey);
 
     if (!parsedDayKey) {
       return [];
@@ -369,24 +368,6 @@ function normalizeDayNotes(dayEntryNotesByKey: StoredDayEntryNotesByKey) {
       }
     ];
   });
-}
-
-function getDayKey(projectId: string, date: string) {
-  return `${projectId}|${date}`;
-}
-
-function parseDayKey(dayKey: string) {
-  const [projectId, date] = dayKey.split("|");
-
-  if (!projectId || !isIsoDate(date)) {
-    return null;
-  }
-
-  return { date, projectId };
-}
-
-function isIsoDate(value: unknown): value is string {
-  return typeof value === "string" && ISO_DATE_PATTERN.test(value);
 }
 
 function isValidTimestamp(value: unknown): value is string {
