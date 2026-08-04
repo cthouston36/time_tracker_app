@@ -34,7 +34,6 @@ import {
   filterDailyReportsByProjectIds,
   getDailyReportEmployeeTotalHours
 } from "@/features/time-allocation/lib/daily-report-helpers";
-import { normalizeSharedAppState } from "@/features/time-allocation/lib/app-state-storage";
 import { type ViewMode } from "@/features/time-allocation/lib/client-storage";
 import {
   formatDate,
@@ -61,8 +60,7 @@ import type {
   DraftsByPayItem,
   MyJobsByUser,
   ProjectArchiveById,
-  ProjectBlacklistById,
-  SharedAppState
+  ProjectBlacklistById
 } from "@/features/time-allocation/types";
 import { useNetworkStatus } from "@/features/time-allocation/hooks/use-network-status";
 import { useAdminMaintenanceActions } from "@/features/time-allocation/hooks/use-admin-maintenance-actions";
@@ -89,6 +87,7 @@ import { useProjectControlActions } from "@/features/time-allocation/hooks/use-p
 import { useProjectSelectionGuards } from "@/features/time-allocation/hooks/use-project-selection-guards";
 import { useProjectSync } from "@/features/time-allocation/hooks/use-project-sync";
 import { useRetiredViewRedirect } from "@/features/time-allocation/hooks/use-retired-view-redirect";
+import { useSharedAppStateApplication } from "@/features/time-allocation/hooks/use-shared-app-state-application";
 import { useSharedAppStatePersistence } from "@/features/time-allocation/hooks/use-shared-app-state-persistence";
 import { useSyncLogStorage } from "@/features/time-allocation/hooks/use-sync-log-storage";
 import { useUnsavedChangesWarning } from "@/features/time-allocation/hooks/use-unsaved-changes-warning";
@@ -667,25 +666,17 @@ export function TimeAllocationWorkspace() {
     viewMode
   });
 
-  const applySharedAppState = useCallback(
-    (state: Partial<SharedAppState> | null) => {
-      const normalizedState = normalizeSharedAppState(state);
-
-      setEntries(normalizedState.entries);
-      setDaySubmissions(normalizedState.daySubmissions);
-      setDayEntryNotesByKey(normalizedState.dayEntryNotesByKey);
-      replaceDailyReportData({
-        dailyReportUploadsByKey: normalizedState.dailyReportUploadsByKey,
-        dailyReportsByKey: normalizedState.dailyReportsByKey
-      });
-      replaceSyncLog(normalizedState.syncLog);
-      replaceCrewData(normalizedState.crewDirectory, normalizedState.crewMembersByProject);
-      setMyJobsByUser(normalizedState.myJobsByUser);
-      setProjectArchiveById(normalizedState.projectArchiveById);
-      setProjectBlacklistById(normalizedState.projectBlacklistById);
-    },
-    [replaceCrewData, replaceDailyReportData, replaceSyncLog]
-  );
+  const { applySharedAppState } = useSharedAppStateApplication({
+    onCrewDataReplace: replaceCrewData,
+    onDailyReportDataReplace: replaceDailyReportData,
+    onDayEntryNotesByKeyChange: setDayEntryNotesByKey,
+    onDaySubmissionsChange: setDaySubmissions,
+    onEntriesChange: setEntries,
+    onMyJobsByUserChange: setMyJobsByUser,
+    onProjectArchiveByIdChange: setProjectArchiveById,
+    onProjectBlacklistByIdChange: setProjectBlacklistById,
+    onSyncLogReplace: replaceSyncLog
+  });
 
   useCurrentUserSessionBootstrap({
     onAuthCheckedChange: setAuthChecked,
