@@ -112,6 +112,7 @@ import { useConfirmationDialog } from "@/features/time-allocation/hooks/use-conf
 import { useFieldProjectAssignments } from "@/features/time-allocation/hooks/use-field-project-assignments";
 import { useJobImages } from "@/features/time-allocation/hooks/use-job-images";
 import { useMobileInstallPrompt } from "@/features/time-allocation/hooks/use-mobile-install-prompt";
+import { useMyProjectsFilterDefault } from "@/features/time-allocation/hooks/use-my-projects-filter-default";
 import { useNetSuiteVendors } from "@/features/time-allocation/hooks/use-netsuite-vendors";
 import { useProjectSelectionGuards } from "@/features/time-allocation/hooks/use-project-selection-guards";
 import { useProjectSync } from "@/features/time-allocation/hooks/use-project-sync";
@@ -191,7 +192,6 @@ export function TimeAllocationWorkspace() {
   const [appStateHydrated, setAppStateHydrated] = useState(false);
   const dateInputRef = useRef<HTMLInputElement>(null);
   const payItemEntryPanelRef = useRef<HTMLDivElement>(null);
-  const myProjectsFilterInitializedRef = useRef(false);
   const saveDailyReportRef = useRef<(() => Promise<void>) | null>(null);
   const saveAllocationEntriesRef = useRef<(() => Promise<void>) | null>(null);
   const { confirmAction, confirmationDialog } = useConfirmationDialog();
@@ -552,6 +552,14 @@ export function TimeAllocationWorkspace() {
     selectedProjectId,
     setSelectedProjectId
   });
+  useMyProjectsFilterDefault({
+    appStateHydrated,
+    enabled: Boolean(currentUser),
+    myProjectCount: currentUserMyJobIds.length,
+    setShowOnlyMyProjects,
+    showOnlyMyProjects,
+    userId: currentUser?.id
+  });
   useRetiredViewRedirect({
     enabled: Boolean(currentUser),
     setViewMode,
@@ -762,32 +770,6 @@ export function TimeAllocationWorkspace() {
       setAdminMaintenanceNotice(null);
     }
   }, [currentUser?.role]);
-
-  useEffect(() => {
-    if (currentUserMyJobIds.length === 0 && showOnlyMyProjects) {
-      setShowOnlyMyProjects(false);
-    }
-  }, [currentUserMyJobIds.length, showOnlyMyProjects]);
-
-  useEffect(() => {
-    myProjectsFilterInitializedRef.current = false;
-  }, [currentUser?.id]);
-
-  useEffect(() => {
-    if (!currentUser || !appStateHydrated) {
-      return;
-    }
-
-    if (currentUserMyJobIds.length === 0) {
-      setShowOnlyMyProjects(false);
-      return;
-    }
-
-    if (!myProjectsFilterInitializedRef.current) {
-      myProjectsFilterInitializedRef.current = true;
-      setShowOnlyMyProjects(true);
-    }
-  }, [appStateHydrated, currentUser, currentUserMyJobIds.length]);
 
   useEffect(() => {
     if (!currentUser || !selectedProjectId) {
