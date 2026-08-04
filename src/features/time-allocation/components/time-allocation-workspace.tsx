@@ -72,10 +72,7 @@ import {
   getWeekStart
 } from "@/features/time-allocation/lib/date-helpers";
 import { getProjectWorkTypeLabel } from "@/features/time-allocation/lib/status-helpers";
-import {
-  buildRemainingQuantitiesByPayItem,
-  formatPayItemUnitOfMeasure
-} from "@/features/time-allocation/lib/pay-item-helpers";
+import { buildRemainingQuantitiesByPayItem } from "@/features/time-allocation/lib/pay-item-helpers";
 import { getDefaultViewModeForUser } from "@/features/time-allocation/lib/auth-ui-helpers";
 import {
   buildCrewSummary,
@@ -88,6 +85,7 @@ import {
   updatePayItemDraftCrewHours,
   updatePayItemDraftValue
 } from "@/features/time-allocation/lib/pay-item-draft-updates";
+import { populateEntryProjectSnapshots } from "@/features/time-allocation/lib/entry-snapshot-helpers";
 import {
   buildNetSuiteProjectManagerOptions,
   filterActiveProjects,
@@ -935,51 +933,10 @@ export function TimeAllocationWorkspace() {
       return;
     }
 
-    const projectSnapshotsById = new Map(
-      projects.map((project) => [
-        project.id,
-        {
-          name: project.name,
-          payItemsById: new Map(project.payItems.map((payItem) => [payItem.id, payItem]))
-        }
-      ])
-    );
-    let changed = false;
-    const entriesWithSnapshots = entries.map((entry) => {
-      const projectSnapshot = projectSnapshotsById.get(entry.projectId);
-      const payItemSnapshot = projectSnapshot?.payItemsById.get(entry.payItemId);
+    const result = populateEntryProjectSnapshots(entries, projects);
 
-      if (
-        entry.projectName &&
-        entry.payItemBudgetedQuantity !== undefined &&
-        entry.payItemUnitOfMeasure
-      ) {
-        return entry;
-      }
-
-      const nextProjectName = entry.projectName ?? projectSnapshot?.name;
-      const nextPayItemBudgetedQuantity = entry.payItemBudgetedQuantity ?? payItemSnapshot?.budgetedQuantity;
-      const nextPayItemUnitOfMeasure = entry.payItemUnitOfMeasure ?? formatPayItemUnitOfMeasure(payItemSnapshot);
-
-      if (
-        nextProjectName === entry.projectName &&
-        nextPayItemBudgetedQuantity === entry.payItemBudgetedQuantity &&
-        nextPayItemUnitOfMeasure === entry.payItemUnitOfMeasure
-      ) {
-        return entry;
-      }
-
-      changed = true;
-      return {
-        ...entry,
-        projectName: nextProjectName,
-        payItemBudgetedQuantity: nextPayItemBudgetedQuantity,
-        payItemUnitOfMeasure: nextPayItemUnitOfMeasure
-      };
-    });
-
-    if (changed) {
-      setEntries(entriesWithSnapshots);
+    if (result.changed) {
+      setEntries(result.entries);
     }
   }, [currentUser, entries, projects]);
 
