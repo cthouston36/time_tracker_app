@@ -15,13 +15,13 @@ import {
   type ReportMode
 } from "@/lib/report-builders";
 import { todayInputValue } from "@/lib/date";
+import { isIsoDate } from "@/lib/day-key";
 import { getProjects } from "@/lib/project-catalog/projects";
 import { backfillReportRollupsIfEmpty, readDailyWorkRollupSourceRows } from "@/lib/report-rollups";
 import type { AllocationEntry, CrewLaborType, Project } from "@/lib/domain/types";
 import { formatCsvIdentifier, formatCsvNumber, rowsToCsv } from "@/features/time-allocation/lib/csv-utils";
 import { formatCrewLaborType } from "@/features/time-allocation/lib/crew-formatters";
 
-const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const DEFAULT_CREW_LABOR_TYPES: CrewLaborType[] = ["chinchor_employee", "temp_employee", "subcontractor"];
 
 export async function POST(request: NextRequest) {
@@ -330,7 +330,7 @@ function isCrewLaborType(value: string): value is CrewLaborType {
 }
 
 function parseIsoDate(value: unknown) {
-  return typeof value === "string" && ISO_DATE_PATTERN.test(value) ? value : undefined;
+  return isIsoDate(value) ? value : undefined;
 }
 
 function normalizeStringList(values: unknown) {

@@ -1,3 +1,4 @@
+import { isIsoDate } from "@/lib/day-key";
 import { getSql } from "@/lib/db";
 import {
   clearReportRollups,
@@ -19,8 +20,6 @@ type CrewMember = {
 };
 
 type SharedAppStateRecord = Record<string, unknown>;
-
-const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 let normalizedTablesReady = false;
 const DEFAULT_CREW_LABOR_TYPE: CrewLaborType = "chinchor_employee";
@@ -965,10 +964,6 @@ function readNullableTimestamp(record: Record<string, unknown>, key: string) {
   }
 
   return Number.isNaN(Date.parse(value)) ? null : value;
-}
-
-function isIsoDate(value: unknown): value is string {
-  return typeof value === "string" && ISO_DATE_PATTERN.test(value);
 }
 
 function toJson(value: unknown) {

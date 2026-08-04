@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requestUserCanAccessProjectId } from "@/lib/auth/project-access-server";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getAuditRequestMetadata, recordAuditLog } from "@/lib/audit-log";
+import { isIsoDate } from "@/lib/day-key";
 import { upsertDailyReportUpload } from "@/lib/daily-report-store";
 import { getProjects } from "@/lib/project-catalog/projects";
 import { enqueueTask } from "@/lib/task-queue";
@@ -9,8 +10,6 @@ import { scheduleQueuedTaskProcessing } from "@/lib/task-queue-scheduler";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
-
-const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 export async function POST(request: NextRequest) {
   const user = await getCurrentUser();
@@ -29,7 +28,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Provide a valid project." }, { status: 400 });
     }
 
-    if (!ISO_DATE_PATTERN.test(readDate(payload))) {
+    if (!isIsoDate(readDate(payload))) {
       return NextResponse.json({ error: "Provide a valid date." }, { status: 400 });
     }
 

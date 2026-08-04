@@ -19,11 +19,11 @@ import {
   type ReportMode
 } from "@/lib/report-builders";
 import { readDailyReportsForRange } from "@/lib/daily-report-store";
+import { isIsoDate } from "@/lib/day-key";
 import { getProjects } from "@/lib/project-catalog/projects";
 import { backfillReportRollupsIfEmpty, readDailyWorkRollupSourceRows } from "@/lib/report-rollups";
 import type { CrewLaborType, Project } from "@/lib/domain/types";
 
-const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const DEFAULT_PAGE_SIZE_BY_MODE: Record<ReportMode, number> = {
   crew: 25,
   daily_work: 50,
@@ -277,7 +277,7 @@ function isCrewLaborType(value: string): value is CrewLaborType {
 }
 
 function parseIsoDate(value: unknown) {
-  return typeof value === "string" && ISO_DATE_PATTERN.test(value) ? value : undefined;
+  return isIsoDate(value) ? value : undefined;
 }
 
 function parsePositiveInteger(value: unknown, fallback: number) {

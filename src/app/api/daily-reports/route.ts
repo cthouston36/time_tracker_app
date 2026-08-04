@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getProjectAccessScopeForRequestUser, requestUserCanAccessProjectId } from "@/lib/auth/project-access-server";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getAuditRequestMetadata, recordAuditLog } from "@/lib/audit-log";
+import { isIsoDate } from "@/lib/day-key";
 import {
   deleteDailyReportUpload,
   readDailyReportData,
@@ -14,8 +15,6 @@ import {
   type StoredDailyReportsByKey
 } from "@/lib/daily-report-store";
 import { getProjects } from "@/lib/project-catalog/projects";
-
-const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 export async function GET() {
   const user = await getCurrentUser();
@@ -107,7 +106,7 @@ export async function PATCH(request: NextRequest) {
   const projectId = body.projectId?.trim() ?? "";
   const date = body.date?.trim() ?? "";
 
-  if (!projectId || !ISO_DATE_PATTERN.test(date)) {
+  if (!projectId || !isIsoDate(date)) {
     return NextResponse.json({ error: "Provide projectId and date." }, { status: 400 });
   }
 
@@ -174,7 +173,7 @@ export async function DELETE(request: NextRequest) {
   const date = request.nextUrl.searchParams.get("date")?.trim() ?? "";
   const kind = request.nextUrl.searchParams.get("kind")?.trim() ?? "";
 
-  if (!projectId || !ISO_DATE_PATTERN.test(date)) {
+  if (!projectId || !isIsoDate(date)) {
     return NextResponse.json({ error: "Provide projectId and date." }, { status: 400 });
   }
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuditRequestMetadata, recordAuditLog } from "@/lib/audit-log";
 import { requestUserCanAccessProjectId } from "@/lib/auth/project-access-server";
 import { getCurrentUser } from "@/lib/auth/session";
+import { isIsoDate } from "@/lib/day-key";
 import {
   countJobImageUploads,
   countReservedJobImageUploadSlots,
@@ -16,7 +17,6 @@ import type { Project } from "@/lib/domain/types";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const JOB_IMAGE_DAILY_UPLOAD_LIMIT = 50;
 const MAX_IMAGES_PER_REQUEST = 6;
 const MAX_IMAGE_SIZE_BYTES = 8 * 1024 * 1024;
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     const captions = formData.getAll("imageCaptions").map(readFormString);
     const originalFileNames = formData.getAll("originalFileNames").map(readFormString);
 
-    if (!submittedProject?.id || !ISO_DATE_PATTERN.test(date)) {
+    if (!submittedProject?.id || !isIsoDate(date)) {
       return NextResponse.json({ error: "Provide a valid project and date." }, { status: 400 });
     }
 

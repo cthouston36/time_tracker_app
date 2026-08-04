@@ -1,3 +1,4 @@
+import { isIsoDate } from "@/lib/day-key";
 import { getSql } from "@/lib/db";
 import { normalizeNumericCostCode } from "@/lib/pay-items";
 import {
@@ -40,8 +41,6 @@ export type AllocationEntryReportFilters = {
   projectIds?: string[];
   startDate?: string;
 };
-
-const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 let dailyEntryTablesReady = false;
 const DEFAULT_CREW_LABOR_TYPE: CrewLaborType = "chinchor_employee";
@@ -623,10 +622,6 @@ function toNullableNumber(value: unknown) {
   }
 
   return null;
-}
-
-function isIsoDate(value: string) {
-  return ISO_DATE_PATTERN.test(value);
 }
 
 function normalizeStringList(values: string[] | undefined) {

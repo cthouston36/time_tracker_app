@@ -1,3 +1,4 @@
+import { isIsoDate } from "@/lib/day-key";
 import { getSql } from "@/lib/db";
 import type { DailyWorkReportSourceRow } from "@/lib/report-builders";
 
@@ -24,8 +25,6 @@ type DailyWorkRollupRow = {
   quantity: number | string | null;
   row_index: number | string;
 };
-
-const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 let reportRollupTablesReady = false;
 
@@ -1250,10 +1249,6 @@ function normalizeStringList(values: string[] | undefined) {
 
 function readString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
-}
-
-function isIsoDate(value: unknown): value is string {
-  return typeof value === "string" && ISO_DATE_PATTERN.test(value);
 }
 
 function toInteger(value: unknown) {

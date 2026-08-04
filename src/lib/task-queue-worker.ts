@@ -1,5 +1,6 @@
 import { recordAuditLog } from "@/lib/audit-log";
 import type { AuthUser } from "@/lib/auth/types";
+import { isIsoDate } from "@/lib/day-key";
 import type { Project } from "@/lib/domain/types";
 import { upsertDailyReportUpload } from "@/lib/daily-report-store";
 import {
@@ -652,10 +653,6 @@ function readPositiveInteger(value: unknown) {
   }
 
   return null;
-}
-
-function isIsoDate(value: unknown): value is string {
-  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
 function delay(milliseconds: number) {

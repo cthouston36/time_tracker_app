@@ -1,3 +1,4 @@
+import { isIsoDate } from "@/lib/day-key";
 import { getSql } from "@/lib/db";
 import { rebuildPmSummaryRollups, refreshPmSummaryRollupsForDays } from "@/lib/report-rollups";
 
@@ -46,8 +47,6 @@ type JobImageUploadRow = {
   attempted_at: unknown;
   raw_upload: unknown;
 };
-
-const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 let jobImageUploadTableReady = false;
 
@@ -519,10 +518,6 @@ function readTimestampString(value: unknown) {
   }
 
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
-}
-
-function isIsoDate(value: unknown): value is string {
-  return typeof value === "string" && ISO_DATE_PATTERN.test(value);
 }
 
 function normalizeUploadStatus(value: unknown): StoredJobImageUploadStatus {
