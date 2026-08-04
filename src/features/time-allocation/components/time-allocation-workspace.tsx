@@ -30,7 +30,6 @@ import { PayItemEntryPanel } from "@/features/time-allocation/components/entry/p
 import { MatrixFullscreenModal } from "@/features/time-allocation/components/entry/matrix-fullscreen-modal";
 import { DailyWrapUpSection } from "@/features/time-allocation/components/entry/daily-wrap-up-section";
 import { ReviewSubmitPanel } from "@/features/time-allocation/components/entry/review-submit-panel";
-import { logoutCurrentUserSession } from "@/features/time-allocation/lib/api-client";
 import {
   filterDailyReportsByProjectIds,
   getDailyReportEmployeeTotalHours
@@ -95,6 +94,7 @@ import { useSyncLogStorage } from "@/features/time-allocation/hooks/use-sync-log
 import { useUnsavedChangesWarning } from "@/features/time-allocation/hooks/use-unsaved-changes-warning";
 import { useWorkspaceNavigationActions } from "@/features/time-allocation/hooks/use-workspace-navigation-actions";
 import { useWorkspaceKeyboardShortcuts } from "@/features/time-allocation/hooks/use-workspace-keyboard-shortcuts";
+import { useWorkspaceLogoutAction } from "@/features/time-allocation/hooks/use-workspace-logout-action";
 import { WeeklyStatusReport } from "@/features/time-allocation/components/dashboard/weekly-status-report";
 import { AdminToolsDrawer } from "@/features/time-allocation/components/admin/admin-tools";
 import type { AllocationEntry, Project } from "@/lib/domain/types";
@@ -735,30 +735,25 @@ export function TimeAllocationWorkspace() {
 
   useSyncLogStorage(Boolean(currentUser), syncLog);
 
-  async function logout() {
-    if (!(await confirmDiscardUnsavedChanges("sign out"))) {
-      return;
-    }
-
-    await logoutCurrentUserSession();
-
-    setCurrentUser(null);
-    setAllProjects([]);
-    setSelectedProjectId("");
-    setShowOnlyMyProjects(false);
-    setMyProjectsEditorOpen(false);
-    setCrewSetupExpanded(false);
-    resetAuthForms();
-    setEntries([]);
-    setDaySubmissions({});
-    setDayEntryNotesByKey({});
-    resetDailyReportState();
-    setMyJobsByUser({});
-    setProjectArchiveById({});
-    setProjectBlacklistById({});
-    resetCrewManagementState();
-    setViewMode("dashboard");
-  }
+  const { logout } = useWorkspaceLogoutAction({
+    confirmDiscardUnsavedChanges,
+    onAllProjectsChange: setAllProjects,
+    onCrewSetupExpandedChange: setCrewSetupExpanded,
+    onCurrentUserChange: setCurrentUser,
+    onDayEntryNotesByKeyChange: setDayEntryNotesByKey,
+    onDaySubmissionsChange: setDaySubmissions,
+    onEntriesChange: setEntries,
+    onMyJobsByUserChange: setMyJobsByUser,
+    onMyProjectsEditorOpenChange: setMyProjectsEditorOpen,
+    onProjectArchiveByIdChange: setProjectArchiveById,
+    onProjectBlacklistByIdChange: setProjectBlacklistById,
+    onSelectedProjectIdChange: setSelectedProjectId,
+    onShowOnlyMyProjectsChange: setShowOnlyMyProjects,
+    onViewModeChange: setViewMode,
+    resetAuthForms,
+    resetCrewManagementState,
+    resetDailyReportState
+  });
 
   if (!authChecked) {
     return <AppLoadingShell />;
