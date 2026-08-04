@@ -19,7 +19,7 @@ import { isIsoDate } from "@/lib/day-key";
 import { getProjects } from "@/lib/project-catalog/projects";
 import { backfillReportRollupsIfEmpty, readDailyWorkRollupSourceRows } from "@/lib/report-rollups";
 import type { AllocationEntry, CrewLaborType, Project } from "@/lib/domain/types";
-import { readString } from "@/lib/records";
+import { readString, readStringList } from "@/lib/records";
 import { formatCsvIdentifier, formatCsvNumber, rowsToCsv } from "@/features/time-allocation/lib/csv-utils";
 import { formatCrewLaborType } from "@/features/time-allocation/lib/crew-formatters";
 
@@ -294,7 +294,7 @@ function getMyReportProjectIds(user: AuthUser, projects: Project[], body: Report
     return projectAccessScope;
   }
 
-  return normalizeStringList(body.myJobIds);
+  return readStringList(body.myJobIds);
 }
 
 function parseReportMode(value: unknown): ReportMode {
@@ -322,7 +322,7 @@ function parseReportMetric(value: unknown): ReportMetric {
 }
 
 function parseCrewLaborTypes(value: unknown): CrewLaborType[] {
-  const selectedTypes = normalizeStringList(value).filter(isCrewLaborType);
+  const selectedTypes = readStringList(value).filter(isCrewLaborType);
   return selectedTypes.length > 0 ? selectedTypes : DEFAULT_CREW_LABOR_TYPES;
 }
 
@@ -332,10 +332,6 @@ function isCrewLaborType(value: string): value is CrewLaborType {
 
 function parseIsoDate(value: unknown) {
   return isIsoDate(value) ? value : undefined;
-}
-
-function normalizeStringList(values: unknown) {
-  return Array.from(new Set(Array.isArray(values) ? values.map(readString).filter(Boolean) : []));
 }
 
 function formatPercent(value: number) {

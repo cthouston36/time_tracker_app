@@ -23,7 +23,7 @@ import { isIsoDate } from "@/lib/day-key";
 import { getProjects } from "@/lib/project-catalog/projects";
 import { backfillReportRollupsIfEmpty, readDailyWorkRollupSourceRows } from "@/lib/report-rollups";
 import type { CrewLaborType, Project } from "@/lib/domain/types";
-import { readString } from "@/lib/records";
+import { readString, readStringList } from "@/lib/records";
 
 const DEFAULT_PAGE_SIZE_BY_MODE: Record<ReportMode, number> = {
   crew: 25,
@@ -237,7 +237,7 @@ function getMyReportProjectIds(user: AuthUser, projects: Project[], body: Report
     return projectAccessScope;
   }
 
-  return normalizeStringList(body.myJobIds);
+  return readStringList(body.myJobIds);
 }
 
 function parseReportMode(value: unknown): ReportMode {
@@ -269,7 +269,7 @@ function parseReportMetric(value: unknown): ReportMetric {
 }
 
 function parseCrewLaborTypes(value: unknown): CrewLaborType[] {
-  const selectedTypes = normalizeStringList(value).filter(isCrewLaborType);
+  const selectedTypes = readStringList(value).filter(isCrewLaborType);
   return selectedTypes.length > 0 ? selectedTypes : DEFAULT_CREW_LABOR_TYPES;
 }
 
@@ -284,10 +284,6 @@ function parseIsoDate(value: unknown) {
 function parsePositiveInteger(value: unknown, fallback: number) {
   const numberValue = typeof value === "number" ? value : Number(value);
   return Number.isInteger(numberValue) && numberValue > 0 ? numberValue : fallback;
-}
-
-function normalizeStringList(values: unknown) {
-  return Array.from(new Set(Array.isArray(values) ? values.map(readString).filter(Boolean) : []));
 }
 
 type ReportRequestBody = {

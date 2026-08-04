@@ -10,3 +10,7 @@ export function readOptionalString(value: unknown) {
   const text = readString(value);
   return text || undefined;
 }
+
+export function readStringList(value: unknown) {
+  return Array.isArray(value) ? Array.from(new Set(value.map(readString).filter(Boolean))) : [];
+}

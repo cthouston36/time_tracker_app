@@ -13,7 +13,7 @@ import { readProjectControls } from "@/lib/project-controls-store";
 import { getProjects } from "@/lib/project-catalog/projects";
 import { addDaysToInputDate, getWeekStart } from "@/lib/date";
 import { getDayKey, isIsoDate } from "@/lib/day-key";
-import { readString } from "@/lib/records";
+import { readString, readStringList } from "@/lib/records";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = (await request.json()) as WeeklyDailyReportsPdfRequest;
-    const requestedProjectIds = normalizeStringList(body.projectIds);
+    const requestedProjectIds = readStringList(body.projectIds);
     const requestedWeekStart = readString(body.weekStart);
 
     if (requestedProjectIds.length === 0 || !isIsoDate(requestedWeekStart)) {
@@ -135,8 +135,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
-
-function normalizeStringList(value: unknown) {
-  return Array.isArray(value) ? Array.from(new Set(value.map(readString).filter(Boolean))) : [];
 }
