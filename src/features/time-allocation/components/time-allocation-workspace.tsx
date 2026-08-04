@@ -30,12 +30,7 @@ import { PayItemEntryPanel } from "@/features/time-allocation/components/entry/p
 import { MatrixFullscreenModal } from "@/features/time-allocation/components/entry/matrix-fullscreen-modal";
 import { DailyWrapUpSection } from "@/features/time-allocation/components/entry/daily-wrap-up-section";
 import { ReviewSubmitPanel } from "@/features/time-allocation/components/entry/review-submit-panel";
-import {
-  logoutCurrentUserSession,
-  saveDatabaseMyJobs,
-  saveDatabaseProjectArchive,
-  saveDatabaseProjectBlacklist
-} from "@/features/time-allocation/lib/api-client";
+import { logoutCurrentUserSession } from "@/features/time-allocation/lib/api-client";
 import {
   filterDailyReportsByProjectIds,
   getDailyReportEmployeeTotalHours
@@ -99,6 +94,7 @@ import { useMobilePayItemSelection } from "@/features/time-allocation/hooks/use-
 import { useMyProjectsFilterDefault } from "@/features/time-allocation/hooks/use-my-projects-filter-default";
 import { useNetSuiteVendors } from "@/features/time-allocation/hooks/use-netsuite-vendors";
 import { useProjectCatalogBootstrap } from "@/features/time-allocation/hooks/use-project-catalog-bootstrap";
+import { useProjectControlActions } from "@/features/time-allocation/hooks/use-project-control-actions";
 import { useProjectSelectionGuards } from "@/features/time-allocation/hooks/use-project-selection-guards";
 import { useProjectSync } from "@/features/time-allocation/hooks/use-project-sync";
 import { useRetiredViewRedirect } from "@/features/time-allocation/hooks/use-retired-view-redirect";
@@ -406,6 +402,24 @@ export function TimeAllocationWorkspace() {
     userIsOffline,
     visibleEntries,
     workDate
+  });
+  const {
+    setCurrentUserMyJobIds,
+    toggleProjectArchive,
+    toggleProjectBlacklist
+  } = useProjectControlActions({
+    cancelEditingEntry,
+    currentUser,
+    projects,
+    selectedProjectId,
+    setDraftsByPayItem,
+    setEntryNotice,
+    setMobileSelectedPayItemId,
+    setMyJobsByUser,
+    setProjectArchiveById,
+    setProjectBlacklistById,
+    setProjectLoadError,
+    setSelectedProjectId
   });
   const {
     clearDailyReportDraftForCurrentContext,
@@ -775,72 +789,6 @@ export function TimeAllocationWorkspace() {
     setProjectBlacklistById({});
     resetCrewManagementState();
     setViewMode("dashboard");
-  }
-
-  function setCurrentUserMyJobIds(jobIds: string[]) {
-    if (!currentUser) {
-      return;
-    }
-
-    const availableProjectIds = new Set(projects.map((project) => project.id));
-    const automaticallyManagedJobIds = new Set(getDefaultMyJobIdsForUser(currentUser, projects));
-    const uniqueJobIds = Array.from(new Set(jobIds)).filter(
-      (jobId) => availableProjectIds.has(jobId) && !automaticallyManagedJobIds.has(jobId)
-    );
-
-    setMyJobsByUser((current) => ({
-      ...current,
-      [currentUser.id]: uniqueJobIds
-    }));
-    void saveDatabaseMyJobs(currentUser.id, uniqueJobIds).catch((error) => {
-      setEntryNotice(error instanceof Error ? error.message : "My Projects saved locally, but did not sync.");
-    });
-  }
-
-  function toggleProjectBlacklist(projectId: string, blacklisted: boolean) {
-    setProjectBlacklistById((current) => {
-      if (blacklisted) {
-        return {
-          ...current,
-          [projectId]: true
-        };
-      }
-
-      const nextBlacklist = { ...current };
-      delete nextBlacklist[projectId];
-      return nextBlacklist;
-    });
-    void saveDatabaseProjectBlacklist(projectId, blacklisted).catch((error) => {
-      setProjectLoadError(error instanceof Error ? error.message : "Project blacklist saved locally, but did not sync.");
-    });
-  }
-
-  function toggleProjectArchive(projectId: string, archived: boolean) {
-    setProjectArchiveById((current) => {
-      if (archived) {
-        return {
-          ...current,
-          [projectId]: true
-        };
-      }
-
-      const nextArchive = { ...current };
-      delete nextArchive[projectId];
-      return nextArchive;
-    });
-
-    if (archived && selectedProjectId === projectId) {
-      const nextProject = projects.find((project) => project.id !== projectId);
-
-      setSelectedProjectId(nextProject?.id ?? "");
-      setMobileSelectedPayItemId("");
-      cancelEditingEntry();
-      setDraftsByPayItem({});
-    }
-
-    void saveDatabaseProjectArchive(projectId, archived).catch((error) => {
-      setProjectLoadError(error instanceof Error ? error.message : "Project archive saved locally, but did not sync.");
-    });
   }
 
   async function openDailyEntry(projectId: string, date: string) {
