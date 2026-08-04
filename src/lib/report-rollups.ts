@@ -1,6 +1,7 @@
 import { isIsoDate } from "@/lib/day-key";
 import { getSql } from "@/lib/db";
 import type { DailyWorkReportSourceRow } from "@/lib/report-builders";
+import { readString, readStringList } from "@/lib/records";
 
 export type ReportRollupDayKey = {
   date: string;
@@ -339,7 +340,7 @@ export async function readDailyWorkRollupSourceRows(filters: ReportRollupFilters
 
   await backfillReportRollupsIfEmpty();
 
-  const projectIds = normalizeStringList(filters.projectIds);
+  const projectIds = readStringList(filters.projectIds);
 
   if (filters.projectIds && projectIds.length === 0) {
     return [];
@@ -1241,14 +1242,6 @@ function normalizeDayKeys(days: ReportRollupDayKey[]) {
   }
 
   return Array.from(daysByKey.values());
-}
-
-function normalizeStringList(values: string[] | undefined) {
-  return Array.from(new Set((values ?? []).map(readString).filter(Boolean)));
-}
-
-function readString(value: unknown) {
-  return typeof value === "string" ? value.trim() : "";
 }
 
 function toInteger(value: unknown) {

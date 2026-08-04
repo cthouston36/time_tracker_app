@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { getSql, readAppSetting } from "@/lib/db";
 import type { PayItem, Project } from "@/lib/domain/types";
+import { readString, readStringList } from "@/lib/records";
 
 const CACHE_FILE = join(process.cwd(), ".data", "project-catalog.json");
 const LEGACY_CACHE_FILE = join(process.cwd(), ".data", "procore-cache.json");
@@ -587,11 +588,7 @@ function normalizePayItems(payItems: PayItem[] | undefined): PayItem[] {
 }
 
 function normalizeProjectIdFilter(projectIds: string[] | undefined) {
-  return Array.from(new Set((projectIds ?? []).map(readString).filter(Boolean)));
-}
-
-function readString(value: unknown) {
-  return typeof value === "string" ? value.trim() : "";
+  return readStringList(projectIds);
 }
 
 function toNumber(value: unknown) {

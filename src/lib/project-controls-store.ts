@@ -1,4 +1,5 @@
 import { getSql } from "@/lib/db";
+import { readString } from "@/lib/records";
 
 export type StoredMyJobsByUser = Record<string, string[]>;
 export type StoredProjectArchiveById = Record<string, true>;
@@ -551,10 +552,6 @@ function asRecord(value: unknown): Record<string, unknown> {
   }
 
   return value as Record<string, unknown>;
-}
-
-function readString(value: unknown) {
-  return typeof value === "string" ? value.trim() : "";
 }
 
 function readValidTimestamp(value: unknown) {

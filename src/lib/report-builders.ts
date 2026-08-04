@@ -5,6 +5,7 @@ import {
   type CrewLaborType,
   type Project
 } from "@/lib/domain/types";
+import { readString } from "@/lib/records";
 
 export type ReportMode = "summary" | "detail" | "crew" | "employee_hours" | "daily_work";
 export type DetailGrouping = "crew_day" | "crew_project" | "job_day";
@@ -1144,10 +1145,6 @@ function calculateDailyReportTotalHours(row: EmployeeHoursSourceEmployeeRow) {
   }
 
   return (totalMinutes / 60).toFixed(2);
-}
-
-function readString(value: unknown) {
-  return typeof value === "string" ? value.trim() : "";
 }
 
 function sortDetailAnalysisRows(rows: PayItemDetailAnalysisRow[], sort: DetailSort) {

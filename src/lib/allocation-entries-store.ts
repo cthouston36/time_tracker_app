@@ -7,6 +7,7 @@ import {
   type ReportRollupDayKey
 } from "@/lib/report-rollups";
 import { normalizeCrewLaborType, type AllocationEntry, type CrewAllocation } from "@/lib/domain/types";
+import { readStringList } from "@/lib/records";
 
 type EntryRow = {
   id: string;
@@ -85,7 +86,7 @@ export async function readAllocationEntriesForReport(filters: AllocationEntryRep
 
   await ensureDailyEntryTables();
 
-  const projectIds = normalizeStringList(filters.projectIds);
+  const projectIds = readStringList(filters.projectIds);
 
   if (filters.projectIds && projectIds.length === 0) {
     return [];
@@ -459,7 +460,7 @@ export async function deleteAllocationEntriesForDay(projectId: string, date: str
 
 async function readExistingEntryDays(entryIds: string[]): Promise<ReportRollupDayKey[]> {
   const sql = getSql();
-  const normalizedEntryIds = normalizeStringList(entryIds);
+  const normalizedEntryIds = readStringList(entryIds);
 
   if (!sql || normalizedEntryIds.length === 0) {
     return [];
@@ -621,10 +622,6 @@ function toNullableNumber(value: unknown) {
   }
 
   return null;
-}
-
-function normalizeStringList(values: string[] | undefined) {
-  return Array.from(new Set((values ?? []).map((value) => value.trim()).filter(Boolean)));
 }
 
 function isValidTimestamp(value: unknown): value is string {

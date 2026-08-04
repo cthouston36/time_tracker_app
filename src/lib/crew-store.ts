@@ -1,5 +1,6 @@
 import { getSql } from "@/lib/db";
 import { normalizeCrewLaborType, type CrewLaborType } from "@/lib/domain/types";
+import { readString } from "@/lib/records";
 
 export type StoredCrewMember = {
   id: string;
@@ -612,10 +613,6 @@ function sortCrewMembers(crewMembers: StoredCrewMember[]) {
     a.jobTitle.localeCompare(b.jobTitle, undefined, { sensitivity: "base" }) ||
     a.id.localeCompare(b.id)
   );
-}
-
-function readString(value: unknown) {
-  return typeof value === "string" ? value.trim() : "";
 }
 
 function readRawRecord(value: unknown) {
