@@ -59,9 +59,7 @@ import {
 } from "@/features/time-allocation/lib/app-state-storage";
 import {
   clearPendingProcoreReturn,
-  dismissMobileInstallPrompt,
   getLastProjectStorageKey,
-  hasDismissedMobileInstallPrompt,
   readPendingProcoreReturn,
   writePendingProcoreReturn,
   type PendingProcoreReturn,
@@ -112,6 +110,7 @@ import { useEntryActions } from "@/features/time-allocation/hooks/use-entry-acti
 import { useConfirmationDialog } from "@/features/time-allocation/hooks/use-confirmation-dialog";
 import { useFieldProjectAssignments } from "@/features/time-allocation/hooks/use-field-project-assignments";
 import { useJobImages } from "@/features/time-allocation/hooks/use-job-images";
+import { useMobileInstallPrompt } from "@/features/time-allocation/hooks/use-mobile-install-prompt";
 import { useNetSuiteVendors } from "@/features/time-allocation/hooks/use-netsuite-vendors";
 import { useProjectSync } from "@/features/time-allocation/hooks/use-project-sync";
 import { WeeklyStatusReport } from "@/features/time-allocation/components/dashboard/weekly-status-report";
@@ -143,7 +142,6 @@ export function TimeAllocationWorkspace() {
   const [entries, setEntries] = useState<AllocationEntry[]>([]);
   const [daySubmissions, setDaySubmissions] = useState<DaySubmissionsByKey>({});
   const [dayEntryNotesByKey, setDayEntryNotesByKey] = useState<DayEntryNotesByKey>({});
-  const [mobileInstallPromptVisible, setMobileInstallPromptVisible] = useState(false);
   const [myJobsByUser, setMyJobsByUser] = useState<MyJobsByUser>({});
   const [draftsByPayItem, setDraftsByPayItem] = useState<DraftsByPayItem>({});
   const [connectionStatus, setConnectionStatus] = useState("Mock data active");
@@ -155,6 +153,7 @@ export function TimeAllocationWorkspace() {
   const [adminMaintenanceNotice, setAdminMaintenanceNotice] = useState<{ message: string; status: "success" | "error" } | null>(null);
   const networkStatus = useNetworkStatus();
   const userIsOffline = networkStatus.checked && !networkStatus.online;
+  const mobileInstallPrompt = useMobileInstallPrompt(Boolean(currentUser));
   const resetDraftPayItems = useCallback(() => {
     setDraftsByPayItem({});
   }, []);
@@ -773,21 +772,6 @@ export function TimeAllocationWorkspace() {
     void loadProcoreConnectionStatus();
     void loadProjects();
   }, [currentUser, setDailyReportUploadNotice, setSyncedAt]);
-
-  useEffect(() => {
-    if (!currentUser || typeof window === "undefined") {
-      setMobileInstallPromptVisible(false);
-      return;
-    }
-
-    const dismissed = hasDismissedMobileInstallPrompt();
-    const isStandalone =
-      window.matchMedia("(display-mode: standalone)").matches ||
-      ("standalone" in window.navigator && Boolean((window.navigator as Navigator & { standalone?: boolean }).standalone));
-    const isMobileWidth = window.matchMedia("(max-width: 820px)").matches;
-
-    setMobileInstallPromptVisible(isMobileWidth && !dismissed && !isStandalone);
-  }, [currentUser]);
 
   useEffect(() => {
     if (currentUser?.role !== "admin") {
@@ -1480,13 +1464,8 @@ export function TimeAllocationWorkspace() {
         />
       ) : null}
 
-      {mobileInstallPromptVisible ? (
-        <MobileInstallPrompt
-          onDismiss={() => {
-            dismissMobileInstallPrompt();
-            setMobileInstallPromptVisible(false);
-          }}
-        />
+      {mobileInstallPrompt.visible ? (
+        <MobileInstallPrompt onDismiss={mobileInstallPrompt.dismiss} />
       ) : null}
 
       <NetworkStatusBanner status={networkStatus} />
