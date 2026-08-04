@@ -52,6 +52,10 @@ export function readValidTimestamp(value: unknown) {
   return isValidTimestamp(value) ? value : null;
 }
 
+export function readRecordTimestamp(record: Record<string, unknown>, key: string) {
+  return readValidTimestamp(record[key]);
+}
+
 export function getWeekStart(value: string) {
   const date = parseInputDate(value);
 

@@ -1,5 +1,5 @@
 import { isIsoDate } from "@/lib/day-key";
-import { readValidTimestamp } from "@/lib/date";
+import { readRecordTimestamp } from "@/lib/date";
 import { getSql } from "@/lib/db";
 import {
   asRecord,
@@ -492,7 +492,7 @@ async function mirrorDaySubmissions(appState: SharedAppStateRecord) {
         ${status},
         ${readNullableString(submission, "submittedByUserId")},
         ${readNullableString(submission, "submittedByName")},
-        ${readNullableTimestamp(submission, "submittedAt")}::timestamptz,
+        ${readRecordTimestamp(submission, "submittedAt")}::timestamptz,
         ${toJson(value)}::jsonb,
         now()
       )
@@ -585,8 +585,8 @@ async function mirrorDailyReports(appState: SharedAppStateRecord) {
         ${date}::date,
         ${readNullableString(report, "createdByUserId")},
         ${readNullableString(report, "createdByName")},
-        ${readNullableTimestamp(report, "createdAt")}::timestamptz,
-        ${readNullableTimestamp(report, "updatedAt")}::timestamptz,
+        ${readRecordTimestamp(report, "createdAt")}::timestamptz,
+        ${readRecordTimestamp(report, "updatedAt")}::timestamptz,
         ${toJson(value)}::jsonb,
         now()
       )
@@ -637,7 +637,7 @@ async function mirrorDailyReportUploads(appState: SharedAppStateRecord) {
         ${fileName},
         ${folderPath},
         ${readNullableString(upload, "procoreFileId")},
-        ${readNullableTimestamp(upload, "uploadedAt")}::timestamptz,
+        ${readRecordTimestamp(upload, "uploadedAt")}::timestamptz,
         ${toJson(value)}::jsonb,
         now()
       )
@@ -757,7 +757,7 @@ async function mirrorSyncLog(appState: SharedAppStateRecord) {
         ${id},
         ${action},
         ${status},
-        ${readNullableTimestamp(logEntry, "createdAt")}::timestamptz,
+        ${readRecordTimestamp(logEntry, "createdAt")}::timestamptz,
         ${message},
         ${toNullableJson(logEntry.summary)}::jsonb,
         ${toJson(logEntry)}::jsonb,
@@ -865,7 +865,7 @@ function normalizeAllocationEntry(value: AllocationEntry | unknown) {
       .filter((allocation) => allocation !== null),
     savedByUserId: readNullableString(entry, "savedByUserId"),
     savedByName: readNullableString(entry, "savedByName"),
-    savedAt: readNullableTimestamp(entry, "savedAt")
+    savedAt: readRecordTimestamp(entry, "savedAt")
   };
 }
 
@@ -921,10 +921,6 @@ function readNumber(record: Record<string, unknown>, key: string) {
 
 function readNullableNumber(record: Record<string, unknown>, key: string) {
   return readNullableRecordNumber(record, key);
-}
-
-function readNullableTimestamp(record: Record<string, unknown>, key: string) {
-  return readValidTimestamp(record[key]);
 }
 
 function toJson(value: unknown) {

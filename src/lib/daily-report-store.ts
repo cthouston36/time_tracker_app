@@ -5,7 +5,7 @@ import {
   refreshPmSummaryRollupsForDays
 } from "@/lib/report-rollups";
 import { getDayKey, isIsoDate, parseIsoDayKey } from "@/lib/day-key";
-import { readValidTimestamp } from "@/lib/date";
+import { readRecordTimestamp } from "@/lib/date";
 import {
   asRecord,
   readNullableRecordString,
@@ -163,8 +163,8 @@ export async function replaceDailyReportData(
         ${report.date}::date,
         ${readNullableRecordString(report.value, "createdByUserId")},
         ${readNullableRecordString(report.value, "createdByName")},
-        ${readNullableTimestamp(report.value, "createdAt")}::timestamptz,
-        ${readNullableTimestamp(report.value, "updatedAt")}::timestamptz,
+        ${readRecordTimestamp(report.value, "createdAt")}::timestamptz,
+        ${readRecordTimestamp(report.value, "updatedAt")}::timestamptz,
         ${JSON.stringify(report.value)}::jsonb,
         now()
       )
@@ -189,7 +189,7 @@ export async function replaceDailyReportData(
         ${readRecordString(upload.value, "fileName")},
         ${readRecordString(upload.value, "folderPath")},
         ${readNullableRecordString(upload.value, "procoreFileId")},
-        ${readNullableTimestamp(upload.value, "uploadedAt")}::timestamptz,
+        ${readRecordTimestamp(upload.value, "uploadedAt")}::timestamptz,
         ${JSON.stringify(upload.value)}::jsonb,
         now()
       )
@@ -242,8 +242,8 @@ export async function upsertDailyReport(projectId: string, date: string, dailyRe
       ${normalizedDate}::date,
       ${readNullableRecordString(report, "createdByUserId")},
       ${readNullableRecordString(report, "createdByName")},
-      ${readNullableTimestamp(report, "createdAt")}::timestamptz,
-      ${readNullableTimestamp(report, "updatedAt")}::timestamptz,
+      ${readRecordTimestamp(report, "createdAt")}::timestamptz,
+      ${readRecordTimestamp(report, "updatedAt")}::timestamptz,
       ${JSON.stringify(report)}::jsonb,
       now()
     )
@@ -300,7 +300,7 @@ export async function upsertDailyReportUpload(
       ${readRecordString(upload, "fileName")},
       ${readRecordString(upload, "folderPath")},
       ${readNullableRecordString(upload, "procoreFileId")},
-      ${readNullableTimestamp(upload, "uploadedAt")}::timestamptz,
+      ${readRecordTimestamp(upload, "uploadedAt")}::timestamptz,
       ${JSON.stringify(upload)}::jsonb,
       now()
     )
@@ -457,8 +457,4 @@ function normalizeReportForClient(report: unknown, projectId: string, date: stri
 
 function normalizeUploadForClient(upload: unknown) {
   return asRecord(upload);
-}
-
-function readNullableTimestamp(record: Record<string, unknown>, key: string) {
-  return readValidTimestamp(record[key]);
 }
