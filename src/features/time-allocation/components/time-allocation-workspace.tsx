@@ -37,11 +37,7 @@ import {
 } from "@/features/time-allocation/lib/daily-report-helpers";
 import { exportEntriesToCsv } from "@/features/time-allocation/lib/entry-csv-export";
 import { normalizeSharedAppState } from "@/features/time-allocation/lib/app-state-storage";
-import {
-  writePendingProcoreReturn,
-  type PendingProcoreReturn,
-  type ViewMode
-} from "@/features/time-allocation/lib/client-storage";
+import { type ViewMode } from "@/features/time-allocation/lib/client-storage";
 import {
   formatDate,
   getDayKey,
@@ -88,6 +84,7 @@ import { useMobilePayItemSelection } from "@/features/time-allocation/hooks/use-
 import { useMyProjectsFilterDefault } from "@/features/time-allocation/hooks/use-my-projects-filter-default";
 import { useNetSuiteVendors } from "@/features/time-allocation/hooks/use-netsuite-vendors";
 import { usePayItemDraftActions } from "@/features/time-allocation/hooks/use-pay-item-draft-actions";
+import { useProcoreConnectAction } from "@/features/time-allocation/hooks/use-procore-connect-action";
 import { useProjectCatalogBootstrap } from "@/features/time-allocation/hooks/use-project-catalog-bootstrap";
 import { useProjectControlActions } from "@/features/time-allocation/hooks/use-project-control-actions";
 import { useProjectSelectionGuards } from "@/features/time-allocation/hooks/use-project-selection-guards";
@@ -96,6 +93,7 @@ import { useRetiredViewRedirect } from "@/features/time-allocation/hooks/use-ret
 import { useSharedAppStatePersistence } from "@/features/time-allocation/hooks/use-shared-app-state-persistence";
 import { useSyncLogStorage } from "@/features/time-allocation/hooks/use-sync-log-storage";
 import { useUnsavedChangesWarning } from "@/features/time-allocation/hooks/use-unsaved-changes-warning";
+import { useWorkspaceNavigationActions } from "@/features/time-allocation/hooks/use-workspace-navigation-actions";
 import { useWorkspaceKeyboardShortcuts } from "@/features/time-allocation/hooks/use-workspace-keyboard-shortcuts";
 import { WeeklyStatusReport } from "@/features/time-allocation/components/dashboard/weekly-status-report";
 import { AdminToolsDrawer } from "@/features/time-allocation/components/admin/admin-tools";
@@ -590,15 +588,40 @@ export function TimeAllocationWorkspace() {
     viewMode
   });
   useUnsavedChangesWarning(hasUnsavedChanges);
-
-  function shouldBlockOfflineAction(setNotice: (message: string) => void) {
-    if (!userIsOffline) {
-      return false;
-    }
-
-    setNotice("You appear to be offline. Reconnect before saving, syncing, or uploading.");
-    return true;
-  }
+  const {
+    changeSelectedProject,
+    changeViewMode,
+    changeWorkDate,
+    confirmDiscardUnsavedChanges,
+    openDailyEntry
+  } = useWorkspaceNavigationActions({
+    cancelEditingEntry,
+    clearCrewForms,
+    clearDailyReportDraftForCurrentContext,
+    clearJobImageQueue,
+    confirmAction,
+    hasUnsavedChanges,
+    projects,
+    selectedProject,
+    selectedProjectId,
+    setDraftsByPayItem,
+    setMobileSelectedPayItemId,
+    setSelectedProjectId,
+    setViewMode,
+    setWorkDate,
+    viewMode,
+    workDate
+  });
+  const connectProcore = useProcoreConnectAction({
+    confirmDiscardUnsavedChanges,
+    mobileSelectedPayItemId,
+    selectedProject,
+    selectedProjectId,
+    setProjectLoadError,
+    userIsOffline,
+    viewMode,
+    workDate
+  });
 
   stagingOperationalDataClearedRef.current = () => {
     setEntries([]);
@@ -656,72 +679,6 @@ export function TimeAllocationWorkspace() {
     },
     [replaceCrewData, replaceDailyReportData, replaceSyncLog]
   );
-
-  function confirmDiscardUnsavedChanges(actionDescription: string) {
-    if (!hasUnsavedChanges) {
-      return Promise.resolve(true);
-    }
-
-    return confirmAction({
-      cancelLabel: "Stay here",
-      confirmLabel: "Discard changes",
-      description: `You have unsaved changes. Continue to ${actionDescription}?`,
-      details: ["Unsaved pay item inputs, queued images, or daily report edits will be discarded."],
-      title: "Discard unsaved changes",
-      tone: "warning"
-    });
-  }
-
-  function clearTransientEntryState() {
-    setMobileSelectedPayItemId("");
-    cancelEditingEntry();
-    clearCrewForms();
-    setDraftsByPayItem({});
-    clearJobImageQueue();
-    clearDailyReportDraftForCurrentContext();
-  }
-
-  async function changeSelectedProject(nextProjectId: string) {
-    if (nextProjectId === selectedProjectId) {
-      return;
-    }
-
-    if (!(await confirmDiscardUnsavedChanges("change jobs"))) {
-      return;
-    }
-
-    clearTransientEntryState();
-    setSelectedProjectId(nextProjectId);
-  }
-
-  async function changeWorkDate(nextWorkDate: string) {
-    if (nextWorkDate === workDate) {
-      return;
-    }
-
-    if (!(await confirmDiscardUnsavedChanges("change dates"))) {
-      return;
-    }
-
-    clearTransientEntryState();
-    setWorkDate(nextWorkDate);
-  }
-
-  async function changeViewMode(nextViewMode: ViewMode) {
-    if (nextViewMode === viewMode) {
-      return;
-    }
-
-    if (nextViewMode !== "entry" && !(await confirmDiscardUnsavedChanges("leave the entry view"))) {
-      return;
-    }
-
-    if (nextViewMode !== "entry") {
-      clearTransientEntryState();
-    }
-
-    setViewMode(nextViewMode);
-  }
 
   useCurrentUserSessionBootstrap({
     onAuthCheckedChange: setAuthChecked,
@@ -794,46 +751,6 @@ export function TimeAllocationWorkspace() {
     setProjectBlacklistById({});
     resetCrewManagementState();
     setViewMode("dashboard");
-  }
-
-  async function openDailyEntry(projectId: string, date: string) {
-    if (!projects.some((project) => project.id === projectId)) {
-      return;
-    }
-
-    if (
-      (projectId !== selectedProject?.id || date !== workDate || viewMode !== "entry") &&
-      !(await confirmDiscardUnsavedChanges("open that day"))
-    ) {
-      return;
-    }
-
-    setSelectedProjectId(projectId);
-    setWorkDate(date);
-    setViewMode("entry");
-    setMobileSelectedPayItemId("");
-    cancelEditingEntry();
-    clearCrewForms();
-    setDraftsByPayItem({});
-  }
-
-  async function connectProcore(intent: PendingProcoreReturn["intent"] = "connect") {
-    if (shouldBlockOfflineAction(setProjectLoadError)) {
-      return;
-    }
-
-    if (!(await confirmDiscardUnsavedChanges("connect to Procore"))) {
-      return;
-    }
-
-    writePendingProcoreReturn({
-      date: workDate,
-      intent,
-      mobilePayItemId: mobileSelectedPayItemId,
-      projectId: selectedProject?.id ?? selectedProjectId,
-      viewMode
-    });
-    window.location.assign("/api/procore/oauth/login");
   }
 
   function exportAllEntryDetails() {
