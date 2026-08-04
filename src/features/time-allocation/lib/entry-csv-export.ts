@@ -1,5 +1,5 @@
 import { todayInputValue } from "@/lib/date";
-import type { AllocationEntry, CrewLaborType, Project } from "@/lib/domain/types";
+import type { AllocationEntry, Project } from "@/lib/domain/types";
 import type {
   DayEntryNotes,
   DayEntryNotesByKey,
@@ -9,8 +9,7 @@ import type {
 } from "@/features/time-allocation/types";
 import { downloadBlob } from "@/features/time-allocation/lib/browser-actions";
 import { formatCsvIdentifier, formatCsvNumber, rowsToCsv } from "@/features/time-allocation/lib/csv-utils";
-
-const DEFAULT_CREW_LABOR_TYPE: CrewLaborType = "chinchor_employee";
+import { formatCrewLaborType, getCrewLaborType } from "@/features/time-allocation/lib/crew-formatters";
 
 export function exportEntriesToCsv({
   dayEntryNotesByKey,
@@ -157,24 +156,4 @@ function buildEntryCsvRows({
 
 function getDayKey(projectId: string, date: string) {
   return `${projectId}|${date}`;
-}
-
-function getCrewLaborType(source: { laborType?: CrewLaborType } | undefined | null): CrewLaborType {
-  if (source?.laborType === "subcontractor" || source?.laborType === "temp_employee") {
-    return source.laborType;
-  }
-
-  return DEFAULT_CREW_LABOR_TYPE;
-}
-
-function formatCrewLaborType(value: CrewLaborType | undefined) {
-  if (value === "subcontractor") {
-    return "Subcontractor";
-  }
-
-  if (value === "temp_employee") {
-    return "Temp Employee";
-  }
-
-  return "Chinchor Employee";
 }

@@ -19,6 +19,7 @@ import { getProjects } from "@/lib/project-catalog/projects";
 import { backfillReportRollupsIfEmpty, readDailyWorkRollupSourceRows } from "@/lib/report-rollups";
 import type { AllocationEntry, CrewLaborType, Project } from "@/lib/domain/types";
 import { formatCsvIdentifier, formatCsvNumber, rowsToCsv } from "@/features/time-allocation/lib/csv-utils";
+import { formatCrewLaborType } from "@/features/time-allocation/lib/crew-formatters";
 
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const DEFAULT_CREW_LABOR_TYPES: CrewLaborType[] = ["chinchor_employee", "temp_employee", "subcontractor"];
@@ -342,18 +343,6 @@ function readString(value: unknown) {
 
 function formatPercent(value: number) {
   return `${(value * 100).toFixed(1)}%`;
-}
-
-function formatCrewLaborType(value: CrewLaborType | undefined) {
-  if (value === "subcontractor") {
-    return "Subcontractor";
-  }
-
-  if (value === "temp_employee") {
-    return "Temp Employee";
-  }
-
-  return "Chinchor Employee";
 }
 
 type ReportExportRequestBody = {

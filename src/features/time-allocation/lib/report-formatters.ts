@@ -1,32 +1,5 @@
-import type { CrewLaborType } from "@/lib/domain/types";
 import type { CrewPerformanceRow } from "@/lib/report-builders";
-
-const DEFAULT_CREW_LABOR_TYPE: CrewLaborType = "chinchor_employee";
-
-export function formatCrewLaborType(value: CrewLaborType | undefined) {
-  if (value === "subcontractor") {
-    return "Subcontractor";
-  }
-
-  if (value === "temp_employee") {
-    return "Temp Employee";
-  }
-
-  return "Chinchor Employee";
-}
-
-export function formatCrewLaborTypeWithCompany(
-  source: { laborType?: CrewLaborType; subcontractorCompany?: string } | undefined | null
-) {
-  const laborType = getCrewLaborType(source);
-  const label = formatCrewLaborType(laborType);
-
-  if (laborType === "subcontractor" && source?.subcontractorCompany) {
-    return `${label}: ${source.subcontractorCompany}`;
-  }
-
-  return label;
-}
+export { formatCrewLaborType, formatCrewLaborTypeWithCompany } from "@/features/time-allocation/lib/crew-formatters";
 
 export function formatCrewPerformanceStatus(status: CrewPerformanceRow["status"]) {
   if (status === "strong") {
@@ -79,14 +52,6 @@ export function formatVariance(variance: number) {
   }
 
   return `${percent.toFixed(1)}% ${variance < 0 ? "better" : "worse"}`;
-}
-
-function getCrewLaborType(source: { laborType?: CrewLaborType } | undefined | null): CrewLaborType {
-  if (source?.laborType === "subcontractor" || source?.laborType === "temp_employee") {
-    return source.laborType;
-  }
-
-  return DEFAULT_CREW_LABOR_TYPE;
 }
 
 function parseInputDate(value: string) {

@@ -4,6 +4,7 @@ import { ListChecks } from "lucide-react";
 import { isTwoSeriesProject } from "@/lib/daily-report-templates";
 import type { Project } from "@/lib/domain/types";
 import { formatUserName } from "@/features/time-allocation/lib/auth-ui-helpers";
+import { getCrewDisplayName } from "@/features/time-allocation/lib/crew-formatters";
 import type {
   CrewMember,
   CrewMembersByProject,
@@ -241,10 +242,6 @@ function formatDataQualitySamples(values: string[], maxItems = 4) {
   const remainingCount = values.length - samples.length;
 
   return `${samples.join(", ")}${remainingCount > 0 ? `, +${remainingCount} more` : ""}`;
-}
-
-function getCrewDisplayName(member: CrewMember) {
-  return member.laborType === "subcontractor" ? member.subcontractorCompany || member.name : member.name;
 }
 
 function normalizeCrewName(name: string) {
