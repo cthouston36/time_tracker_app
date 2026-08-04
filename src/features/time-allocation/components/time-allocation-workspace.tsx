@@ -29,9 +29,6 @@ import { PayItemEntryPanel } from "@/features/time-allocation/components/entry/p
 import { MatrixFullscreenModal } from "@/features/time-allocation/components/entry/matrix-fullscreen-modal";
 import { DailyWrapUpSection } from "@/features/time-allocation/components/entry/daily-wrap-up-section";
 import { ReviewSubmitPanel } from "@/features/time-allocation/components/entry/review-submit-panel";
-import {
-  getDailyReportEmployeeTotalHours
-} from "@/features/time-allocation/lib/daily-report-helpers";
 import { type ViewMode } from "@/features/time-allocation/lib/client-storage";
 import {
   formatDate,
@@ -40,7 +37,6 @@ import {
 import { getProjectWorkTypeLabel } from "@/features/time-allocation/lib/status-helpers";
 import { getDefaultViewModeForUser } from "@/features/time-allocation/lib/auth-ui-helpers";
 import {
-  buildCrewSummary,
   draftHasAnyInput,
 } from "@/features/time-allocation/lib/crew-entry-helpers";
 import type {
@@ -78,6 +74,7 @@ import { useProjectSync } from "@/features/time-allocation/hooks/use-project-syn
 import { useRetiredViewRedirect } from "@/features/time-allocation/hooks/use-retired-view-redirect";
 import { useSharedAppStateApplication } from "@/features/time-allocation/hooks/use-shared-app-state-application";
 import { useSharedAppStatePersistence } from "@/features/time-allocation/hooks/use-shared-app-state-persistence";
+import { useSelectedDaySummaries } from "@/features/time-allocation/hooks/use-selected-day-summaries";
 import { useSyncLogStorage } from "@/features/time-allocation/hooks/use-sync-log-storage";
 import { useUnsavedChangesWarning } from "@/features/time-allocation/hooks/use-unsaved-changes-warning";
 import { useWorkspaceNavigationActions } from "@/features/time-allocation/hooks/use-workspace-navigation-actions";
@@ -333,7 +330,6 @@ export function TimeAllocationWorkspace() {
     setEntries,
     setEntryNotice
   });
-  const crewSummaryRows = buildCrewSummary(visibleEntries, selectedProjectCrewMembers);
   const {
     cancelEditingEntry,
     clearDraftInputs,
@@ -435,6 +431,16 @@ export function TimeAllocationWorkspace() {
     visibleEntries,
     workDate
   });
+  const {
+    crewSummaryRows,
+    selectedDayTotalHours,
+    totalHours
+  } = useSelectedDaySummaries({
+    currentDailyReport,
+    selectedProjectCrewMembers,
+    selectedProjectUsesPayItems,
+    visibleEntries
+  });
   const { reportDailyReportsByKey, reportEntries } = useWorkspaceReportScope({
     dailyReportsByKey,
     entries,
@@ -477,12 +483,6 @@ export function TimeAllocationWorkspace() {
       });
     });
   }, []);
-  const totalHours = visibleEntries.reduce((total, entry) => total + entry.hours, 0);
-  const selectedDayTotalHours = selectedProjectUsesPayItems
-    ? totalHours
-    : currentDailyReport
-      ? getDailyReportEmployeeTotalHours(currentDailyReport.employeeRows)
-      : 0;
   const {
     splitDraftCrewHoursEvenly,
     toggleDraftCrewMember,
