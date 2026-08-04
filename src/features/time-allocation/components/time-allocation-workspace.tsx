@@ -33,9 +33,6 @@ import { ReviewSubmitPanel } from "@/features/time-allocation/components/entry/r
 import {
   clearDatabaseProjectCatalog,
   clearDatabaseStagingOperationalData,
-  loadCurrentUserSession,
-  loadProcoreUploadStatus,
-  loadProjectCatalog,
   logoutCurrentUserSession,
   saveDatabaseMyJobs,
   saveDatabaseProjectArchive,
@@ -48,14 +45,10 @@ import {
 import { exportEntriesToCsv } from "@/features/time-allocation/lib/entry-csv-export";
 import { normalizeSharedAppState } from "@/features/time-allocation/lib/app-state-storage";
 import {
-  clearPendingProcoreReturn,
-  getLastProjectStorageKey,
-  readPendingProcoreReturn,
   writePendingProcoreReturn,
   type PendingProcoreReturn,
   type ViewMode
 } from "@/features/time-allocation/lib/client-storage";
-import { restoreWorkspaceSelection } from "@/features/time-allocation/lib/workspace-selection-helpers";
 import {
   formatDate,
   getDayKey,
@@ -78,8 +71,7 @@ import {
 import {
   buildNetSuiteProjectManagerOptions,
   filterActiveProjects,
-  getDefaultMyJobIdsForUser,
-  sortProjectsByName
+  getDefaultMyJobIdsForUser
 } from "@/features/time-allocation/lib/selectors";
 import type {
   DayEntryNotesByKey,
@@ -95,6 +87,7 @@ import { useNetworkStatus } from "@/features/time-allocation/hooks/use-network-s
 import { useAdminUserManagement } from "@/features/time-allocation/hooks/use-admin-user-management";
 import { useAuthForms } from "@/features/time-allocation/hooks/use-auth-forms";
 import { useCrewManagement } from "@/features/time-allocation/hooks/use-crew-management";
+import { useCurrentUserSessionBootstrap } from "@/features/time-allocation/hooks/use-current-user-session-bootstrap";
 import { useDailyReports } from "@/features/time-allocation/hooks/use-daily-reports";
 import { useEntryActions } from "@/features/time-allocation/hooks/use-entry-actions";
 import { useEntryProjectSnapshotRepair } from "@/features/time-allocation/hooks/use-entry-project-snapshot-repair";
@@ -106,6 +99,7 @@ import { useMobileInstallPrompt } from "@/features/time-allocation/hooks/use-mob
 import { useMobilePayItemSelection } from "@/features/time-allocation/hooks/use-mobile-pay-item-selection";
 import { useMyProjectsFilterDefault } from "@/features/time-allocation/hooks/use-my-projects-filter-default";
 import { useNetSuiteVendors } from "@/features/time-allocation/hooks/use-netsuite-vendors";
+import { useProjectCatalogBootstrap } from "@/features/time-allocation/hooks/use-project-catalog-bootstrap";
 import { useProjectSelectionGuards } from "@/features/time-allocation/hooks/use-project-selection-guards";
 import { useProjectSync } from "@/features/time-allocation/hooks/use-project-sync";
 import { useRetiredViewRedirect } from "@/features/time-allocation/hooks/use-retired-view-redirect";
@@ -678,90 +672,24 @@ export function TimeAllocationWorkspace() {
     setViewMode(nextViewMode);
   }
 
-  useEffect(() => {
-    async function loadCurrentUser() {
-      const data = await loadCurrentUserSession();
+  useCurrentUserSessionBootstrap({
+    onAuthCheckedChange: setAuthChecked,
+    onCurrentUserChange: setCurrentUser
+  });
 
-      setCurrentUser(data.user);
-      setAuthChecked(true);
-    }
-
-    void loadCurrentUser();
-  }, []);
-
-  useEffect(() => {
-    if (!currentUser) {
-      return;
-    }
-
-    const procoreStatus = new URLSearchParams(window.location.search).get("procore");
-    if (procoreStatus === "connected") {
-      setConnectionStatus("Procore connected");
-    } else if (procoreStatus) {
-      setConnectionStatus("Procore connection needs attention");
-    }
-
-    const currentUserId = currentUser.id;
-
-    async function loadProcoreConnectionStatus() {
-      try {
-        const data = await loadProcoreUploadStatus();
-
-        if (data.connected && data.connectedBy) {
-          setConnectionStatus(`Procore configured by ${data.connectedBy}`);
-        }
-      } catch {
-        // Project catalog data can still load even if the Procore upload status check fails.
-      }
-    }
-
-    async function loadProjects() {
-      setLoadingProjects(true);
-      setProjectLoadError("");
-
-      try {
-        const data = await loadProjectCatalog();
-        const sortedProjects = sortProjectsByName(data.projects);
-        const lastSelectedProjectId = window.localStorage.getItem(getLastProjectStorageKey(currentUserId));
-        const pendingProcoreReturn = readPendingProcoreReturn();
-        const restoredSelection = restoreWorkspaceSelection({
-          lastSelectedProjectId,
-          pendingProcoreReturn,
-          projects: sortedProjects
-        });
-
-        setAllProjects(sortedProjects);
-        setSelectedProjectId(restoredSelection.selectedProjectId);
-        if (restoredSelection.workDate) {
-          setWorkDate(restoredSelection.workDate);
-        }
-        if (restoredSelection.viewMode) {
-          setViewMode(restoredSelection.viewMode);
-        }
-        if (restoredSelection.mobileSelectedPayItemId) {
-          setMobileSelectedPayItemId(restoredSelection.mobileSelectedPayItemId);
-        }
-        if (pendingProcoreReturn) {
-          clearPendingProcoreReturn();
-        }
-        if (procoreStatus === "connected" && pendingProcoreReturn?.intent === "upload_daily") {
-          setDailyReportUploadNotice({
-            message: "Procore connected. Click Upload Daily to Procore to finish sending this daily.",
-            status: "success"
-          });
-        }
-        setSyncedAt(data.syncedAt ?? null);
-        setConnectionStatus(data.syncedAt ? "Project catalog loaded" : "No project catalog data");
-      } catch (error) {
-        setProjectLoadError(error instanceof Error ? error.message : "Unable to load projects.");
-      } finally {
-        setLoadingProjects(false);
-      }
-    }
-
-    void loadProcoreConnectionStatus();
-    void loadProjects();
-  }, [currentUser, setDailyReportUploadNotice, setSyncedAt]);
+  useProjectCatalogBootstrap({
+    currentUser,
+    onConnectionStatus: setConnectionStatus,
+    onDailyReportUploadNotice: setDailyReportUploadNotice,
+    onLoadingProjectsChange: setLoadingProjects,
+    onMobileSelectedPayItemIdChange: setMobileSelectedPayItemId,
+    onProjectLoadError: setProjectLoadError,
+    onProjectsChange: setAllProjects,
+    onSelectedProjectChange: setSelectedProjectId,
+    onSyncedAtChange: setSyncedAt,
+    onViewModeChange: setViewMode,
+    onWorkDateChange: setWorkDate
+  });
 
   useEffect(() => {
     if (currentUser?.role !== "admin") {
