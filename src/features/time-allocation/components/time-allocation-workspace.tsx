@@ -111,6 +111,7 @@ import { useEntryActions } from "@/features/time-allocation/hooks/use-entry-acti
 import { useConfirmationDialog } from "@/features/time-allocation/hooks/use-confirmation-dialog";
 import { useFieldProjectAssignments } from "@/features/time-allocation/hooks/use-field-project-assignments";
 import { useJobImages } from "@/features/time-allocation/hooks/use-job-images";
+import { useLastSelectedProjectStorage } from "@/features/time-allocation/hooks/use-last-selected-project-storage";
 import { useMobileInstallPrompt } from "@/features/time-allocation/hooks/use-mobile-install-prompt";
 import { useMobilePayItemSelection } from "@/features/time-allocation/hooks/use-mobile-pay-item-selection";
 import { useMyProjectsFilterDefault } from "@/features/time-allocation/hooks/use-my-projects-filter-default";
@@ -118,6 +119,7 @@ import { useNetSuiteVendors } from "@/features/time-allocation/hooks/use-netsuit
 import { useProjectSelectionGuards } from "@/features/time-allocation/hooks/use-project-selection-guards";
 import { useProjectSync } from "@/features/time-allocation/hooks/use-project-sync";
 import { useRetiredViewRedirect } from "@/features/time-allocation/hooks/use-retired-view-redirect";
+import { useSyncLogStorage } from "@/features/time-allocation/hooks/use-sync-log-storage";
 import { useUnsavedChangesWarning } from "@/features/time-allocation/hooks/use-unsaved-changes-warning";
 import { useWorkspaceKeyboardShortcuts } from "@/features/time-allocation/hooks/use-workspace-keyboard-shortcuts";
 import { WeeklyStatusReport } from "@/features/time-allocation/components/dashboard/weekly-status-report";
@@ -777,13 +779,7 @@ export function TimeAllocationWorkspace() {
     }
   }, [currentUser?.role]);
 
-  useEffect(() => {
-    if (!currentUser || !selectedProjectId) {
-      return;
-    }
-
-    window.localStorage.setItem(getLastProjectStorageKey(currentUser.id), selectedProjectId);
-  }, [currentUser, selectedProjectId]);
+  useLastSelectedProjectStorage(currentUser?.id, selectedProjectId);
 
   useEffect(() => {
     if (!currentUser) {
@@ -892,13 +888,7 @@ export function TimeAllocationWorkspace() {
     }
   }, [currentUser, entries, projects]);
 
-  useEffect(() => {
-    if (!currentUser) {
-      return;
-    }
-
-    window.localStorage.setItem("procore-sync-log", JSON.stringify(syncLog));
-  }, [currentUser, syncLog]);
+  useSyncLogStorage(Boolean(currentUser), syncLog);
 
   async function logout() {
     if (!(await confirmDiscardUnsavedChanges("sign out"))) {
