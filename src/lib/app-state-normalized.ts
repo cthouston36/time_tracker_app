@@ -1,6 +1,7 @@
 import { isIsoDate } from "@/lib/day-key";
 import { readValidTimestamp } from "@/lib/date";
 import { getSql } from "@/lib/db";
+import { readNullableNumber as readValueNullableNumber, readNumber as readValueNumber } from "@/lib/records";
 import {
   clearReportRollups,
   rebuildDailyReportRollups,
@@ -919,33 +920,11 @@ function readNullableString(record: Record<string, unknown>, key: string) {
 }
 
 function readNumber(record: Record<string, unknown>, key: string) {
-  const value = record[key];
-
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
-  }
-
-  if (typeof value === "string") {
-    const parsedValue = Number(value);
-    return Number.isFinite(parsedValue) ? parsedValue : 0;
-  }
-
-  return 0;
+  return readValueNumber(record[key]);
 }
 
 function readNullableNumber(record: Record<string, unknown>, key: string) {
-  const value = record[key];
-
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
-  }
-
-  if (typeof value === "string" && value.trim()) {
-    const parsedValue = Number(value);
-    return Number.isFinite(parsedValue) ? parsedValue : null;
-  }
-
-  return null;
+  return readValueNullableNumber(record[key]);
 }
 
 function readNullableTimestamp(record: Record<string, unknown>, key: string) {

@@ -1,7 +1,7 @@
 import { isIsoDate } from "@/lib/day-key";
 import { getSql } from "@/lib/db";
 import type { DailyWorkReportSourceRow } from "@/lib/report-builders";
-import { readString, readStringList } from "@/lib/records";
+import { readNumber, readString, readStringList } from "@/lib/records";
 
 export type ReportRollupDayKey = {
   date: string;
@@ -384,7 +384,7 @@ export async function readDailyWorkRollupSourceRows(filters: ReportRollupFilters
     current.report.payItemRows[rowIndex] = {
       notes: row.notes ?? "",
       payItemId: row.pay_item_id,
-      quantity: toNumber(row.quantity)
+      quantity: readNumber(row.quantity)
     };
     rowsByDay.set(key, current);
   }
@@ -1207,7 +1207,7 @@ async function tableHasRows(tableName: string) {
     return false;
   }
 
-  return toNumber(rows[0]?.count) > 0;
+  return readNumber(rows[0]?.count) > 0;
 }
 
 async function tableExists(tableName: string) {
@@ -1245,19 +1245,6 @@ function normalizeDayKeys(days: ReportRollupDayKey[]) {
 }
 
 function toInteger(value: unknown) {
-  const numberValue = toNumber(value);
+  const numberValue = readNumber(value);
   return Number.isInteger(numberValue) && numberValue >= 0 ? numberValue : 0;
-}
-
-function toNumber(value: unknown) {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
-  }
-
-  if (typeof value === "string") {
-    const numberValue = Number(value);
-    return Number.isFinite(numberValue) ? numberValue : 0;
-  }
-
-  return 0;
 }

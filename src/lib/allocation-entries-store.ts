@@ -8,7 +8,7 @@ import {
   type ReportRollupDayKey
 } from "@/lib/report-rollups";
 import { normalizeCrewLaborType, type AllocationEntry, type CrewAllocation } from "@/lib/domain/types";
-import { readStringList } from "@/lib/records";
+import { readNullableNumber, readNumber, readOptionalNumber, readStringList } from "@/lib/records";
 
 type EntryRow = {
   id: string;
@@ -163,7 +163,7 @@ async function readEntriesWithAllocations(entryRows: EntryRow[]) {
       jobTitle: allocationRow.job_title,
       laborType: normalizeCrewLaborType(allocationRow.labor_type),
       subcontractorCompany: allocationRow.subcontractor_company ?? undefined,
-      hours: toNumber(allocationRow.hours)
+      hours: readNumber(allocationRow.hours)
     });
     allocationsByEntryId.set(allocationRow.entry_id, allocations);
   }
@@ -184,10 +184,10 @@ async function readEntriesWithAllocations(entryRows: EntryRow[]) {
         payItemId: entryRow.pay_item_id,
         payItemCode,
         payItemName: entryRow.pay_item_name,
-        payItemBudgetedQuantity: toOptionalNumber(entryRow.pay_item_budgeted_quantity),
+        payItemBudgetedQuantity: readOptionalNumber(entryRow.pay_item_budgeted_quantity),
         payItemUnitOfMeasure: entryRow.pay_item_unit_of_measure ?? undefined,
-        hours: toNumber(entryRow.hours),
-        quantityCompleted: toNumber(entryRow.quantity_completed),
+        hours: readNumber(entryRow.hours),
+        quantityCompleted: readNumber(entryRow.quantity_completed),
         crewAllocations: allocationsByEntryId.get(entryRow.id) ?? [],
         savedByUserId: entryRow.saved_by_user_id ?? undefined,
         savedByName: entryRow.saved_by_name ?? undefined,
@@ -563,10 +563,10 @@ function normalizeAllocationEntry(entry: AllocationEntry) {
     payItemId: entry.payItemId,
     payItemCode,
     payItemName: entry.payItemName,
-    payItemBudgetedQuantity: toNullableNumber(entry.payItemBudgetedQuantity),
+    payItemBudgetedQuantity: readNullableNumber(entry.payItemBudgetedQuantity),
     payItemUnitOfMeasure: entry.payItemUnitOfMeasure ?? null,
-    hours: toNumber(entry.hours),
-    quantityCompleted: toNumber(entry.quantityCompleted),
+    hours: readNumber(entry.hours),
+    quantityCompleted: readNumber(entry.quantityCompleted),
     crewAllocations: (entry.crewAllocations ?? []).map(normalizeCrewAllocation).filter((allocation) => allocation !== null),
     rawEntry: entry,
     savedAt: isValidTimestamp(entry.savedAt) ? entry.savedAt : null,
@@ -586,41 +586,10 @@ function normalizeCrewAllocation(allocation: CrewAllocation) {
   return {
     crewMemberId: allocation.crewMemberId,
     crewMemberName: laborType === "subcontractor" ? subcontractorCompany : allocation.crewMemberName,
-    hours: toNumber(allocation.hours),
+    hours: readNumber(allocation.hours),
     jobTitle: laborType === "subcontractor" ? "Subcontractor" : allocation.jobTitle ?? "",
     laborType,
     subcontractorCompany: subcontractorCompany || undefined,
     rawAllocation: allocation
   };
-}
-
-function toNumber(value: unknown) {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
-  }
-
-  if (typeof value === "string") {
-    const parsedValue = Number(value);
-    return Number.isFinite(parsedValue) ? parsedValue : 0;
-  }
-
-  return 0;
-}
-
-function toOptionalNumber(value: unknown) {
-  const numberValue = toNullableNumber(value);
-  return numberValue === null ? undefined : numberValue;
-}
-
-function toNullableNumber(value: unknown) {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
-  }
-
-  if (typeof value === "string" && value.trim()) {
-    const parsedValue = Number(value);
-    return Number.isFinite(parsedValue) ? parsedValue : null;
-  }
-
-  return null;
 }
