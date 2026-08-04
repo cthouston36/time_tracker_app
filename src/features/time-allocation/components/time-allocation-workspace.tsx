@@ -116,6 +116,7 @@ import { useJobImages } from "@/features/time-allocation/hooks/use-job-images";
 import { useMobileInstallPrompt } from "@/features/time-allocation/hooks/use-mobile-install-prompt";
 import { useNetSuiteVendors } from "@/features/time-allocation/hooks/use-netsuite-vendors";
 import { useProjectSync } from "@/features/time-allocation/hooks/use-project-sync";
+import { useRetiredViewRedirect } from "@/features/time-allocation/hooks/use-retired-view-redirect";
 import { useUnsavedChangesWarning } from "@/features/time-allocation/hooks/use-unsaved-changes-warning";
 import { useWorkspaceKeyboardShortcuts } from "@/features/time-allocation/hooks/use-workspace-keyboard-shortcuts";
 import { WeeklyStatusReport } from "@/features/time-allocation/components/dashboard/weekly-status-report";
@@ -537,6 +538,11 @@ export function TimeAllocationWorkspace() {
     dailyReportModalOpen ||
     queuedJobImages.length > 0;
   const currentUserCanManageMyProjects = currentUser?.role === "admin";
+  useRetiredViewRedirect({
+    enabled: Boolean(currentUser),
+    setViewMode,
+    viewMode
+  });
   useUnsavedChangesWarning(hasUnsavedChanges);
 
   function shouldBlockOfflineAction(setNotice: (message: string) => void) {
@@ -584,16 +590,6 @@ export function TimeAllocationWorkspace() {
     },
     [replaceCrewData, replaceDailyReportData, replaceSyncLog]
   );
-
-  useEffect(() => {
-    if (!currentUser) {
-      return;
-    }
-
-    if (viewMode === "calendar") {
-      setViewMode("dashboard");
-    }
-  }, [currentUser, viewMode]);
 
   function confirmDiscardUnsavedChanges(actionDescription: string) {
     if (!hasUnsavedChanges) {
