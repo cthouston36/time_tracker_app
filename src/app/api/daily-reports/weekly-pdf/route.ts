@@ -11,6 +11,7 @@ import { readDailyReportsForRange } from "@/lib/daily-report-store";
 import { readDayRecords } from "@/lib/day-record-store";
 import { readProjectControls } from "@/lib/project-controls-store";
 import { getProjects } from "@/lib/project-catalog/projects";
+import { addDaysToInputDate, getWeekStart } from "@/lib/date";
 import { getDayKey, isIsoDate } from "@/lib/day-key";
 
 export const runtime = "nodejs";
@@ -43,7 +44,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Select at least one project and a valid week." }, { status: 400 });
     }
 
-    const weekStart = getSundayWeekStart(requestedWeekStart);
+    const weekStart = getWeekStart(requestedWeekStart);
     const weekEnd = addDaysToInputDate(weekStart, 6);
     const allProjects = getAccessibleProjectsForUser(user, await getProjects());
     const projectControls = await readProjectControls();
@@ -141,32 +142,4 @@ function normalizeStringList(value: unknown) {
 
 function readString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
-}
-
-function getSundayWeekStart(value: string) {
-  const date = parseInputDate(value);
-  date.setDate(date.getDate() - date.getDay());
-
-  return formatInputDate(date);
-}
-
-function addDaysToInputDate(value: string, days: number) {
-  const date = parseInputDate(value);
-  date.setDate(date.getDate() + days);
-
-  return formatInputDate(date);
-}
-
-function parseInputDate(value: string) {
-  const [year, month, day] = value.split("-").map(Number);
-
-  return new Date(year, month - 1, day);
-}
-
-function formatInputDate(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
 }

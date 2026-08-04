@@ -1,3 +1,4 @@
+import { formatDate } from "@/lib/date";
 import type { CrewPerformanceRow } from "@/lib/report-builders";
 export { formatCrewLaborType, formatCrewLaborTypeWithCompany } from "@/features/time-allocation/lib/crew-formatters";
 
@@ -33,11 +34,7 @@ export function formatDailyWorkQuantity(quantity: number, unitOfMeasure: string 
 }
 
 export function formatReportDate(value: string) {
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return parseInputDate(value).toLocaleDateString();
-  }
-
-  return new Date(value).toLocaleDateString();
+  return formatDate(value);
 }
 
 export function formatReportEntryCount(row: { entryCount: number; excludedEntryCount?: number }) {
@@ -52,10 +49,4 @@ export function formatVariance(variance: number) {
   }
 
   return `${percent.toFixed(1)}% ${variance < 0 ? "better" : "worse"}`;
-}
-
-function parseInputDate(value: string) {
-  const [year, month, day] = value.split("-").map(Number);
-
-  return new Date(year, month - 1, day);
 }
