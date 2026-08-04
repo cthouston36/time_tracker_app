@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, Inbox, Save, Users } from "lucide-react";
 import type { AuthUser } from "@/lib/auth/types";
 import type { Project } from "@/lib/domain/types";
+import { formatUserName } from "@/lib/auth/display";
 import { EmptyState, InlineSpinner } from "@/features/time-allocation/components/workspace-primitives";
 import { getFieldUserIdsAssignedToProject } from "@/features/time-allocation/lib/selectors";
 import type { MyJobsByUser } from "@/features/time-allocation/types";
@@ -196,8 +197,4 @@ function sameStringSet(left: string[], right: string[]) {
   const rightValues = new Set(right);
 
   return left.every((value) => rightValues.has(value));
-}
-
-function formatUserName(user: AuthUser) {
-  return `${user.firstName} ${user.lastName}`;
 }

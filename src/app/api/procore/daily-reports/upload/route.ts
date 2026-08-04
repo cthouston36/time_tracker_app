@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { formatUserName } from "@/lib/auth/display";
 import { requestUserCanAccessProjectId } from "@/lib/auth/project-access-server";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getAuditRequestMetadata, recordAuditLog } from "@/lib/audit-log";
@@ -54,7 +55,7 @@ export async function POST(request: NextRequest) {
     }
 
     const task = await enqueueTask({
-      actorName: formatUserName(user),
+      actorName: formatUserName(user, { fallbackToId: true }),
       actorUserId: user.id,
       dedupeKey: `daily-report-upload:${project.id}:${readDate(payload)}`,
       maxAttempts: 6,
@@ -158,8 +159,4 @@ function buildDailyReportFileName(projectName: string, date: string) {
   const projectNumber = projectName.trim().split(/\s+/)[0]?.slice(0, 8) || "Project";
 
   return `${date}_${projectNumber.replace(/[<>:"/\\|?*\u0000-\u001F]/g, "_")}_Daily_Report.pdf`;
-}
-
-function formatUserName(user: { firstName: string; lastName: string; id: string }) {
-  return `${user.firstName} ${user.lastName}`.trim() || user.id;
 }

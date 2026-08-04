@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuditRequestMetadata, recordAuditLog } from "@/lib/audit-log";
+import { formatUserName } from "@/lib/auth/display";
 import { requestUserCanAccessProjectId } from "@/lib/auth/project-access-server";
 import { getCurrentUser } from "@/lib/auth/session";
 import { isIsoDate } from "@/lib/day-key";
@@ -259,10 +260,6 @@ function isFile(value: FormDataEntryValue): value is File {
 
 function readFormString(value: FormDataEntryValue | null) {
   return typeof value === "string" ? value.trim() : "";
-}
-
-function formatUserName(user: { firstName: string; lastName: string }) {
-  return `${user.firstName} ${user.lastName}`;
 }
 
 function buildJobImageFileName({

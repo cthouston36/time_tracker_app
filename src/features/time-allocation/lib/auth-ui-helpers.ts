@@ -1,6 +1,8 @@
 import type { AuthUser } from "@/lib/auth/types";
 import type { ViewMode } from "@/features/time-allocation/lib/client-storage";
 
+export { formatUserName } from "@/lib/auth/display";
+
 export type AdminUserFormState = {
   active: boolean;
   firstName: string;
@@ -61,10 +63,6 @@ export function createEmptyPasswordResetForm(): PasswordResetFormState {
     token: "",
     userId: ""
   };
-}
-
-export function formatUserName(user: AuthUser) {
-  return `${user.firstName} ${user.lastName}`;
 }
 
 export function formatRole(role: AuthUser["role"]) {

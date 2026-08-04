@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { formatUserName } from "@/lib/auth/display";
 import { getProjectAccessScopeForRequestUser, requestUserCanAccessProjectId } from "@/lib/auth/project-access-server";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getAuditRequestMetadata, recordAuditLog } from "@/lib/audit-log";
@@ -231,10 +232,6 @@ export async function DELETE(request: NextRequest) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function formatUserName(user: { firstName: string; lastName: string }) {
-  return `${user.firstName} ${user.lastName}`.trim();
 }
 
 function filterDayRecordsByProjectIds(
