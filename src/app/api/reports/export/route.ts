@@ -19,6 +19,7 @@ import { isIsoDate } from "@/lib/day-key";
 import { getProjects } from "@/lib/project-catalog/projects";
 import { backfillReportRollupsIfEmpty, readDailyWorkRollupSourceRows } from "@/lib/report-rollups";
 import type { AllocationEntry, CrewLaborType, Project } from "@/lib/domain/types";
+import { readString } from "@/lib/records";
 import { formatCsvIdentifier, formatCsvNumber, rowsToCsv } from "@/features/time-allocation/lib/csv-utils";
 import { formatCrewLaborType } from "@/features/time-allocation/lib/crew-formatters";
 
@@ -335,10 +336,6 @@ function parseIsoDate(value: unknown) {
 
 function normalizeStringList(values: unknown) {
   return Array.from(new Set(Array.isArray(values) ? values.map(readString).filter(Boolean) : []));
-}
-
-function readString(value: unknown) {
-  return typeof value === "string" ? value.trim() : "";
 }
 
 function formatPercent(value: number) {

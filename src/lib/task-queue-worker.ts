@@ -15,7 +15,7 @@ import { readProjectCatalog } from "@/lib/project-catalog/cache";
 import { insertSyncLogEntry, readProjectControls, type StoredSyncLogEntry } from "@/lib/project-controls-store";
 import { claimQueuedTasks, completeTask, failTask, type TaskQueueTask } from "@/lib/task-queue";
 import { buildDailyReportFileName, buildJobImageFileName } from "@/lib/file-names";
-import { isRecord } from "@/lib/records";
+import { isRecord, readString } from "@/lib/records";
 
 type ProcessQueuedTasksOptions = {
   limit?: number;
@@ -580,10 +580,6 @@ function formatActorName(actor: AuthUser) {
 
 function readRecord(value: unknown): Record<string, unknown> {
   return isRecord(value) ? value : {};
-}
-
-function readString(value: unknown) {
-  return typeof value === "string" ? value.trim() : "";
 }
 
 function readPositiveInteger(value: unknown) {

@@ -1,5 +1,5 @@
 import { getSql } from "@/lib/db";
-import { isRecord } from "@/lib/records";
+import { isRecord, readOptionalString, readString } from "@/lib/records";
 
 export const TASK_QUEUE_STATUSES = ["queued", "processing", "completed", "failed"] as const;
 
@@ -626,15 +626,6 @@ function normalizeTimestamp(value: unknown) {
   const timestamp = Date.parse(value);
 
   return Number.isNaN(timestamp) ? null : new Date(timestamp).toISOString();
-}
-
-function readString(value: unknown) {
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function readOptionalString(value: unknown) {
-  const text = readString(value);
-  return text || undefined;
 }
 
 function isTaskQueueType(value: unknown): value is TaskQueueType {

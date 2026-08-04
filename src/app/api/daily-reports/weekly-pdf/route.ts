@@ -13,6 +13,7 @@ import { readProjectControls } from "@/lib/project-controls-store";
 import { getProjects } from "@/lib/project-catalog/projects";
 import { addDaysToInputDate, getWeekStart } from "@/lib/date";
 import { getDayKey, isIsoDate } from "@/lib/day-key";
+import { readString } from "@/lib/records";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -138,8 +139,4 @@ export async function POST(request: NextRequest) {
 
 function normalizeStringList(value: unknown) {
   return Array.isArray(value) ? Array.from(new Set(value.map(readString).filter(Boolean))) : [];
-}
-
-function readString(value: unknown) {
-  return typeof value === "string" ? value.trim() : "";
 }

@@ -23,6 +23,7 @@ import { isIsoDate } from "@/lib/day-key";
 import { getProjects } from "@/lib/project-catalog/projects";
 import { backfillReportRollupsIfEmpty, readDailyWorkRollupSourceRows } from "@/lib/report-rollups";
 import type { CrewLaborType, Project } from "@/lib/domain/types";
+import { readString } from "@/lib/records";
 
 const DEFAULT_PAGE_SIZE_BY_MODE: Record<ReportMode, number> = {
   crew: 25,
@@ -287,10 +288,6 @@ function parsePositiveInteger(value: unknown, fallback: number) {
 
 function normalizeStringList(values: unknown) {
   return Array.from(new Set(Array.isArray(values) ? values.map(readString).filter(Boolean) : []));
-}
-
-function readString(value: unknown) {
-  return typeof value === "string" ? value.trim() : "";
 }
 
 type ReportRequestBody = {

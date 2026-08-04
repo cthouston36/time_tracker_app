@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/session";
 import { readDailyReportData } from "@/lib/daily-report-store";
 import { listUnresolvedFailedJobImageUploads } from "@/lib/job-image-store";
-import { isRecord } from "@/lib/records";
+import { isRecord, readString } from "@/lib/records";
 
 export const runtime = "nodejs";
 
@@ -81,8 +81,4 @@ function parseDayKey(dayKey: string) {
     date,
     projectId
   };
-}
-
-function readString(value: unknown) {
-  return typeof value === "string" ? value.trim() : "";
 }
