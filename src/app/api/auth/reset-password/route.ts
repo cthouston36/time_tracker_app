@@ -3,6 +3,7 @@ import { getAuditRequestMetadata, recordAuditLog } from "@/lib/audit-log";
 import {
   checkLoginRateLimit,
   clearLoginRateLimit,
+  formatRateLimitRetryAfter,
   getRequestIp,
   recordFailedLoginAttempt
 } from "@/lib/auth/login-rate-limit";
@@ -83,7 +84,7 @@ export async function POST(request: NextRequest) {
 function rateLimitedResponse(retryAfterSeconds = 15 * 60) {
   return NextResponse.json(
     {
-      error: `Too many failed reset attempts. Try again in ${formatRetryAfter(retryAfterSeconds)}.`
+      error: `Too many failed reset attempts. Try again in ${formatRateLimitRetryAfter(retryAfterSeconds)}.`
     },
     {
       headers: {
@@ -92,10 +93,4 @@ function rateLimitedResponse(retryAfterSeconds = 15 * 60) {
       status: 429
     }
   );
-}
-
-function formatRetryAfter(seconds: number) {
-  const minutes = Math.max(1, Math.ceil(seconds / 60));
-
-  return `${minutes} minute${minutes === 1 ? "" : "s"}`;
 }

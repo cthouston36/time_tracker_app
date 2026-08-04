@@ -156,6 +156,12 @@ export function getRequestIp(headers: Headers) {
   return forwardedFor || realIp || "unknown";
 }
 
+export function formatRateLimitRetryAfter(seconds: number) {
+  const minutes = Math.max(1, Math.ceil(seconds / 60));
+
+  return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+}
+
 function checkInMemoryLoginRateLimit(keys: string[]) {
   cleanupExpiredInMemoryLoginRateLimits();
 
