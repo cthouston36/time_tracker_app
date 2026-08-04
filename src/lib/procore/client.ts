@@ -1,3 +1,5 @@
+import { formatRetryAfter } from "@/lib/procore/retry-after";
+
 type ProcoreClientOptions = {
   accessToken?: string;
   baseUrl?: string;
@@ -45,14 +47,4 @@ export class ProcoreClient {
 
     return (await response.json()) as TResponse;
   }
-}
-
-function formatRetryAfter(value: string) {
-  const seconds = Number(value);
-
-  if (Number.isFinite(seconds)) {
-    return new Date(Date.now() + seconds * 1000).toLocaleTimeString();
-  }
-
-  return value;
 }

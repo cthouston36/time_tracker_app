@@ -1,5 +1,6 @@
 import { getProcoreConfig } from "@/lib/procore/config";
 import { getProcoreIntegrationAccessToken } from "@/lib/procore/session";
+import { formatRetryAfter } from "@/lib/procore/retry-after";
 import { buildDailyReportPdf, buildDailyReportPdfFileName } from "@/lib/daily-report-pdf";
 import { getSql } from "@/lib/db";
 import type { Project } from "@/lib/domain/types";
@@ -1288,16 +1289,6 @@ function isPossiblyStaleCachedFolderError(error: unknown) {
     [400, 404, 422].includes(error.status) &&
     error.stage?.includes("create project file")
   );
-}
-
-function formatRetryAfter(value: string) {
-  const seconds = Number(value);
-
-  if (Number.isFinite(seconds)) {
-    return new Date(Date.now() + seconds * 1000).toLocaleTimeString();
-  }
-
-  return value;
 }
 
 function parseRetryAfterMs(value: string | null) {
