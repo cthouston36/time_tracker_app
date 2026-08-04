@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ListChecks, RefreshCw, Trash2, Wrench } from "lucide-react";
 import { formatStatusDateTime } from "@/lib/date";
+import { readApiJson } from "@/features/time-allocation/lib/api-utils";
 
 type DataMaintenanceIssue = {
   count: number;
@@ -364,22 +365,4 @@ function formatMaintenanceCleanupNotice(data: DataMaintenanceActionResponse) {
   return `Maintenance records cleaned: ${cleanup.taskQueue.total} queue row${cleanup.taskQueue.total === 1 ? "" : "s"} and ${
     cleanup.resolvedFailedImageUploads
   } resolved image failure${cleanup.resolvedFailedImageUploads === 1 ? "" : "s"}.`;
-}
-
-async function readApiJson(response: Response) {
-  const text = await response.text();
-
-  if (!text) {
-    return {};
-  }
-
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    if (!response.ok) {
-      return { error: text };
-    }
-
-    throw new Error("Server returned an invalid JSON response.");
-  }
 }

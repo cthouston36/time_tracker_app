@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { ListChecks, RefreshCw } from "lucide-react";
 import { formatStatusDateTime } from "@/lib/date";
 import type { Project } from "@/lib/domain/types";
+import { readApiJson } from "@/features/time-allocation/lib/api-utils";
 import { formatUserName } from "@/features/time-allocation/lib/auth-ui-helpers";
 import { sortProjectsByName } from "@/features/time-allocation/lib/selectors";
 import type { ManagedAppUser } from "@/features/time-allocation/types";
@@ -282,22 +283,4 @@ function formatAuditMetadataValue(value: unknown): string {
   }
 
   return String(value);
-}
-
-async function readApiJson(response: Response) {
-  const text = await response.text();
-
-  if (!text) {
-    return {};
-  }
-
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    if (!response.ok) {
-      return { error: text };
-    }
-
-    throw new Error("Server returned an invalid JSON response.");
-  }
 }

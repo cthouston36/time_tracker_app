@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { ExternalLink, RefreshCw, UploadCloud } from "lucide-react";
 import { formatDate, formatStatusDateTime } from "@/lib/date";
 import type { Project } from "@/lib/domain/types";
+import { readApiJson } from "@/features/time-allocation/lib/api-utils";
 
 type AdminFailedUploadDailyReport = {
   attemptedAt?: string;
@@ -192,22 +193,4 @@ async function loadAdminFailedUploads() {
   }
 
   return data;
-}
-
-async function readApiJson(response: Response) {
-  const text = await response.text();
-
-  if (!text) {
-    return {};
-  }
-
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    if (!response.ok) {
-      return { error: text };
-    }
-
-    throw new Error("Server returned an invalid JSON response.");
-  }
 }
