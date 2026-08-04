@@ -80,11 +80,14 @@ import { getDefaultViewModeForUser } from "@/features/time-allocation/lib/auth-u
 import {
   buildCrewSummary,
   draftHasAnyInput,
-  draftIsSaveable,
-  getExistingDraft,
-  normalizeDraftCrewHours,
-  splitCrewHoursEvenly
+  draftIsSaveable
 } from "@/features/time-allocation/lib/crew-entry-helpers";
+import {
+  setPayItemDraftCrewMember,
+  splitPayItemDraftCrewHoursEvenly,
+  updatePayItemDraftCrewHours,
+  updatePayItemDraftValue
+} from "@/features/time-allocation/lib/pay-item-draft-updates";
 import {
   buildNetSuiteProjectManagerOptions,
   filterActiveProjects,
@@ -1253,70 +1256,21 @@ export function TimeAllocationWorkspace() {
 
   function updateDraft(payItemId: string, field: "hours" | "quantity", value: string) {
     setEntryNotice("");
-    setDraftsByPayItem((current) => {
-      const draft = getExistingDraft(current[payItemId], payItemId, visibleEntries);
-
-      return {
-        ...current,
-        [payItemId]: normalizeDraftCrewHours({
-          ...draft,
-          [field]: value
-        })
-      };
-    });
+    setDraftsByPayItem((current) => updatePayItemDraftValue(current, payItemId, visibleEntries, field, value));
   }
 
   function toggleDraftCrewMember(payItemId: string, crewMemberId: string, checked: boolean) {
     setEntryNotice("");
-    setDraftsByPayItem((current) => {
-      const draft = getExistingDraft(current[payItemId], payItemId, visibleEntries);
-      const crewMemberIds = checked
-        ? Array.from(new Set([...draft.crewMemberIds, crewMemberId]))
-        : draft.crewMemberIds.filter((id) => id !== crewMemberId);
-      const crewHours = { ...draft.crewHours };
-
-      if (!checked) {
-        delete crewHours[crewMemberId];
-      }
-
-      return {
-        ...current,
-        [payItemId]: normalizeDraftCrewHours({
-          ...draft,
-          crewMemberIds,
-          crewHours
-        })
-      };
-    });
+    setDraftsByPayItem((current) => setPayItemDraftCrewMember(current, payItemId, visibleEntries, crewMemberId, checked));
   }
 
   function updateDraftCrewHours(payItemId: string, crewMemberId: string, value: string) {
     setEntryNotice("");
-    setDraftsByPayItem((current) => {
-      const draft = getExistingDraft(current[payItemId], payItemId, visibleEntries);
-
-      return {
-        ...current,
-        [payItemId]: normalizeDraftCrewHours({
-          ...draft,
-          crewHours: {
-            ...draft.crewHours,
-            [crewMemberId]: value
-          }
-        })
-      };
-    });
+    setDraftsByPayItem((current) => updatePayItemDraftCrewHours(current, payItemId, visibleEntries, crewMemberId, value));
   }
 
   function splitDraftCrewHoursEvenly(payItemId: string) {
-    setDraftsByPayItem((current) => {
-      const draft = getExistingDraft(current[payItemId], payItemId, visibleEntries);
-
-      return {
-        ...current,
-        [payItemId]: splitCrewHoursEvenly(draft)
-      };
-    });
+    setDraftsByPayItem((current) => splitPayItemDraftCrewHoursEvenly(current, payItemId, visibleEntries));
   }
 
   function exportAllEntryDetails() {
