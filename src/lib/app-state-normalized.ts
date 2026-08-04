@@ -1,7 +1,13 @@
 import { isIsoDate } from "@/lib/day-key";
 import { readValidTimestamp } from "@/lib/date";
 import { getSql } from "@/lib/db";
-import { readNullableNumber as readValueNullableNumber, readNumber as readValueNumber } from "@/lib/records";
+import {
+  asRecord,
+  readNullableRecordNumber,
+  readNullableRecordString,
+  readRecordNumber,
+  readRecordString
+} from "@/lib/records";
 import {
   clearReportRollups,
   rebuildDailyReportRollups,
@@ -897,34 +903,24 @@ function parseDayKey(dayKey: string) {
   return { projectId, date };
 }
 
-function asRecord(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return {};
-  }
-
-  return value as Record<string, unknown>;
-}
-
 function asArray<TValue>(value: unknown): TValue[] {
   return Array.isArray(value) ? (value as TValue[]) : [];
 }
 
 function readString(record: Record<string, unknown>, key: string) {
-  const value = record[key];
-  return typeof value === "string" ? value.trim() : "";
+  return readRecordString(record, key);
 }
 
 function readNullableString(record: Record<string, unknown>, key: string) {
-  const value = readString(record, key);
-  return value || null;
+  return readNullableRecordString(record, key);
 }
 
 function readNumber(record: Record<string, unknown>, key: string) {
-  return readValueNumber(record[key]);
+  return readRecordNumber(record, key);
 }
 
 function readNullableNumber(record: Record<string, unknown>, key: string) {
-  return readValueNullableNumber(record[key]);
+  return readNullableRecordNumber(record, key);
 }
 
 function readNullableTimestamp(record: Record<string, unknown>, key: string) {

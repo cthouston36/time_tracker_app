@@ -6,6 +6,13 @@ import {
 } from "@/lib/report-rollups";
 import { getDayKey, isIsoDate, parseIsoDayKey } from "@/lib/day-key";
 import { readValidTimestamp } from "@/lib/date";
+import {
+  asRecord,
+  readNullableRecordString,
+  readRecordString,
+  readString,
+  readStringList
+} from "@/lib/records";
 
 export type StoredDailyReportsByKey = Record<string, Record<string, unknown>>;
 export type StoredDailyReportUploadsByKey = Record<string, Record<string, unknown>>;
@@ -92,7 +99,7 @@ export async function readDailyReportsForRange({
 
   await ensureDailyReportTables();
 
-  const normalizedProjectIds = normalizeStringList(projectIds);
+  const normalizedProjectIds = readStringList(projectIds);
 
   if (normalizedProjectIds.length === 0) {
     return [];
@@ -154,8 +161,8 @@ export async function replaceDailyReportData(
       values (
         ${report.projectId},
         ${report.date}::date,
-        ${readNullableString(report.value, "createdByUserId")},
-        ${readNullableString(report.value, "createdByName")},
+        ${readNullableRecordString(report.value, "createdByUserId")},
+        ${readNullableRecordString(report.value, "createdByName")},
         ${readNullableTimestamp(report.value, "createdAt")}::timestamptz,
         ${readNullableTimestamp(report.value, "updatedAt")}::timestamptz,
         ${JSON.stringify(report.value)}::jsonb,
@@ -179,9 +186,9 @@ export async function replaceDailyReportData(
       values (
         ${upload.projectId},
         ${upload.date}::date,
-        ${readString(upload.value, "fileName")},
-        ${readString(upload.value, "folderPath")},
-        ${readNullableString(upload.value, "procoreFileId")},
+        ${readRecordString(upload.value, "fileName")},
+        ${readRecordString(upload.value, "folderPath")},
+        ${readNullableRecordString(upload.value, "procoreFileId")},
         ${readNullableTimestamp(upload.value, "uploadedAt")}::timestamptz,
         ${JSON.stringify(upload.value)}::jsonb,
         now()
@@ -207,8 +214,8 @@ export async function upsertDailyReport(projectId: string, date: string, dailyRe
 
   await ensureDailyReportTables();
 
-  const normalizedProjectId = readPlainString(projectId);
-  const normalizedDate = readPlainString(date);
+  const normalizedProjectId = readString(projectId);
+  const normalizedDate = readString(date);
   const report = {
     ...asRecord(dailyReport),
     date: normalizedDate,
@@ -233,8 +240,8 @@ export async function upsertDailyReport(projectId: string, date: string, dailyRe
     values (
       ${normalizedProjectId},
       ${normalizedDate}::date,
-      ${readNullableString(report, "createdByUserId")},
-      ${readNullableString(report, "createdByName")},
+      ${readNullableRecordString(report, "createdByUserId")},
+      ${readNullableRecordString(report, "createdByName")},
       ${readNullableTimestamp(report, "createdAt")}::timestamptz,
       ${readNullableTimestamp(report, "updatedAt")}::timestamptz,
       ${JSON.stringify(report)}::jsonb,
@@ -268,11 +275,11 @@ export async function upsertDailyReportUpload(
 
   await ensureDailyReportTables();
 
-  const normalizedProjectId = readPlainString(projectId);
-  const normalizedDate = readPlainString(date);
+  const normalizedProjectId = readString(projectId);
+  const normalizedDate = readString(date);
   const upload = asRecord(dailyReportUpload);
 
-  if (!normalizedProjectId || !isIsoDate(normalizedDate) || !readString(upload, "fileName") || !readString(upload, "folderPath")) {
+  if (!normalizedProjectId || !isIsoDate(normalizedDate) || !readRecordString(upload, "fileName") || !readRecordString(upload, "folderPath")) {
     return false;
   }
 
@@ -290,9 +297,9 @@ export async function upsertDailyReportUpload(
     values (
       ${normalizedProjectId},
       ${normalizedDate}::date,
-      ${readString(upload, "fileName")},
-      ${readString(upload, "folderPath")},
-      ${readNullableString(upload, "procoreFileId")},
+      ${readRecordString(upload, "fileName")},
+      ${readRecordString(upload, "folderPath")},
+      ${readNullableRecordString(upload, "procoreFileId")},
       ${readNullableTimestamp(upload, "uploadedAt")}::timestamptz,
       ${JSON.stringify(upload)}::jsonb,
       now()
@@ -321,8 +328,8 @@ export async function deleteDailyReportUpload(projectId: string, date: string) {
 
   await ensureDailyReportTables();
 
-  const normalizedProjectId = readPlainString(projectId);
-  const normalizedDate = readPlainString(date);
+  const normalizedProjectId = readString(projectId);
+  const normalizedDate = readString(date);
 
   if (!normalizedProjectId || !isIsoDate(normalizedDate)) {
     return false;
@@ -398,8 +405,8 @@ function normalizeDailyReportsByKey(dailyReportsByKey: StoredDailyReportsByKey) 
   return Object.entries(dailyReportsByKey).flatMap(([dayKey, value]) => {
     const parsedDayKey = parseIsoDayKey(dayKey);
     const report = asRecord(value);
-    const projectId = readString(report, "projectId") || parsedDayKey?.projectId;
-    const date = readString(report, "date") || parsedDayKey?.date;
+    const projectId = readRecordString(report, "projectId") || parsedDayKey?.projectId;
+    const date = readRecordString(report, "date") || parsedDayKey?.date;
 
     if (!projectId || !isIsoDate(date)) {
       return [];
@@ -424,7 +431,7 @@ function normalizeDailyReportUploadsByKey(dailyReportUploadsByKey: StoredDailyRe
     const parsedDayKey = parseIsoDayKey(dayKey);
     const upload = asRecord(value);
 
-    if (!parsedDayKey || !readString(upload, "fileName") || !readString(upload, "folderPath")) {
+    if (!parsedDayKey || !readRecordString(upload, "fileName") || !readRecordString(upload, "folderPath")) {
       return [];
     }
 
@@ -443,39 +450,13 @@ function normalizeReportForClient(report: unknown, projectId: string, date: stri
 
   return {
     ...reportRecord,
-    date: readString(reportRecord, "date") || date,
-    projectId: readString(reportRecord, "projectId") || projectId
+    date: readRecordString(reportRecord, "date") || date,
+    projectId: readRecordString(reportRecord, "projectId") || projectId
   };
 }
 
 function normalizeUploadForClient(upload: unknown) {
   return asRecord(upload);
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return {};
-  }
-
-  return value as Record<string, unknown>;
-}
-
-function readString(record: Record<string, unknown>, key: string) {
-  const value = record[key];
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function readPlainString(value: unknown) {
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function normalizeStringList(values: string[]) {
-  return Array.from(new Set(values.map(readPlainString).filter(Boolean)));
-}
-
-function readNullableString(record: Record<string, unknown>, key: string) {
-  const value = readString(record, key);
-  return value || null;
 }
 
 function readNullableTimestamp(record: Record<string, unknown>, key: string) {

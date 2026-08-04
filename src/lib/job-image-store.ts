@@ -1,6 +1,7 @@
 import { isIsoDate } from "@/lib/day-key";
 import { getSql } from "@/lib/db";
 import { rebuildPmSummaryRollups, refreshPmSummaryRollupsForDays } from "@/lib/report-rollups";
+import { asRecord, readOptionalRecordString, readRecordString, readString } from "@/lib/records";
 
 export type StoredJobImageUploadStatus = "failed" | "processing" | "queued" | "uploaded";
 
@@ -57,8 +58,8 @@ export async function readJobImageUploads(projectId: string, date: string) {
     return null;
   }
 
-  const normalizedProjectId = readPlainString(projectId);
-  const normalizedDate = readPlainString(date);
+  const normalizedProjectId = readString(projectId);
+  const normalizedDate = readString(date);
 
   if (!normalizedProjectId || !isIsoDate(normalizedDate)) {
     return [];
@@ -103,8 +104,8 @@ export async function countJobImageUploads(projectId: string, date: string) {
     return null;
   }
 
-  const normalizedProjectId = readPlainString(projectId);
-  const normalizedDate = readPlainString(date);
+  const normalizedProjectId = readString(projectId);
+  const normalizedDate = readString(date);
 
   if (!normalizedProjectId || !isIsoDate(normalizedDate)) {
     return 0;
@@ -130,8 +131,8 @@ export async function countReservedJobImageUploadSlots(projectId: string, date: 
     return null;
   }
 
-  const normalizedProjectId = readPlainString(projectId);
-  const normalizedDate = readPlainString(date);
+  const normalizedProjectId = readString(projectId);
+  const normalizedDate = readString(date);
 
   if (!normalizedProjectId || !isIsoDate(normalizedDate)) {
     return 0;
@@ -434,11 +435,11 @@ async function ensureJobImageUploadTable() {
 function normalizeJobImageUpload(upload: StoredJobImageUpload) {
   const normalizedUpload = {
     ...upload,
-    date: readPlainString(upload.date),
-    fileName: readPlainString(upload.fileName),
-    folderPath: readPlainString(upload.folderPath),
-    id: readPlainString(upload.id),
-    projectId: readPlainString(upload.projectId),
+    date: readString(upload.date),
+    fileName: readString(upload.fileName),
+    folderPath: readString(upload.folderPath),
+    id: readString(upload.id),
+    projectId: readString(upload.projectId),
     status: normalizeUploadStatus(upload.status)
   } satisfies StoredJobImageUpload;
 
@@ -459,43 +460,25 @@ function normalizeJobImageUploadRow(row: JobImageUploadRow): StoredJobImageUploa
   const rawUpload = asRecord(row.raw_upload);
 
   return {
-    id: readString(rawUpload, "id") || row.id,
-    projectId: readString(rawUpload, "projectId") || row.project_id,
-    date: readString(rawUpload, "date") || row.date,
-    fileName: readString(rawUpload, "fileName") || row.file_name,
-    originalFileName: readOptionalString(rawUpload, "originalFileName") ?? row.original_file_name ?? undefined,
-    caption: readOptionalString(rawUpload, "caption") ?? row.caption ?? undefined,
-    contentType: readOptionalString(rawUpload, "contentType") ?? row.content_type ?? undefined,
+    id: readRecordString(rawUpload, "id") || row.id,
+    projectId: readRecordString(rawUpload, "projectId") || row.project_id,
+    date: readRecordString(rawUpload, "date") || row.date,
+    fileName: readRecordString(rawUpload, "fileName") || row.file_name,
+    originalFileName: readOptionalRecordString(rawUpload, "originalFileName") ?? row.original_file_name ?? undefined,
+    caption: readOptionalRecordString(rawUpload, "caption") ?? row.caption ?? undefined,
+    contentType: readOptionalRecordString(rawUpload, "contentType") ?? row.content_type ?? undefined,
     fileSizeBytes: readOptionalNumber(rawUpload, "fileSizeBytes") ?? row.file_size_bytes ?? undefined,
-    folderId: readOptionalString(rawUpload, "folderId") ?? row.folder_id ?? undefined,
-    folderPath: readString(rawUpload, "folderPath") || row.folder_path,
-    folderUrl: readOptionalString(rawUpload, "folderUrl") ?? row.folder_url ?? undefined,
-    procoreFileId: readOptionalString(rawUpload, "procoreFileId") ?? row.procore_file_id ?? undefined,
+    folderId: readOptionalRecordString(rawUpload, "folderId") ?? row.folder_id ?? undefined,
+    folderPath: readRecordString(rawUpload, "folderPath") || row.folder_path,
+    folderUrl: readOptionalRecordString(rawUpload, "folderUrl") ?? row.folder_url ?? undefined,
+    procoreFileId: readOptionalRecordString(rawUpload, "procoreFileId") ?? row.procore_file_id ?? undefined,
     status: normalizeUploadStatus(row.status),
-    error: readOptionalString(rawUpload, "error") ?? row.error ?? undefined,
-    uploadedByUserId: readOptionalString(rawUpload, "uploadedByUserId") ?? row.uploaded_by_user_id ?? undefined,
-    uploadedByName: readOptionalString(rawUpload, "uploadedByName") ?? row.uploaded_by_name ?? undefined,
-    uploadedAt: readOptionalString(rawUpload, "uploadedAt") ?? readTimestampString(row.uploaded_at),
-    attemptedAt: readOptionalString(rawUpload, "attemptedAt") ?? readTimestampString(row.attempted_at)
+    error: readOptionalRecordString(rawUpload, "error") ?? row.error ?? undefined,
+    uploadedByUserId: readOptionalRecordString(rawUpload, "uploadedByUserId") ?? row.uploaded_by_user_id ?? undefined,
+    uploadedByName: readOptionalRecordString(rawUpload, "uploadedByName") ?? row.uploaded_by_name ?? undefined,
+    uploadedAt: readOptionalRecordString(rawUpload, "uploadedAt") ?? readTimestampString(row.uploaded_at),
+    attemptedAt: readOptionalRecordString(rawUpload, "attemptedAt") ?? readTimestampString(row.attempted_at)
   };
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return {};
-  }
-
-  return value as Record<string, unknown>;
-}
-
-function readString(record: Record<string, unknown>, key: string) {
-  const value = record[key];
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function readOptionalString(record: Record<string, unknown>, key: string) {
-  const value = readString(record, key);
-  return value || undefined;
 }
 
 function readOptionalNumber(record: Record<string, unknown>, key: string) {
@@ -506,10 +489,6 @@ function readOptionalNumber(record: Record<string, unknown>, key: string) {
   }
 
   return undefined;
-}
-
-function readPlainString(value: unknown) {
-  return typeof value === "string" ? value.trim() : "";
 }
 
 function readTimestampString(value: unknown) {
