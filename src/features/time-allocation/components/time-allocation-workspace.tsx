@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   CalendarDays,
   Edit3,
@@ -31,8 +31,6 @@ import { MatrixFullscreenModal } from "@/features/time-allocation/components/ent
 import { DailyWrapUpSection } from "@/features/time-allocation/components/entry/daily-wrap-up-section";
 import { ReviewSubmitPanel } from "@/features/time-allocation/components/entry/review-submit-panel";
 import {
-  clearDatabaseProjectCatalog,
-  clearDatabaseStagingOperationalData,
   logoutCurrentUserSession,
   saveDatabaseMyJobs,
   saveDatabaseProjectArchive,
@@ -84,6 +82,7 @@ import type {
   SharedAppState
 } from "@/features/time-allocation/types";
 import { useNetworkStatus } from "@/features/time-allocation/hooks/use-network-status";
+import { useAdminMaintenanceActions } from "@/features/time-allocation/hooks/use-admin-maintenance-actions";
 import { useAdminUserManagement } from "@/features/time-allocation/hooks/use-admin-user-management";
 import { useAuthForms } from "@/features/time-allocation/hooks/use-auth-forms";
 import { useCrewManagement } from "@/features/time-allocation/hooks/use-crew-management";
@@ -142,9 +141,6 @@ export function TimeAllocationWorkspace() {
   const [projectLoadError, setProjectLoadError] = useState("");
   const [loadingProjects, setLoadingProjects] = useState(false);
   const [entryNotice, setEntryNotice] = useState("");
-  const [clearingStagingData, setClearingStagingData] = useState(false);
-  const [clearingProjectCatalog, setClearingProjectCatalog] = useState(false);
-  const [adminMaintenanceNotice, setAdminMaintenanceNotice] = useState<{ message: string; status: "success" | "error" } | null>(null);
   const networkStatus = useNetworkStatus();
   const userIsOffline = networkStatus.checked && !networkStatus.online;
   const mobileInstallPrompt = useMobileInstallPrompt(Boolean(currentUser));
@@ -182,7 +178,23 @@ export function TimeAllocationWorkspace() {
   const payItemEntryPanelRef = useRef<HTMLDivElement>(null);
   const saveDailyReportRef = useRef<(() => Promise<void>) | null>(null);
   const saveAllocationEntriesRef = useRef<(() => Promise<void>) | null>(null);
+  const stagingOperationalDataClearedRef = useRef<() => void>(() => {});
+  const projectCatalogClearedRef = useRef<() => void>(() => {});
   const { confirmAction, confirmationDialog } = useConfirmationDialog();
+  const {
+    adminMaintenanceNotice,
+    clearingProjectCatalog,
+    clearingStagingData,
+    clearProjectCatalogData,
+    clearStagingOperationalData,
+    setAdminMaintenanceNotice
+  } = useAdminMaintenanceActions({
+    confirmAction,
+    currentUser,
+    onProjectCatalogCleared: () => projectCatalogClearedRef.current(),
+    onStagingOperationalDataCleared: () => stagingOperationalDataClearedRef.current(),
+    userIsOffline
+  });
 
   const handleLoginSuccess = useCallback((user: AuthUser) => {
     setCurrentUser(user);
@@ -569,6 +581,26 @@ export function TimeAllocationWorkspace() {
     return true;
   }
 
+  stagingOperationalDataClearedRef.current = () => {
+    setEntries([]);
+    setDaySubmissions({});
+    setDayEntryNotesByKey({});
+    resetDailyReportState({ clearAutosaves: true });
+    resetCrewManagementState();
+    cancelEditingEntry();
+    setDraftsByPayItem({});
+    setEntryNotice("Staging daily entry, daily report, and crew data cleared.");
+  };
+
+  projectCatalogClearedRef.current = () => {
+    setAllProjects([]);
+    setSelectedProjectId("");
+    resetProjectSyncState();
+    setDraftsByPayItem({});
+    setProjectLoadError("");
+    setConnectionStatus("No project catalog data");
+  };
+
   saveDailyReportRef.current = saveDailyReport;
   saveAllocationEntriesRef.current = saveAllocationEntries;
 
@@ -691,13 +723,6 @@ export function TimeAllocationWorkspace() {
     onWorkDateChange: setWorkDate
   });
 
-  useEffect(() => {
-    if (currentUser?.role !== "admin") {
-      setClearingStagingData(false);
-      setAdminMaintenanceNotice(null);
-    }
-  }, [currentUser?.role]);
-
   useLastSelectedProjectStorage(currentUser?.id, selectedProjectId);
 
   useSharedAppStatePersistence({
@@ -750,119 +775,6 @@ export function TimeAllocationWorkspace() {
     setProjectBlacklistById({});
     resetCrewManagementState();
     setViewMode("dashboard");
-  }
-
-  async function clearStagingOperationalData() {
-    if (currentUser?.role !== "admin") {
-      return;
-    }
-
-    if (shouldBlockOfflineAction((message) => {
-      setAdminMaintenanceNotice({ message, status: "error" });
-    })) {
-      return;
-    }
-
-    if (
-      !(await confirmAction({
-        cancelLabel: "Keep staging data",
-        confirmLabel: "Clear staging data",
-        description: "Clear staging daily data?",
-        details: [
-          "This permanently removes daily pay item entries, submitted/draft day statuses, daily notes, daily reports, daily report upload status, and all crew members/crew project assignments.",
-          "It keeps user profiles/passwords, project catalog jobs/pay items, sync state/log, project blacklist, and My Projects."
-        ],
-        title: "Clear staging daily data",
-        tone: "danger"
-      }))
-    ) {
-      return;
-    }
-
-    setClearingStagingData(true);
-    setAdminMaintenanceNotice(null);
-
-    try {
-      const data = await clearDatabaseStagingOperationalData();
-
-      setEntries([]);
-      setDaySubmissions({});
-      setDayEntryNotesByKey({});
-      resetDailyReportState({ clearAutosaves: true });
-      resetCrewManagementState();
-      cancelEditingEntry();
-      setDraftsByPayItem({});
-      setEntryNotice("Staging daily entry, daily report, and crew data cleared.");
-      setAdminMaintenanceNotice({
-        message: data.databaseConfigured
-          ? "Staging data cleared. Users, project catalog jobs/pay items, sync state, blacklist, and My Projects were preserved."
-          : "Local staging data cleared.",
-        status: "success"
-      });
-    } catch (error) {
-      setAdminMaintenanceNotice({
-        message: error instanceof Error ? error.message : "Unable to clear staging data.",
-        status: "error"
-      });
-    } finally {
-      setClearingStagingData(false);
-    }
-  }
-
-  async function clearProjectCatalogData() {
-    if (currentUser?.role !== "admin") {
-      return;
-    }
-
-    if (shouldBlockOfflineAction((message) => {
-      setAdminMaintenanceNotice({ message, status: "error" });
-    })) {
-      return;
-    }
-
-    if (
-      !(await confirmAction({
-        cancelLabel: "Keep project catalog",
-        confirmLabel: "Clear catalog",
-        description: "Clear project catalog jobs and pay items?",
-        details: [
-          "This permanently removes the current project catalog jobs/pay items and the legacy catalog fallback.",
-          "It keeps users, passwords, daily entries, daily reports, crew records, sync log, project blacklist, and My Projects."
-        ],
-        title: "Clear project catalog",
-        tone: "danger"
-      }))
-    ) {
-      return;
-    }
-
-    setClearingProjectCatalog(true);
-    setAdminMaintenanceNotice(null);
-
-    try {
-      const data = await clearDatabaseProjectCatalog();
-      const cleared = data.cleared;
-      const projectCount = cleared?.projects ?? 0;
-      const payItemCount = cleared?.payItems ?? 0;
-
-      setAllProjects([]);
-      setSelectedProjectId("");
-      resetProjectSyncState();
-      setDraftsByPayItem({});
-      setProjectLoadError("");
-      setConnectionStatus("No project catalog data");
-      setAdminMaintenanceNotice({
-        message: `Project catalog cleared. Removed ${projectCount} job${projectCount === 1 ? "" : "s"} and ${payItemCount} pay item${payItemCount === 1 ? "" : "s"}. Sync from NetSuite to reload jobs.`,
-        status: "success"
-      });
-    } catch (error) {
-      setAdminMaintenanceNotice({
-        message: error instanceof Error ? error.message : "Unable to clear the project catalog.",
-        status: "error"
-      });
-    } finally {
-      setClearingProjectCatalog(false);
-    }
   }
 
   function setCurrentUserMyJobIds(jobIds: string[]) {
