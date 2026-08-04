@@ -33,11 +33,6 @@ import { ReviewSubmitPanel } from "@/features/time-allocation/components/entry/r
 import {
   clearDatabaseProjectCatalog,
   clearDatabaseStagingOperationalData,
-  loadDatabaseCrewData,
-  loadDatabaseDailyReportData,
-  loadDatabaseDayRecords,
-  loadDatabaseEntries,
-  loadDatabaseProjectControls,
   loadCurrentUserSession,
   loadProcoreUploadStatus,
   loadProjectCatalog,
@@ -51,12 +46,7 @@ import {
   getDailyReportEmployeeTotalHours
 } from "@/features/time-allocation/lib/daily-report-helpers";
 import { exportEntriesToCsv } from "@/features/time-allocation/lib/entry-csv-export";
-import {
-  buildSharedAppState,
-  normalizeSharedAppState,
-  readLocalSharedAppState,
-  writeLocalSharedAppState
-} from "@/features/time-allocation/lib/app-state-storage";
+import { normalizeSharedAppState } from "@/features/time-allocation/lib/app-state-storage";
 import {
   clearPendingProcoreReturn,
   getLastProjectStorageKey,
@@ -119,6 +109,7 @@ import { useNetSuiteVendors } from "@/features/time-allocation/hooks/use-netsuit
 import { useProjectSelectionGuards } from "@/features/time-allocation/hooks/use-project-selection-guards";
 import { useProjectSync } from "@/features/time-allocation/hooks/use-project-sync";
 import { useRetiredViewRedirect } from "@/features/time-allocation/hooks/use-retired-view-redirect";
+import { useSharedAppStatePersistence } from "@/features/time-allocation/hooks/use-shared-app-state-persistence";
 import { useSyncLogStorage } from "@/features/time-allocation/hooks/use-sync-log-storage";
 import { useUnsavedChangesWarning } from "@/features/time-allocation/hooks/use-unsaved-changes-warning";
 import { useWorkspaceKeyboardShortcuts } from "@/features/time-allocation/hooks/use-workspace-keyboard-shortcuts";
@@ -781,100 +772,23 @@ export function TimeAllocationWorkspace() {
 
   useLastSelectedProjectStorage(currentUser?.id, selectedProjectId);
 
-  useEffect(() => {
-    if (!currentUser) {
-      setAppStateHydrated(false);
-      return;
-    }
-
-    let cancelled = false;
-
-    async function loadAppState() {
-      setAppStateHydrated(false);
-
-      try {
-        const [
-          databaseEntries,
-          databaseCrewData,
-          databaseDailyReportData,
-          databaseDayRecords,
-          databaseProjectControls
-        ] = await Promise.all([
-          loadDatabaseEntries(),
-          loadDatabaseCrewData(),
-          loadDatabaseDailyReportData(),
-          loadDatabaseDayRecords(),
-          loadDatabaseProjectControls()
-        ]);
-
-        if (cancelled) {
-          return;
-        }
-
-        const sharedState = readLocalSharedAppState();
-        const nextState = {
-          ...sharedState,
-          ...(databaseEntries ? { entries: databaseEntries } : {}),
-          ...(databaseCrewData ?? {}),
-          ...(databaseDailyReportData ?? {}),
-          ...(databaseDayRecords ?? {}),
-          ...(databaseProjectControls ?? {})
-        };
-
-        applySharedAppState(nextState);
-      } catch {
-        if (!cancelled) {
-          applySharedAppState(readLocalSharedAppState());
-        }
-      } finally {
-        if (!cancelled) {
-          setAppStateHydrated(true);
-        }
-      }
-    }
-
-    void loadAppState();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [applySharedAppState, currentUser]);
-
-  useEffect(() => {
-    if (!currentUser || !appStateHydrated) {
-      return;
-    }
-
-    const sharedAppState = buildSharedAppState({
-      crewDirectory,
-      crewMembersByProject,
-      dailyReportUploadsByKey,
-      dailyReportsByKey,
-      dayEntryNotesByKey,
-      daySubmissions,
-      entries,
-      myJobsByUser,
-      projectArchiveById,
-      projectBlacklistById,
-      syncLog
-    });
-
-    writeLocalSharedAppState(sharedAppState);
-  }, [
+  useSharedAppStatePersistence({
     appStateHydrated,
-    currentUser,
     crewDirectory,
     crewMembersByProject,
-    dayEntryNotesByKey,
-    daySubmissions,
+    currentUser,
     dailyReportUploadsByKey,
     dailyReportsByKey,
+    dayEntryNotesByKey,
+    daySubmissions,
     entries,
     myJobsByUser,
+    onAppStateHydratedChange: setAppStateHydrated,
+    onApplySharedAppState: applySharedAppState,
     projectArchiveById,
     projectBlacklistById,
     syncLog
-  ]);
+  });
 
   useEffect(() => {
     if (!currentUser || projects.length === 0 || entries.length === 0) {
