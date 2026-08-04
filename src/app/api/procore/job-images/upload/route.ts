@@ -10,6 +10,7 @@ import {
   upsertJobImageUploads,
   type StoredJobImageUpload
 } from "@/lib/job-image-store";
+import { buildJobImageFileName } from "@/lib/file-names";
 import { getProjects } from "@/lib/project-catalog/projects";
 import { enqueueTask } from "@/lib/task-queue";
 import { scheduleQueuedTaskProcessing } from "@/lib/task-queue-scheduler";
@@ -260,52 +261,4 @@ function isFile(value: FormDataEntryValue): value is File {
 
 function readFormString(value: FormDataEntryValue | null) {
   return typeof value === "string" ? value.trim() : "";
-}
-
-function buildJobImageFileName({
-  contentType,
-  date,
-  imageNumber,
-  originalFileName,
-  projectName
-}: {
-  contentType: string;
-  date: string;
-  imageNumber: number;
-  originalFileName: string;
-  projectName: string;
-}) {
-  const projectNumber = projectName.trim().split(/\s+/)[0]?.slice(0, 8) || "Project";
-  const paddedImageNumber = String(Math.max(1, imageNumber)).padStart(3, "0");
-  const extension = readImageFileExtension(contentType, originalFileName);
-
-  return `${date}_${sanitizeFileName(projectNumber)}_Job_Image_${paddedImageNumber}.${extension}`;
-}
-
-function readImageFileExtension(contentType: string, originalFileName: string) {
-  const normalizedContentType = contentType.trim().toLowerCase();
-
-  if (normalizedContentType === "image/jpeg" || normalizedContentType === "image/jpg") {
-    return "jpg";
-  }
-
-  if (normalizedContentType === "image/png") {
-    return "png";
-  }
-
-  if (normalizedContentType === "image/webp") {
-    return "webp";
-  }
-
-  if (normalizedContentType === "image/heic") {
-    return "heic";
-  }
-
-  const extension = originalFileName.split(".").pop()?.trim().toLowerCase();
-
-  return extension && /^[a-z0-9]{2,5}$/.test(extension) ? extension : "jpg";
-}
-
-function sanitizeFileName(value: string) {
-  return value.replace(/[<>:"/\\|?*\u0000-\u001F]/g, "_");
 }

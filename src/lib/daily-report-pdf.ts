@@ -6,6 +6,7 @@ import {
   getDailyReportTemplateForProject
 } from "@/lib/daily-report-templates";
 import type { Project } from "@/lib/domain/types";
+import { buildDailyReportFileName } from "@/lib/file-names";
 
 export type DailyReportPdfPayload = {
   project: Project;
@@ -137,8 +138,7 @@ const SOFT_BLUE = "#eaf4fb";
 const SOFT_GRAY = "#f8fafc";
 
 export function buildDailyReportPdfFileName(projectName: string, date: string) {
-  const projectNumber = projectName.trim().split(/\s+/)[0]?.slice(0, 8) || "Project";
-  return `${date}_${sanitizeFileName(projectNumber)}_Daily_Report.pdf`;
+  return buildDailyReportFileName(projectName, date);
 }
 
 export function buildWeeklyDailyReportsPdfFileName(weekStart: string, weekEnd: string) {
@@ -776,10 +776,6 @@ function createEmptyDailyReportItsfmRow(itemKey: string): DailyReportItsfmRow {
     modelNumber: "",
     serialNumber: ""
   };
-}
-
-function sanitizeFileName(value: string) {
-  return value.replace(/[<>:"/\\|?*\u0000-\u001F]/g, "_");
 }
 
 function formatYesNo(value: string | undefined) {

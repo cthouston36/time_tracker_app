@@ -14,6 +14,7 @@ import { uploadDailyReportToProcore, uploadJobImagesToProcore, type JobImageUplo
 import { readProjectCatalog } from "@/lib/project-catalog/cache";
 import { insertSyncLogEntry, readProjectControls, type StoredSyncLogEntry } from "@/lib/project-controls-store";
 import { claimQueuedTasks, completeTask, failTask, type TaskQueueTask } from "@/lib/task-queue";
+import { buildDailyReportFileName, buildJobImageFileName } from "@/lib/file-names";
 
 type ProcessQueuedTasksOptions = {
   limit?: number;
@@ -506,60 +507,6 @@ function getTaskLogAction(taskType: TaskQueueTask["taskType"]) {
     default:
       return "Queued Task";
   }
-}
-
-function buildDailyReportFileName(projectName: string, date: string) {
-  const projectNumber = projectName.trim().split(/\s+/)[0]?.slice(0, 8) || "Project";
-
-  return `${date}_${sanitizeFileName(projectNumber)}_Daily_Report.pdf`;
-}
-
-function buildJobImageFileName({
-  contentType,
-  date,
-  imageNumber,
-  originalFileName,
-  projectName
-}: {
-  contentType: string;
-  date: string;
-  imageNumber: number;
-  originalFileName: string;
-  projectName: string;
-}) {
-  const projectNumber = projectName.trim().split(/\s+/)[0]?.slice(0, 8) || "Project";
-  const paddedImageNumber = String(Math.max(1, imageNumber)).padStart(3, "0");
-  const extension = readImageFileExtension(contentType, originalFileName);
-
-  return `${date}_${sanitizeFileName(projectNumber)}_Job_Image_${paddedImageNumber}.${extension}`;
-}
-
-function readImageFileExtension(contentType: string, originalFileName: string) {
-  const normalizedContentType = contentType.trim().toLowerCase();
-
-  if (normalizedContentType === "image/jpeg" || normalizedContentType === "image/jpg") {
-    return "jpg";
-  }
-
-  if (normalizedContentType === "image/png") {
-    return "png";
-  }
-
-  if (normalizedContentType === "image/webp") {
-    return "webp";
-  }
-
-  if (normalizedContentType === "image/heic") {
-    return "heic";
-  }
-
-  const extension = originalFileName.split(".").pop()?.trim().toLowerCase();
-
-  return extension && /^[a-z0-9]{2,5}$/.test(extension) ? extension : "jpg";
-}
-
-function sanitizeFileName(value: string) {
-  return value.replace(/[<>:"/\\|?*\u0000-\u001F]/g, "_");
 }
 
 function readQueuedJobImage(value: unknown) {

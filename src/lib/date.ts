@@ -1,3 +1,5 @@
+import { buildDailyReportFileName } from "@/lib/file-names";
+
 export function todayInputValue(date = new Date()) {
   const timezoneOffset = date.getTimezoneOffset() * 60_000;
   return new Date(date.getTime() - timezoneOffset).toISOString().slice(0, 10);
@@ -95,11 +97,5 @@ export function formatWeekDayLabel(value: string) {
 }
 
 export function buildDailyReportUploadFileName(projectName: string, date: string) {
-  const projectNumber = projectName.trim().split(/\s+/)[0]?.slice(0, 8) || "Project";
-
-  return `${date}_${sanitizeDailyReportFileName(projectNumber)}_Daily_Report.pdf`;
-}
-
-function sanitizeDailyReportFileName(value: string) {
-  return value.replace(/[<>:"/\\|?*\u0000-\u001F]/g, "_");
+  return buildDailyReportFileName(projectName, date);
 }

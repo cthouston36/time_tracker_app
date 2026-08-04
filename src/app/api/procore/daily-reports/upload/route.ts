@@ -5,6 +5,7 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { getAuditRequestMetadata, recordAuditLog } from "@/lib/audit-log";
 import { isIsoDate } from "@/lib/day-key";
 import { upsertDailyReportUpload } from "@/lib/daily-report-store";
+import { buildDailyReportFileName } from "@/lib/file-names";
 import { getProjects } from "@/lib/project-catalog/projects";
 import { enqueueTask } from "@/lib/task-queue";
 import { scheduleQueuedTaskProcessing } from "@/lib/task-queue-scheduler";
@@ -153,10 +154,4 @@ function readProjectDayTargetId(payload: unknown) {
   }
 
   return `${projectId}|${date}`;
-}
-
-function buildDailyReportFileName(projectName: string, date: string) {
-  const projectNumber = projectName.trim().split(/\s+/)[0]?.slice(0, 8) || "Project";
-
-  return `${date}_${projectNumber.replace(/[<>:"/\\|?*\u0000-\u001F]/g, "_")}_Daily_Report.pdf`;
 }

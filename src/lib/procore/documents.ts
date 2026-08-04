@@ -4,6 +4,7 @@ import { formatRetryAfter } from "@/lib/procore/retry-after";
 import { buildDailyReportPdf, buildDailyReportPdfFileName } from "@/lib/daily-report-pdf";
 import { getSql } from "@/lib/db";
 import type { Project } from "@/lib/domain/types";
+import { buildJobImageFileName } from "@/lib/file-names";
 
 const DEFAULT_FOLDERS_PATH = "/rest/v1.0/folders";
 const DEFAULT_PROCORE_WEB_BASE_URL = "https://us02.procore.com";
@@ -1188,54 +1189,6 @@ function buildCollisionSafeFileName(fileName: string) {
   }
 
   return `${fileName.slice(0, extensionIndex)}_${timestamp}${fileName.slice(extensionIndex)}`;
-}
-
-function buildJobImageFileName({
-  contentType,
-  date,
-  imageNumber,
-  originalFileName,
-  projectName
-}: {
-  contentType: string;
-  date: string;
-  imageNumber: number;
-  originalFileName: string;
-  projectName: string;
-}) {
-  const projectNumber = projectName.trim().split(/\s+/)[0]?.slice(0, 8) || "Project";
-  const paddedImageNumber = String(Math.max(1, imageNumber)).padStart(3, "0");
-  const extension = readImageFileExtension(contentType, originalFileName);
-
-  return `${date}_${sanitizeFileName(projectNumber)}_Job_Image_${paddedImageNumber}.${extension}`;
-}
-
-function readImageFileExtension(contentType: string, originalFileName: string) {
-  const normalizedContentType = contentType.trim().toLowerCase();
-
-  if (normalizedContentType === "image/jpeg" || normalizedContentType === "image/jpg") {
-    return "jpg";
-  }
-
-  if (normalizedContentType === "image/png") {
-    return "png";
-  }
-
-  if (normalizedContentType === "image/webp") {
-    return "webp";
-  }
-
-  if (normalizedContentType === "image/heic") {
-    return "heic";
-  }
-
-  const extension = originalFileName.split(".").pop()?.trim().toLowerCase();
-
-  return extension && /^[a-z0-9]{2,5}$/.test(extension) ? extension : "jpg";
-}
-
-function sanitizeFileName(value: string) {
-  return value.replace(/[<>:"/\\|?*\u0000-\u001F]/g, "_");
 }
 
 function normalizeFolderName(value: string) {
