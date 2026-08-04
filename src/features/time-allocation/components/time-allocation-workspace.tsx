@@ -112,6 +112,7 @@ import { useConfirmationDialog } from "@/features/time-allocation/hooks/use-conf
 import { useFieldProjectAssignments } from "@/features/time-allocation/hooks/use-field-project-assignments";
 import { useJobImages } from "@/features/time-allocation/hooks/use-job-images";
 import { useMobileInstallPrompt } from "@/features/time-allocation/hooks/use-mobile-install-prompt";
+import { useMobilePayItemSelection } from "@/features/time-allocation/hooks/use-mobile-pay-item-selection";
 import { useMyProjectsFilterDefault } from "@/features/time-allocation/hooks/use-my-projects-filter-default";
 import { useNetSuiteVendors } from "@/features/time-allocation/hooks/use-netsuite-vendors";
 import { useProjectSelectionGuards } from "@/features/time-allocation/hooks/use-project-selection-guards";
@@ -560,6 +561,11 @@ export function TimeAllocationWorkspace() {
     showOnlyMyProjects,
     userId: currentUser?.id
   });
+  useMobilePayItemSelection({
+    displayedPayItems,
+    mobileSelectedPayItemId,
+    setMobileSelectedPayItemId
+  });
   useRetiredViewRedirect({
     enabled: Boolean(currentUser),
     setViewMode,
@@ -778,19 +784,6 @@ export function TimeAllocationWorkspace() {
 
     window.localStorage.setItem(getLastProjectStorageKey(currentUser.id), selectedProjectId);
   }, [currentUser, selectedProjectId]);
-
-  useEffect(() => {
-    if (!displayedPayItems.length) {
-      if (mobileSelectedPayItemId) {
-        setMobileSelectedPayItemId("");
-      }
-      return;
-    }
-
-    if (!displayedPayItems.some((payItem) => payItem.id === mobileSelectedPayItemId)) {
-      setMobileSelectedPayItemId(displayedPayItems[0].id);
-    }
-  }, [displayedPayItems, mobileSelectedPayItemId]);
 
   useEffect(() => {
     if (!currentUser) {
