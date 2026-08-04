@@ -11,7 +11,7 @@ import { MobileOptionPicker } from "@/features/time-allocation/components/mobile
 import { MyJobsManager } from "@/features/time-allocation/components/my-jobs-manager";
 import { EmptyState } from "@/features/time-allocation/components/workspace-primitives";
 import { openDatePicker } from "@/features/time-allocation/lib/browser-actions";
-import { addDaysToInputDate } from "@/features/time-allocation/lib/date-helpers";
+import { addDaysToInputDate, formatStatusDateTime } from "@/features/time-allocation/lib/date-helpers";
 
 export function ProjectSetupPanel({
   allProjects,
@@ -132,7 +132,7 @@ export function ProjectSetupPanel({
       {projectLoadError ? <div className="inline-alert">{projectLoadError}</div> : null}
       {currentUser.role === "admin" ? (
         syncedAt ? (
-          <div className="field-note">Last synced {new Date(syncedAt).toLocaleString()}</div>
+          <div className="field-note">Last synced {formatStatusDateTime(syncedAt)}</div>
         ) : (
           <div className="field-note">Use Admin Tools to load uncached NetSuite jobs and pay items.</div>
         )

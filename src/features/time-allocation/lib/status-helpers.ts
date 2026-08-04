@@ -152,7 +152,7 @@ export function getDailyReportProcoreStatus(
   }
 
   if (upload?.status === "failed") {
-    const attemptedAt = upload.attemptedAt ? ` on ${new Date(upload.attemptedAt).toLocaleString()}` : "";
+    const attemptedAt = upload.attemptedAt ? ` on ${formatStatusDateTime(upload.attemptedAt)}` : "";
 
     return {
       className: "failed",

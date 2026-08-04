@@ -39,7 +39,7 @@ import {
   buildPreviousDailyReportCrewRows
 } from "@/features/time-allocation/lib/daily-report-draft-updates";
 import { buildDailyReportConflictSignature } from "@/features/time-allocation/lib/conflict-helpers";
-import { formatDate, getDayKey, parseDayKey } from "@/features/time-allocation/lib/date-helpers";
+import { formatDate, formatStatusDateTime, formatStatusTime, getDayKey, parseDayKey } from "@/features/time-allocation/lib/date-helpers";
 import { getDailyReportProcoreStatus } from "@/features/time-allocation/lib/status-helpers";
 import { formatUserName } from "@/features/time-allocation/lib/auth-ui-helpers";
 import type { ConfirmationOptions } from "@/features/time-allocation/hooks/use-confirmation-dialog";
@@ -246,12 +246,7 @@ export function useDailyReports({
       });
 
       if (showNotice) {
-        setDailyReportDraftNotice(
-          `Draft autosaved ${new Date(updatedAt).toLocaleTimeString(undefined, {
-            hour: "numeric",
-            minute: "2-digit"
-          })}.`
-        );
+        setDailyReportDraftNotice(`Draft autosaved ${formatStatusTime(updatedAt)}.`);
       }
     }
 
@@ -292,7 +287,7 @@ export function useDailyReports({
     );
     setDailyReportDraftNotice(
       autosavedDraft
-        ? `Restored autosaved draft from ${new Date(autosavedDraft.updatedAt).toLocaleString()}.`
+        ? `Restored autosaved draft from ${formatStatusDateTime(autosavedDraft.updatedAt)}.`
         : "Draft autosaves while this form is open."
     );
     setDailyReportModalOpen(true);

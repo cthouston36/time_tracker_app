@@ -2,6 +2,7 @@
 
 import { Edit3, KeyRound, RefreshCw, Save, UserPlus, Users, X } from "lucide-react";
 import type { AuthUser } from "@/lib/auth/types";
+import { formatStatusDateTime } from "@/lib/date";
 import {
   formatRole,
   formatUserName,
@@ -63,7 +64,7 @@ export function AdminUsersPanel({
           <div className="password-reset-code-panel">
             <span>One-time reset code for {resetToken.userId}</span>
             <strong>{resetToken.token}</strong>
-            <small>Give this code to the user. It expires {resetToken.expiresAt ? new Date(resetToken.expiresAt).toLocaleString() : "in 24 hours"}.</small>
+            <small>Give this code to the user. It expires {resetToken.expiresAt ? formatStatusDateTime(resetToken.expiresAt) : "in 24 hours"}.</small>
           </div>
         ) : null}
         <div className="admin-user-form">

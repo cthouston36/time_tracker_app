@@ -1,5 +1,6 @@
 import { ChevronDown, ExternalLink, RotateCcw, Trash2, UploadCloud } from "lucide-react";
 import { EmptyState, InlineSpinner } from "@/features/time-allocation/components/workspace-primitives";
+import { formatStatusDateTime } from "@/features/time-allocation/lib/date-helpers";
 import {
   formatFileSize,
   formatJobImageQueueStatus,
@@ -203,7 +204,7 @@ export function JobImagesPanel({
                       <span>
                         {formatJobImageUploadStatus(upload.status)}
                         {upload.uploadedAt || upload.attemptedAt
-                          ? ` ${new Date(upload.uploadedAt ?? upload.attemptedAt ?? "").toLocaleString()}`
+                          ? ` ${formatStatusDateTime(upload.uploadedAt ?? upload.attemptedAt ?? "")}`
                           : ""}
                         {upload.uploadedByName ? ` by ${upload.uploadedByName}` : ""}
                         {upload.fileSizeBytes ? ` - ${formatFileSize(upload.fileSizeBytes)}` : ""}

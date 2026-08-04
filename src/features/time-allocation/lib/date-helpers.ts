@@ -5,6 +5,7 @@ export {
   formatDate,
   formatInputDate,
   formatStatusDateTime,
+  formatStatusTime,
   formatWeekDayLabel,
   formatWeekRange,
   getWeekDates,

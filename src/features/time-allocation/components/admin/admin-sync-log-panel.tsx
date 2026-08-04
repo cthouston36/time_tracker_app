@@ -1,6 +1,7 @@
 "use client";
 
 import { ListChecks } from "lucide-react";
+import { formatStatusDateTime } from "@/lib/date";
 import { readTextValue } from "@/features/time-allocation/lib/selectors";
 import type { ProjectSyncSummary, SyncLogEntry } from "@/features/time-allocation/types";
 
@@ -91,7 +92,7 @@ export function SyncLogPanel({ entries }: { entries: SyncLogEntry[] }) {
             <div className={`sync-log-entry ${entry.status}`} key={entry.id}>
               <div className="sync-log-heading">
                 <strong>{entry.action}</strong>
-                <span>{new Date(entry.createdAt).toLocaleString()}</span>
+                <span>{formatStatusDateTime(entry.createdAt)}</span>
               </div>
               <span>{entry.message}</span>
               {entry.summary ? <span>{formatSyncSummaryLine(entry.summary)}</span> : null}

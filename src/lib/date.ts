@@ -29,6 +29,19 @@ export function formatStatusDateTime(value: string) {
   });
 }
 
+export function formatStatusTime(value: string) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit"
+  });
+}
+
 export function getWeekStart(value: string) {
   const date = parseInputDate(value);
 

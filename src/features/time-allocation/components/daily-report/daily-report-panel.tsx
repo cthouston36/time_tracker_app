@@ -5,7 +5,7 @@ import {
   DailyReportProcoreStatusValue
 } from "@/features/time-allocation/components/daily-report/daily-report-ui";
 import { formatYesNoAnswer } from "@/features/time-allocation/lib/daily-report-helpers";
-import { formatDate } from "@/features/time-allocation/lib/date-helpers";
+import { formatDate, formatStatusDateTime } from "@/features/time-allocation/lib/date-helpers";
 import type {
   DailyReport,
   DailyReportProcoreStatus,
@@ -107,7 +107,7 @@ export function DailyReportPanel({
           </div>
           <div className="daily-report-summary-card">
             <span>Updated</span>
-            <strong>{new Date(currentDailyReport.updatedAt).toLocaleString()}</strong>
+            <strong>{formatStatusDateTime(currentDailyReport.updatedAt)}</strong>
           </div>
           {selectedProjectUsesTwoSeriesDailyReport ? (
             <div className="daily-report-summary-card daily-report-summary-secondary">
@@ -165,7 +165,7 @@ export function DailyReportPanel({
                   <strong>{item.project.name}</strong>
                   <span>
                     {formatDate(item.date)}
-                    {item.upload.attemptedAt ? ` - last tried ${new Date(item.upload.attemptedAt).toLocaleString()}` : ""}
+                    {item.upload.attemptedAt ? ` - last tried ${formatStatusDateTime(item.upload.attemptedAt)}` : ""}
                   </span>
                   <p>{item.upload.error ?? "Upload failed."}</p>
                 </div>
