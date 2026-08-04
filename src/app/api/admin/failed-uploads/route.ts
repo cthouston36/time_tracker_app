@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/session";
 import { readDailyReportData } from "@/lib/daily-report-store";
 import { listUnresolvedFailedJobImageUploads } from "@/lib/job-image-store";
+import { isRecord } from "@/lib/records";
 
 export const runtime = "nodejs";
 
@@ -80,10 +81,6 @@ function parseDayKey(dayKey: string) {
     date,
     projectId
   };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function readString(value: unknown) {

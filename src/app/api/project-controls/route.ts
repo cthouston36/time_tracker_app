@@ -17,6 +17,7 @@ import {
   type StoredSyncLogEntry
 } from "@/lib/project-controls-store";
 import { getProjects } from "@/lib/project-catalog/projects";
+import { isRecord } from "@/lib/records";
 
 export async function GET() {
   const user = await getCurrentUser();
@@ -399,8 +400,4 @@ export async function PATCH(request: NextRequest) {
     databaseConfigured: true,
     ok: true
   });
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
