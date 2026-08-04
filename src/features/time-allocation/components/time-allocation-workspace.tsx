@@ -35,7 +35,6 @@ import {
   filterDailyReportsByProjectIds,
   getDailyReportEmployeeTotalHours
 } from "@/features/time-allocation/lib/daily-report-helpers";
-import { exportEntriesToCsv } from "@/features/time-allocation/lib/entry-csv-export";
 import { normalizeSharedAppState } from "@/features/time-allocation/lib/app-state-storage";
 import { type ViewMode } from "@/features/time-allocation/lib/client-storage";
 import {
@@ -74,6 +73,7 @@ import { useCrewManagement } from "@/features/time-allocation/hooks/use-crew-man
 import { useCurrentUserSessionBootstrap } from "@/features/time-allocation/hooks/use-current-user-session-bootstrap";
 import { useDailyReports } from "@/features/time-allocation/hooks/use-daily-reports";
 import { useEntryActions } from "@/features/time-allocation/hooks/use-entry-actions";
+import { useEntryExportActions } from "@/features/time-allocation/hooks/use-entry-export-actions";
 import { useEntryProjectSnapshotRepair } from "@/features/time-allocation/hooks/use-entry-project-snapshot-repair";
 import { useConfirmationDialog } from "@/features/time-allocation/hooks/use-confirmation-dialog";
 import { useFieldProjectAssignments } from "@/features/time-allocation/hooks/use-field-project-assignments";
@@ -546,6 +546,13 @@ export function TimeAllocationWorkspace() {
     setEntryNotice,
     visibleEntries
   });
+  const { exportAllEntryDetails } = useEntryExportActions({
+    dayEntryNotesByKey,
+    daySubmissions,
+    entries,
+    projectBlacklistById,
+    projects: allProjects
+  });
   const hasUnsavedPayItemDrafts = Object.values(draftsByPayItem).some(draftHasAnyInput);
   const hasUnsavedChanges =
     hasUnsavedPayItemDrafts ||
@@ -751,16 +758,6 @@ export function TimeAllocationWorkspace() {
     setProjectBlacklistById({});
     resetCrewManagementState();
     setViewMode("dashboard");
-  }
-
-  function exportAllEntryDetails() {
-    exportEntriesToCsv({
-      dayEntryNotesByKey,
-      daySubmissions,
-      entries,
-      projectBlacklistById,
-      projects: allProjects
-    });
   }
 
   if (!authChecked) {
