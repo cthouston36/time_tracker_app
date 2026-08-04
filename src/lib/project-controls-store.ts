@@ -1,4 +1,5 @@
 import { getSql } from "@/lib/db";
+import { readValidTimestamp } from "@/lib/date";
 import { readString } from "@/lib/records";
 
 export type StoredMyJobsByUser = Record<string, string[]>;
@@ -552,12 +553,4 @@ function asRecord(value: unknown): Record<string, unknown> {
   }
 
   return value as Record<string, unknown>;
-}
-
-function readValidTimestamp(value: unknown) {
-  if (typeof value !== "string" || !value.trim()) {
-    return null;
-  }
-
-  return Number.isNaN(Date.parse(value)) ? null : value;
 }

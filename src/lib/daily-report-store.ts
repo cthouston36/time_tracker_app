@@ -5,6 +5,7 @@ import {
   refreshPmSummaryRollupsForDays
 } from "@/lib/report-rollups";
 import { getDayKey, isIsoDate, parseIsoDayKey } from "@/lib/day-key";
+import { readValidTimestamp } from "@/lib/date";
 
 export type StoredDailyReportsByKey = Record<string, Record<string, unknown>>;
 export type StoredDailyReportUploadsByKey = Record<string, Record<string, unknown>>;
@@ -478,11 +479,5 @@ function readNullableString(record: Record<string, unknown>, key: string) {
 }
 
 function readNullableTimestamp(record: Record<string, unknown>, key: string) {
-  const value = record[key];
-
-  if (typeof value !== "string" || !value.trim()) {
-    return null;
-  }
-
-  return Number.isNaN(Date.parse(value)) ? null : value;
+  return readValidTimestamp(record[key]);
 }

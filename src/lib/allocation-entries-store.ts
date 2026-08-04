@@ -1,4 +1,5 @@
 import { isIsoDate } from "@/lib/day-key";
+import { isValidTimestamp } from "@/lib/date";
 import { getSql } from "@/lib/db";
 import { normalizeNumericCostCode } from "@/lib/pay-items";
 import {
@@ -622,8 +623,4 @@ function toNullableNumber(value: unknown) {
   }
 
   return null;
-}
-
-function isValidTimestamp(value: unknown): value is string {
-  return typeof value === "string" && value.trim().length > 0 && !Number.isNaN(Date.parse(value));
 }

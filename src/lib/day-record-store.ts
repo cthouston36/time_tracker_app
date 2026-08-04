@@ -1,4 +1,5 @@
 import { getSql } from "@/lib/db";
+import { isValidTimestamp } from "@/lib/date";
 import { getDayKey, isIsoDate, parseIsoDayKey } from "@/lib/day-key";
 
 export type StoredDaySubmission = {
@@ -368,10 +369,6 @@ function normalizeDayNotes(dayEntryNotesByKey: StoredDayEntryNotesByKey) {
       }
     ];
   });
-}
-
-function isValidTimestamp(value: unknown): value is string {
-  return typeof value === "string" && value.trim().length > 0 && !Number.isNaN(Date.parse(value));
 }
 
 function readString(value: unknown) {

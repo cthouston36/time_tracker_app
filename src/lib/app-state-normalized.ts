@@ -1,4 +1,5 @@
 import { isIsoDate } from "@/lib/day-key";
+import { readValidTimestamp } from "@/lib/date";
 import { getSql } from "@/lib/db";
 import {
   clearReportRollups,
@@ -948,13 +949,7 @@ function readNullableNumber(record: Record<string, unknown>, key: string) {
 }
 
 function readNullableTimestamp(record: Record<string, unknown>, key: string) {
-  const value = record[key];
-
-  if (typeof value !== "string" || !value.trim()) {
-    return null;
-  }
-
-  return Number.isNaN(Date.parse(value)) ? null : value;
+  return readValidTimestamp(record[key]);
 }
 
 function toJson(value: unknown) {

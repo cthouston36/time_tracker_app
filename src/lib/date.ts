@@ -44,6 +44,14 @@ export function formatStatusTime(value: string) {
   });
 }
 
+export function isValidTimestamp(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0 && !Number.isNaN(Date.parse(value));
+}
+
+export function readValidTimestamp(value: unknown) {
+  return isValidTimestamp(value) ? value : null;
+}
+
 export function getWeekStart(value: string) {
   const date = parseInputDate(value);
 
