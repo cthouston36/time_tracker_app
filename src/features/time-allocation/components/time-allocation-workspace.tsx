@@ -1,15 +1,14 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   CalendarDays,
   Edit3,
   ExternalLink
 } from "lucide-react";
 import { todayInputValue } from "@/lib/date";
-import { canAccessReports, getAccessibleProjectsForUser } from "@/lib/auth/project-access";
+import { canAccessReports } from "@/lib/auth/project-access";
 import type { AuthUser } from "@/lib/auth/types";
-import { isTwoSeriesProject } from "@/lib/daily-report-templates";
 import {
   AppLoadingShell,
   PageHeader
@@ -31,31 +30,21 @@ import { MatrixFullscreenModal } from "@/features/time-allocation/components/ent
 import { DailyWrapUpSection } from "@/features/time-allocation/components/entry/daily-wrap-up-section";
 import { ReviewSubmitPanel } from "@/features/time-allocation/components/entry/review-submit-panel";
 import {
-  filterDailyReportsByProjectIds,
   getDailyReportEmployeeTotalHours
 } from "@/features/time-allocation/lib/daily-report-helpers";
 import { type ViewMode } from "@/features/time-allocation/lib/client-storage";
 import {
   formatDate,
-  getDayKey,
   getWeekStart
 } from "@/features/time-allocation/lib/date-helpers";
 import { getProjectWorkTypeLabel } from "@/features/time-allocation/lib/status-helpers";
-import { buildRemainingQuantitiesByPayItem } from "@/features/time-allocation/lib/pay-item-helpers";
 import { getDefaultViewModeForUser } from "@/features/time-allocation/lib/auth-ui-helpers";
 import {
   buildCrewSummary,
   draftHasAnyInput,
-  draftIsSaveable
 } from "@/features/time-allocation/lib/crew-entry-helpers";
-import {
-  buildNetSuiteProjectManagerOptions,
-  filterActiveProjects,
-  getDefaultMyJobIdsForUser
-} from "@/features/time-allocation/lib/selectors";
 import type {
   DayEntryNotesByKey,
-  DaySubmission,
   DaySubmissionsByKey,
   DraftsByPayItem,
   MyJobsByUser,
@@ -94,6 +83,8 @@ import { useUnsavedChangesWarning } from "@/features/time-allocation/hooks/use-u
 import { useWorkspaceNavigationActions } from "@/features/time-allocation/hooks/use-workspace-navigation-actions";
 import { useWorkspaceKeyboardShortcuts } from "@/features/time-allocation/hooks/use-workspace-keyboard-shortcuts";
 import { useWorkspaceLogoutAction } from "@/features/time-allocation/hooks/use-workspace-logout-action";
+import { useWorkspaceDerivedData } from "@/features/time-allocation/hooks/use-workspace-derived-data";
+import { useWorkspaceReportScope } from "@/features/time-allocation/hooks/use-workspace-report-scope";
 import { WeeklyStatusReport } from "@/features/time-allocation/components/dashboard/weekly-status-report";
 import { AdminToolsDrawer } from "@/features/time-allocation/components/admin/admin-tools";
 import type { AllocationEntry, Project } from "@/lib/domain/types";
@@ -216,17 +207,39 @@ export function TimeAllocationWorkspace() {
     onLoginSuccess: handleLoginSuccess
   });
 
-  const activeProjects = useMemo(
-    () => filterActiveProjects(allProjects, projectBlacklistById, projectArchiveById),
-    [allProjects, projectArchiveById, projectBlacklistById]
-  );
-  const projects = useMemo(
-    () => (currentUser ? getAccessibleProjectsForUser(currentUser, activeProjects, { assignedProjectIdsByUser: myJobsByUser }) : []),
-    [activeProjects, currentUser, myJobsByUser]
-  );
-  const visibleProjectIds = useMemo(() => new Set(projects.map((project) => project.id)), [projects]);
-  const reportEntries = entries.filter((entry) => visibleProjectIds.has(entry.projectId));
-  const netSuiteProjectManagerOptions = useMemo(() => buildNetSuiteProjectManagerOptions(allProjects), [allProjects]);
+  const {
+    currentDayEntryNotes,
+    currentDayKey,
+    currentDaySubmission,
+    currentUserAutoMyJobIds,
+    currentUserMyJobIds,
+    dayIsSubmitted,
+    displayedPayItems,
+    draftEntryCount,
+    jobPickerProjects,
+    mobileSelectedPayItem,
+    netSuiteProjectManagerOptions,
+    projects,
+    remainingQuantitiesByPayItem,
+    selectedProject,
+    selectedProjectUsesPayItems,
+    selectedProjectUsesTwoSeriesDailyReport,
+    visibleEntries
+  } = useWorkspaceDerivedData({
+    allProjects,
+    currentUser,
+    dayEntryNotesByKey,
+    daySubmissions,
+    draftsByPayItem,
+    entries,
+    mobileSelectedPayItemId,
+    myJobsByUser,
+    projectArchiveById,
+    projectBlacklistById,
+    selectedProjectId,
+    showOnlyMyProjects,
+    workDate
+  });
   const {
     adminPasswordResetToken,
     adminUserForm,
@@ -278,12 +291,6 @@ export function TimeAllocationWorkspace() {
     userIsOffline
   });
 
-  const selectedProject = useMemo(
-    () => projects.find((project) => project.id === selectedProjectId) ?? projects[0],
-    [projects, selectedProjectId]
-  );
-  const selectedProjectUsesTwoSeriesDailyReport = isTwoSeriesProject(selectedProject);
-  const selectedProjectUsesPayItems = Boolean(selectedProject && !selectedProjectUsesTwoSeriesDailyReport);
   const {
     addCrewMember,
     addExistingCrewMemberToProject,
@@ -326,38 +333,7 @@ export function TimeAllocationWorkspace() {
     setEntries,
     setEntryNotice
   });
-  const selectedProjectEntries = useMemo(
-    () => entries.filter((entry) => entry.projectId === selectedProject?.id),
-    [entries, selectedProject?.id]
-  );
-  const visibleEntries = useMemo(
-    () => selectedProjectEntries.filter((entry) => entry.date === workDate),
-    [selectedProjectEntries, workDate]
-  );
-  const remainingQuantitiesByPayItem = useMemo(
-    () =>
-      selectedProject
-        ? buildRemainingQuantitiesByPayItem(selectedProject.payItems, selectedProjectEntries, workDate)
-        : {},
-    [selectedProject, selectedProjectEntries, workDate]
-  );
-  const displayedPayItems = useMemo(() => selectedProject?.payItems ?? [], [selectedProject?.payItems]);
-  const mobileSelectedPayItem = useMemo(
-    () =>
-      displayedPayItems.find((payItem) => payItem.id === mobileSelectedPayItemId) ??
-      displayedPayItems[0] ??
-      null,
-    [displayedPayItems, mobileSelectedPayItemId]
-  );
   const crewSummaryRows = buildCrewSummary(visibleEntries, selectedProjectCrewMembers);
-  const currentDaySubmission: DaySubmission = selectedProject
-    ? daySubmissions[getDayKey(selectedProject.id, workDate)] ?? { status: "draft" }
-    : { status: "draft" };
-  const dayIsSubmitted = currentDaySubmission.status === "submitted";
-  const currentDayEntryNotes = selectedProject
-    ? dayEntryNotesByKey[getDayKey(selectedProject.id, workDate)] ?? { notes: "", inventory: "" }
-    : { notes: "", inventory: "" };
-  const currentDayKey = selectedProject ? getDayKey(selectedProject.id, workDate) : "";
   const {
     cancelEditingEntry,
     clearDraftInputs,
@@ -459,10 +435,11 @@ export function TimeAllocationWorkspace() {
     visibleEntries,
     workDate
   });
-  const reportDailyReportsByKey = useMemo(
-    () => filterDailyReportsByProjectIds(dailyReportsByKey, visibleProjectIds),
-    [dailyReportsByKey, visibleProjectIds]
-  );
+  const { reportDailyReportsByKey, reportEntries } = useWorkspaceReportScope({
+    dailyReportsByKey,
+    entries,
+    projects
+  });
   const {
     addJobImages,
     clearJobImageQueue,
@@ -500,41 +477,12 @@ export function TimeAllocationWorkspace() {
       });
     });
   }, []);
-  const currentUserAutoMyJobIds = useMemo(
-    () => (currentUser ? getDefaultMyJobIdsForUser(currentUser, projects) : []),
-    [currentUser, projects]
-  );
-  const currentUserMyJobIds = useMemo(() => {
-    if (!currentUser) {
-      return [];
-    }
-
-    if (currentUser.role === "project_manager") {
-      return currentUserAutoMyJobIds;
-    }
-
-    const savedJobIds = (myJobsByUser[currentUser.id] ?? []).filter((projectId) => visibleProjectIds.has(projectId));
-    const combinedJobIds = new Set([...currentUserAutoMyJobIds, ...savedJobIds]);
-
-    return projects.filter((project) => combinedJobIds.has(project.id)).map((project) => project.id);
-  }, [currentUser, currentUserAutoMyJobIds, myJobsByUser, projects, visibleProjectIds]);
-  const myProjectIdSet = useMemo(() => new Set(currentUserMyJobIds), [currentUserMyJobIds]);
-  const jobPickerProjects = useMemo(
-    () =>
-      showOnlyMyProjects && currentUserMyJobIds.length > 0
-        ? projects.filter((project) => myProjectIdSet.has(project.id))
-        : projects,
-    [currentUserMyJobIds.length, myProjectIdSet, projects, showOnlyMyProjects]
-  );
   const totalHours = visibleEntries.reduce((total, entry) => total + entry.hours, 0);
   const selectedDayTotalHours = selectedProjectUsesPayItems
     ? totalHours
     : currentDailyReport
       ? getDailyReportEmployeeTotalHours(currentDailyReport.employeeRows)
       : 0;
-  const draftEntryCount = selectedProject
-    ? selectedProject.payItems.filter((item) => draftIsSaveable(draftsByPayItem[item.id])).length
-    : 0;
   const {
     splitDraftCrewHoursEvenly,
     toggleDraftCrewMember,
