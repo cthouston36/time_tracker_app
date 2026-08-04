@@ -10,6 +10,13 @@ import {
 import { isTwoSeriesProject } from "@/lib/daily-report-templates";
 import type { Project } from "@/lib/domain/types";
 import { EmptyState } from "@/features/time-allocation/components/workspace-primitives";
+import {
+  addDaysToInputDate,
+  formatDate,
+  formatWeekDayLabel,
+  formatWeekRange,
+  getDayKey
+} from "@/features/time-allocation/lib/date-helpers";
 import type {
   CalendarStatusMode,
   DailyReportUpload,
@@ -333,54 +340,4 @@ function formatDashboardAttentionSummary(row: DashboardProjectWeekRow) {
   ].filter(Boolean);
 
   return parts.join(" | ");
-}
-
-function getDayKey(projectId: string, date: string) {
-  return `${projectId}|${date}`;
-}
-
-function formatDate(value: string) {
-  const [year, month, day] = value.split("-").map(Number);
-
-  return new Date(year, month - 1, day).toLocaleDateString();
-}
-
-function addDaysToInputDate(value: string, days: number) {
-  const date = parseInputDate(value);
-
-  date.setDate(date.getDate() + days);
-
-  return formatInputDate(date);
-}
-
-function parseInputDate(value: string) {
-  const [year, month, day] = value.split("-").map(Number);
-
-  return new Date(year, month - 1, day);
-}
-
-function formatInputDate(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
-}
-
-function formatWeekRange(weekDates: string[]) {
-  const start = parseInputDate(weekDates[0]);
-  const end = parseInputDate(weekDates[weekDates.length - 1]);
-
-  return `${start.toLocaleDateString(undefined, { month: "short", day: "numeric" })} - ${end.toLocaleDateString(
-    undefined,
-    { month: "short", day: "numeric", year: "numeric" }
-  )}`;
-}
-
-function formatWeekDayLabel(value: string) {
-  return parseInputDate(value).toLocaleDateString(undefined, {
-    weekday: "short",
-    month: "numeric",
-    day: "numeric"
-  });
 }
