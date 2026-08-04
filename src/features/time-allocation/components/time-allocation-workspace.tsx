@@ -113,6 +113,7 @@ import { useJobImages } from "@/features/time-allocation/hooks/use-job-images";
 import { useMobileInstallPrompt } from "@/features/time-allocation/hooks/use-mobile-install-prompt";
 import { useNetSuiteVendors } from "@/features/time-allocation/hooks/use-netsuite-vendors";
 import { useProjectSync } from "@/features/time-allocation/hooks/use-project-sync";
+import { useWorkspaceKeyboardShortcuts } from "@/features/time-allocation/hooks/use-workspace-keyboard-shortcuts";
 import { WeeklyStatusReport } from "@/features/time-allocation/components/dashboard/weekly-status-report";
 import { AdminToolsDrawer } from "@/features/time-allocation/components/admin/admin-tools";
 import type { AllocationEntry, Project } from "@/lib/domain/types";
@@ -545,6 +546,20 @@ export function TimeAllocationWorkspace() {
   saveDailyReportRef.current = saveDailyReport;
   saveAllocationEntriesRef.current = saveAllocationEntries;
 
+  useWorkspaceKeyboardShortcuts({
+    dailyReportModalOpen,
+    dayIsSubmitted,
+    draftEntryCount,
+    enabled: Boolean(currentUser),
+    matrixFullscreenOpen,
+    saveAllocationEntriesRef,
+    saveDailyReportRef,
+    savingEntries,
+    selectedProjectUsesPayItems,
+    setMatrixFullscreenOpen,
+    viewMode
+  });
+
   const applySharedAppState = useCallback(
     (state: Partial<SharedAppState> | null) => {
       const normalizedState = normalizeSharedAppState(state);
@@ -574,53 +589,6 @@ export function TimeAllocationWorkspace() {
       setViewMode("dashboard");
     }
   }, [currentUser, viewMode]);
-
-  useEffect(() => {
-    if (!currentUser) {
-      return;
-    }
-
-    function handleKeyboardShortcuts(event: KeyboardEvent) {
-      const key = event.key.toLowerCase();
-
-      if ((event.ctrlKey || event.metaKey) && key === "s") {
-        event.preventDefault();
-
-        if (dailyReportModalOpen) {
-          void saveDailyReportRef.current?.();
-          return;
-        }
-
-        if (
-          viewMode === "entry" &&
-          selectedProjectUsesPayItems &&
-          draftEntryCount > 0 &&
-          !dayIsSubmitted &&
-          !savingEntries
-        ) {
-          void saveAllocationEntriesRef.current?.();
-        }
-      }
-
-      if (event.key === "Escape" && matrixFullscreenOpen) {
-        event.preventDefault();
-        setMatrixFullscreenOpen(false);
-      }
-    }
-
-    window.addEventListener("keydown", handleKeyboardShortcuts);
-
-    return () => window.removeEventListener("keydown", handleKeyboardShortcuts);
-  }, [
-    currentUser,
-    dailyReportModalOpen,
-    dayIsSubmitted,
-    draftEntryCount,
-    matrixFullscreenOpen,
-    savingEntries,
-    selectedProjectUsesPayItems,
-    viewMode
-  ]);
 
   function confirmDiscardUnsavedChanges(actionDescription: string) {
     if (!hasUnsavedChanges) {
