@@ -1,4 +1,5 @@
 import { getSql } from "@/lib/db";
+import { isRecord } from "@/lib/records";
 
 export const TASK_QUEUE_STATUSES = ["queued", "processing", "completed", "failed"] as const;
 
@@ -634,10 +635,6 @@ function readString(value: unknown) {
 function readOptionalString(value: unknown) {
   const text = readString(value);
   return text || undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function isTaskQueueType(value: unknown): value is TaskQueueType {

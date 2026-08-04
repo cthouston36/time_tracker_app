@@ -4,6 +4,7 @@ import { mkdir, readFile, writeFile } from "fs/promises";
 import path from "path";
 import { getSql } from "@/lib/db";
 import { refreshProcoreToken, type ProcoreTokenResponse } from "@/lib/procore/oauth";
+import { isRecord } from "@/lib/records";
 
 const ACCESS_TOKEN_COOKIE = "procore_access_token";
 const REFRESH_TOKEN_COOKIE = "procore_refresh_token";
@@ -340,10 +341,6 @@ function getProcoreTokenDecryptionKeys() {
       readOptionalString(process.env.PROCORE_CLIENT_SECRET)
     ].filter((secret): secret is string => Boolean(secret)))
   ).map((secret) => createHash("sha256").update(secret).digest());
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function readString(value: unknown) {

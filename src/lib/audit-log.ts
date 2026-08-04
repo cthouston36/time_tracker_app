@@ -1,5 +1,6 @@
 import { getSql } from "@/lib/db";
 import type { AuthUser } from "@/lib/auth/types";
+import { isRecord } from "@/lib/records";
 
 export type AuditLogEntry = {
   action: string;
@@ -214,10 +215,6 @@ function getRequestIp(headers: Headers) {
 
 function formatActorName(user: AuthUser) {
   return `${user.firstName} ${user.lastName}`.trim() || user.id;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function readOptionalFilter(value: unknown) {

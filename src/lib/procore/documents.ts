@@ -5,6 +5,7 @@ import { buildDailyReportPdf, buildDailyReportPdfFileName } from "@/lib/daily-re
 import { getSql } from "@/lib/db";
 import type { Project } from "@/lib/domain/types";
 import { buildJobImageFileName } from "@/lib/file-names";
+import { isRecord } from "@/lib/records";
 
 const DEFAULT_FOLDERS_PATH = "/rest/v1.0/folders";
 const DEFAULT_PROCORE_WEB_BASE_URL = "https://us02.procore.com";
@@ -1222,10 +1223,6 @@ function extractId(response: unknown) {
   const id = firstString(record.id, record.file_id, record.document_id);
 
   return id || undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }
 
 function isRecoverableProcoreShapeError(error: unknown) {
