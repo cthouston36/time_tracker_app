@@ -116,6 +116,7 @@ import { useJobImages } from "@/features/time-allocation/hooks/use-job-images";
 import { useMobileInstallPrompt } from "@/features/time-allocation/hooks/use-mobile-install-prompt";
 import { useNetSuiteVendors } from "@/features/time-allocation/hooks/use-netsuite-vendors";
 import { useProjectSync } from "@/features/time-allocation/hooks/use-project-sync";
+import { useUnsavedChangesWarning } from "@/features/time-allocation/hooks/use-unsaved-changes-warning";
 import { useWorkspaceKeyboardShortcuts } from "@/features/time-allocation/hooks/use-workspace-keyboard-shortcuts";
 import { WeeklyStatusReport } from "@/features/time-allocation/components/dashboard/weekly-status-report";
 import { AdminToolsDrawer } from "@/features/time-allocation/components/admin/admin-tools";
@@ -536,6 +537,7 @@ export function TimeAllocationWorkspace() {
     dailyReportModalOpen ||
     queuedJobImages.length > 0;
   const currentUserCanManageMyProjects = currentUser?.role === "admin";
+  useUnsavedChangesWarning(hasUnsavedChanges);
 
   function shouldBlockOfflineAction(setNotice: (message: string) => void) {
     if (!userIsOffline) {
@@ -931,23 +933,6 @@ export function TimeAllocationWorkspace() {
     projectBlacklistById,
     syncLog
   ]);
-
-  useEffect(() => {
-    if (!hasUnsavedChanges) {
-      return;
-    }
-
-    function warnBeforeUnload(event: BeforeUnloadEvent) {
-      event.preventDefault();
-      event.returnValue = "";
-    }
-
-    window.addEventListener("beforeunload", warnBeforeUnload);
-
-    return () => {
-      window.removeEventListener("beforeunload", warnBeforeUnload);
-    };
-  }, [hasUnsavedChanges]);
 
   useEffect(() => {
     if (!currentUser || projects.length === 0 || entries.length === 0) {
