@@ -75,7 +75,6 @@ import {
   updatePayItemDraftCrewHours,
   updatePayItemDraftValue
 } from "@/features/time-allocation/lib/pay-item-draft-updates";
-import { populateEntryProjectSnapshots } from "@/features/time-allocation/lib/entry-snapshot-helpers";
 import {
   buildNetSuiteProjectManagerOptions,
   filterActiveProjects,
@@ -98,6 +97,7 @@ import { useAuthForms } from "@/features/time-allocation/hooks/use-auth-forms";
 import { useCrewManagement } from "@/features/time-allocation/hooks/use-crew-management";
 import { useDailyReports } from "@/features/time-allocation/hooks/use-daily-reports";
 import { useEntryActions } from "@/features/time-allocation/hooks/use-entry-actions";
+import { useEntryProjectSnapshotRepair } from "@/features/time-allocation/hooks/use-entry-project-snapshot-repair";
 import { useConfirmationDialog } from "@/features/time-allocation/hooks/use-confirmation-dialog";
 import { useFieldProjectAssignments } from "@/features/time-allocation/hooks/use-field-project-assignments";
 import { useJobImages } from "@/features/time-allocation/hooks/use-job-images";
@@ -790,17 +790,12 @@ export function TimeAllocationWorkspace() {
     syncLog
   });
 
-  useEffect(() => {
-    if (!currentUser || projects.length === 0 || entries.length === 0) {
-      return;
-    }
-
-    const result = populateEntryProjectSnapshots(entries, projects);
-
-    if (result.changed) {
-      setEntries(result.entries);
-    }
-  }, [currentUser, entries, projects]);
+  useEntryProjectSnapshotRepair({
+    enabled: Boolean(currentUser),
+    entries,
+    projects,
+    setEntries
+  });
 
   useSyncLogStorage(Boolean(currentUser), syncLog);
 
