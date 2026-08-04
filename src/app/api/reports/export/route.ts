@@ -18,6 +18,7 @@ import { todayInputValue } from "@/lib/date";
 import { getProjects } from "@/lib/project-catalog/projects";
 import { backfillReportRollupsIfEmpty, readDailyWorkRollupSourceRows } from "@/lib/report-rollups";
 import type { AllocationEntry, CrewLaborType, Project } from "@/lib/domain/types";
+import { formatCsvIdentifier, formatCsvNumber, rowsToCsv } from "@/features/time-allocation/lib/csv-utils";
 
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const DEFAULT_CREW_LABOR_TYPES: CrewLaborType[] = ["chinchor_employee", "temp_employee", "subcontractor"];
@@ -211,7 +212,7 @@ async function buildReportCsv(
 }
 
 function buildCsv(headers: string[], rows: Array<Array<number | string>>) {
-  return [headers, ...rows].map((row) => row.map((cell) => escapeCsvCell(String(cell))).join(",")).join("\r\n");
+  return rowsToCsv([headers, ...rows]);
 }
 
 function buildDailyWorkReportCsv(rows: ReturnType<typeof buildDailyWorkReportRows>) {
@@ -267,32 +268,6 @@ function buildDailyWorkReportCsv(rows: ReturnType<typeof buildDailyWorkReportRow
   );
 
   return buildCsv(headers, csvRows);
-}
-
-function formatCsvNumber(value: number | undefined) {
-  if (value === undefined || !Number.isFinite(value)) {
-    return "";
-  }
-
-  return String(Math.round(value * 1000000) / 1000000);
-}
-
-function formatCsvIdentifier(value: string) {
-  if (/^\d{12,}$/.test(value)) {
-    return `\t${value}`;
-  }
-
-  return value;
-}
-
-function escapeCsvCell(value: string) {
-  const safeValue = value.trimStart().match(/^[=+\-@]/) ? `'${value}` : value;
-
-  if (/[",\r\n\t]/.test(safeValue)) {
-    return `"${safeValue.replaceAll('"', '""')}"`;
-  }
-
-  return safeValue;
 }
 
 function resolveProjectIds(body: ReportExportRequestBody, cachedProjectIds: string[], myProjectIds: string[]) {
