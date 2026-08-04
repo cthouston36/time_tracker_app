@@ -8,11 +8,19 @@ export function formatDate(value: string) {
     return parseInputDate(value).toLocaleDateString();
   }
 
-  return new Date(value).toLocaleDateString();
+  const date = new Date(value);
+
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString();
 }
 
 export function formatStatusDateTime(value: string) {
-  return new Date(value).toLocaleString(undefined, {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleString(undefined, {
     day: "numeric",
     hour: "numeric",
     minute: "2-digit",

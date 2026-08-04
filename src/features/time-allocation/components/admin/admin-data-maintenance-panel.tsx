@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ListChecks, RefreshCw, Trash2, Wrench } from "lucide-react";
+import { formatStatusDateTime } from "@/lib/date";
 
 type DataMaintenanceIssue = {
   count: number;
@@ -363,12 +364,6 @@ function formatMaintenanceCleanupNotice(data: DataMaintenanceActionResponse) {
   return `Maintenance records cleaned: ${cleanup.taskQueue.total} queue row${cleanup.taskQueue.total === 1 ? "" : "s"} and ${
     cleanup.resolvedFailedImageUploads
   } resolved image failure${cleanup.resolvedFailedImageUploads === 1 ? "" : "s"}.`;
-}
-
-function formatStatusDateTime(value: string) {
-  const date = new Date(value);
-
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 
 async function readApiJson(response: Response) {

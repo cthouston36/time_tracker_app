@@ -2,6 +2,7 @@
 
 import { ExternalLink, Save, X } from "lucide-react";
 import type { Project } from "@/lib/domain/types";
+import { formatDate } from "@/lib/date";
 import { DailyReportEmployeeTimeSection } from "@/features/time-allocation/components/daily-report/daily-report-employee-time-section";
 import { DailyReportStandardFields } from "@/features/time-allocation/components/daily-report/daily-report-standard-fields";
 import { DailyReportTwoSeriesFields } from "@/features/time-allocation/components/daily-report/daily-report-two-series-fields";
@@ -137,12 +138,4 @@ export function DailyReportModal({
       </div>
     </div>
   );
-}
-
-function formatDate(value: string) {
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return new Date(`${value}T00:00:00`).toLocaleDateString();
-  }
-
-  return new Date(value).toLocaleDateString();
 }

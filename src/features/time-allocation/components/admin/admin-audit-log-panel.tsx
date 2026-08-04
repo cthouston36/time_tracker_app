@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { ListChecks, RefreshCw } from "lucide-react";
+import { formatStatusDateTime } from "@/lib/date";
 import type { Project } from "@/lib/domain/types";
 import { formatUserName } from "@/features/time-allocation/lib/auth-ui-helpers";
 import { sortProjectsByName } from "@/features/time-allocation/lib/selectors";
@@ -281,12 +282,6 @@ function formatAuditMetadataValue(value: unknown): string {
   }
 
   return String(value);
-}
-
-function formatStatusDateTime(value: string) {
-  const date = new Date(value);
-
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 
 async function readApiJson(response: Response) {
