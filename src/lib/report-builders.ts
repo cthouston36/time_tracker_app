@@ -1,4 +1,10 @@
-import type { AllocationEntry, CrewLaborType, Project } from "@/lib/domain/types";
+import {
+  CREW_LABOR_TYPES,
+  normalizeCrewLaborType,
+  type AllocationEntry,
+  type CrewLaborType,
+  type Project
+} from "@/lib/domain/types";
 
 export type ReportMode = "summary" | "detail" | "crew" | "employee_hours" | "daily_work";
 export type DetailGrouping = "crew_day" | "crew_project" | "job_day";
@@ -191,13 +197,10 @@ export type EmployeeHoursReportSourceRow = {
   };
 };
 
-const ALL_CREW_LABOR_TYPES: CrewLaborType[] = ["chinchor_employee", "temp_employee", "subcontractor"];
-const DEFAULT_CREW_LABOR_TYPE: CrewLaborType = "chinchor_employee";
-
 export function filterEntriesByCrewLaborTypes(entries: AllocationEntry[], laborTypes: CrewLaborType[]) {
   const selectedLaborTypes = normalizeCrewLaborTypes(laborTypes);
 
-  if (selectedLaborTypes.length === ALL_CREW_LABOR_TYPES.length) {
+  if (selectedLaborTypes.length === CREW_LABOR_TYPES.length) {
     return entries;
   }
 
@@ -1008,7 +1011,7 @@ function getDetailAnalysisKey(row: PayItemReportDetailRow, grouping: DetailGroup
 
 function normalizeCrewLaborTypes(values: CrewLaborType[]) {
   return Array.from(new Set(values.map(normalizeCrewLaborType))).filter((value) =>
-    ALL_CREW_LABOR_TYPES.includes(value)
+    CREW_LABOR_TYPES.includes(value)
   );
 }
 
@@ -1145,14 +1148,6 @@ function calculateDailyReportTotalHours(row: EmployeeHoursSourceEmployeeRow) {
 
 function readString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
-}
-
-function normalizeCrewLaborType(value: unknown): CrewLaborType {
-  if (value === "subcontractor" || value === "temp_employee" || value === "chinchor_employee") {
-    return value;
-  }
-
-  return DEFAULT_CREW_LABOR_TYPE;
 }
 
 function sortDetailAnalysisRows(rows: PayItemDetailAnalysisRow[], sort: DetailSort) {

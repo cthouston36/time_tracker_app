@@ -22,7 +22,7 @@ import { readDailyReportsForRange } from "@/lib/daily-report-store";
 import { isIsoDate } from "@/lib/day-key";
 import { getProjects } from "@/lib/project-catalog/projects";
 import { backfillReportRollupsIfEmpty, readDailyWorkRollupSourceRows } from "@/lib/report-rollups";
-import type { CrewLaborType, Project } from "@/lib/domain/types";
+import { CREW_LABOR_TYPES, isCrewLaborType, type CrewLaborType, type Project } from "@/lib/domain/types";
 import { readString, readStringList } from "@/lib/records";
 
 const DEFAULT_PAGE_SIZE_BY_MODE: Record<ReportMode, number> = {
@@ -33,7 +33,7 @@ const DEFAULT_PAGE_SIZE_BY_MODE: Record<ReportMode, number> = {
   summary: 25
 };
 const MAX_PAGE_SIZE = 100;
-const DEFAULT_CREW_LABOR_TYPES: CrewLaborType[] = ["chinchor_employee", "temp_employee", "subcontractor"];
+const DEFAULT_CREW_LABOR_TYPES: CrewLaborType[] = [...CREW_LABOR_TYPES];
 
 export async function POST(request: NextRequest) {
   const user = await getCurrentUser();
@@ -271,10 +271,6 @@ function parseReportMetric(value: unknown): ReportMetric {
 function parseCrewLaborTypes(value: unknown): CrewLaborType[] {
   const selectedTypes = readStringList(value).filter(isCrewLaborType);
   return selectedTypes.length > 0 ? selectedTypes : DEFAULT_CREW_LABOR_TYPES;
-}
-
-function isCrewLaborType(value: string): value is CrewLaborType {
-  return value === "chinchor_employee" || value === "temp_employee" || value === "subcontractor";
 }
 
 function parseIsoDate(value: unknown) {

@@ -5,7 +5,7 @@ import {
   rebuildDailyReportRollups,
   rebuildEntryReportRollups
 } from "@/lib/report-rollups";
-import type { AllocationEntry, CrewAllocation, CrewLaborType } from "@/lib/domain/types";
+import { normalizeCrewLaborType, type AllocationEntry, type CrewAllocation, type CrewLaborType } from "@/lib/domain/types";
 
 export type AppStateMirrorStatus = "not_configured" | "success";
 
@@ -22,7 +22,6 @@ type CrewMember = {
 type SharedAppStateRecord = Record<string, unknown>;
 
 let normalizedTablesReady = false;
-const DEFAULT_CREW_LABOR_TYPE: CrewLaborType = "chinchor_employee";
 
 export async function mirrorSharedAppStateToTables(state: unknown): Promise<AppStateMirrorStatus> {
   const sql = getSql();
@@ -931,14 +930,6 @@ function readNumber(record: Record<string, unknown>, key: string) {
   }
 
   return 0;
-}
-
-function normalizeCrewLaborType(value: unknown): CrewLaborType {
-  if (value === "subcontractor" || value === "temp_employee" || value === "chinchor_employee") {
-    return value;
-  }
-
-  return DEFAULT_CREW_LABOR_TYPE;
 }
 
 function readNullableNumber(record: Record<string, unknown>, key: string) {

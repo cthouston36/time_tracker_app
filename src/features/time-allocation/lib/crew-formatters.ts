@@ -1,13 +1,13 @@
-import type { CrewLaborType } from "@/lib/domain/types";
+import {
+  DEFAULT_CREW_LABOR_TYPE,
+  normalizeCrewLaborType,
+  type CrewLaborType
+} from "@/lib/domain/types";
 
-export const DEFAULT_CREW_LABOR_TYPE: CrewLaborType = "chinchor_employee";
+export { DEFAULT_CREW_LABOR_TYPE };
 
 export function getCrewLaborType(source: { laborType?: CrewLaborType } | undefined | null): CrewLaborType {
-  if (source?.laborType === "subcontractor" || source?.laborType === "temp_employee") {
-    return source.laborType;
-  }
-
-  return DEFAULT_CREW_LABOR_TYPE;
+  return normalizeCrewLaborType(source?.laborType);
 }
 
 export function formatCrewLaborType(value: CrewLaborType | undefined) {

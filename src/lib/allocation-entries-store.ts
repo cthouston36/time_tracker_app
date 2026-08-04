@@ -6,7 +6,7 @@ import {
   refreshEntryReportRollupsForDays,
   type ReportRollupDayKey
 } from "@/lib/report-rollups";
-import type { AllocationEntry, CrewAllocation, CrewLaborType } from "@/lib/domain/types";
+import { normalizeCrewLaborType, type AllocationEntry, type CrewAllocation } from "@/lib/domain/types";
 
 type EntryRow = {
   id: string;
@@ -43,7 +43,6 @@ export type AllocationEntryReportFilters = {
 };
 
 let dailyEntryTablesReady = false;
-const DEFAULT_CREW_LABOR_TYPE: CrewLaborType = "chinchor_employee";
 
 export async function readAllocationEntries() {
   const sql = getSql();
@@ -626,14 +625,6 @@ function toNullableNumber(value: unknown) {
 
 function normalizeStringList(values: string[] | undefined) {
   return Array.from(new Set((values ?? []).map((value) => value.trim()).filter(Boolean)));
-}
-
-function normalizeCrewLaborType(value: unknown): CrewLaborType {
-  if (value === "subcontractor" || value === "temp_employee" || value === "chinchor_employee") {
-    return value;
-  }
-
-  return DEFAULT_CREW_LABOR_TYPE;
 }
 
 function isValidTimestamp(value: unknown): value is string {

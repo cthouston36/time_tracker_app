@@ -1,5 +1,5 @@
 import { getSql } from "@/lib/db";
-import type { CrewLaborType } from "@/lib/domain/types";
+import { normalizeCrewLaborType, type CrewLaborType } from "@/lib/domain/types";
 
 export type StoredCrewMember = {
   id: string;
@@ -33,7 +33,6 @@ type ProjectCrewMemberRow = {
 };
 
 let crewTablesReady = false;
-const DEFAULT_CREW_LABOR_TYPE: CrewLaborType = "chinchor_employee";
 
 export async function readCrewData() {
   const sql = getSql();
@@ -613,14 +612,6 @@ function sortCrewMembers(crewMembers: StoredCrewMember[]) {
     a.jobTitle.localeCompare(b.jobTitle, undefined, { sensitivity: "base" }) ||
     a.id.localeCompare(b.id)
   );
-}
-
-function normalizeCrewLaborType(value: unknown): CrewLaborType {
-  if (value === "subcontractor" || value === "temp_employee" || value === "chinchor_employee") {
-    return value;
-  }
-
-  return DEFAULT_CREW_LABOR_TYPE;
 }
 
 function readString(value: unknown) {

@@ -21,6 +21,16 @@ export const CREW_LABOR_TYPES = ["chinchor_employee", "temp_employee", "subcontr
 
 export type CrewLaborType = (typeof CREW_LABOR_TYPES)[number];
 
+export const DEFAULT_CREW_LABOR_TYPE: CrewLaborType = "chinchor_employee";
+
+export function isCrewLaborType(value: unknown): value is CrewLaborType {
+  return typeof value === "string" && (CREW_LABOR_TYPES as readonly string[]).includes(value);
+}
+
+export function normalizeCrewLaborType(value: unknown): CrewLaborType {
+  return isCrewLaborType(value) ? value : DEFAULT_CREW_LABOR_TYPE;
+}
+
 export type CrewAllocation = {
   crewMemberId: string;
   crewMemberName: string;

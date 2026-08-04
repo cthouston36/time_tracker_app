@@ -18,12 +18,18 @@ import { todayInputValue } from "@/lib/date";
 import { isIsoDate } from "@/lib/day-key";
 import { getProjects } from "@/lib/project-catalog/projects";
 import { backfillReportRollupsIfEmpty, readDailyWorkRollupSourceRows } from "@/lib/report-rollups";
-import type { AllocationEntry, CrewLaborType, Project } from "@/lib/domain/types";
+import {
+  CREW_LABOR_TYPES,
+  isCrewLaborType,
+  type AllocationEntry,
+  type CrewLaborType,
+  type Project
+} from "@/lib/domain/types";
 import { readString, readStringList } from "@/lib/records";
 import { formatCsvIdentifier, formatCsvNumber, rowsToCsv } from "@/features/time-allocation/lib/csv-utils";
 import { formatCrewLaborType } from "@/features/time-allocation/lib/crew-formatters";
 
-const DEFAULT_CREW_LABOR_TYPES: CrewLaborType[] = ["chinchor_employee", "temp_employee", "subcontractor"];
+const DEFAULT_CREW_LABOR_TYPES: CrewLaborType[] = [...CREW_LABOR_TYPES];
 
 export async function POST(request: NextRequest) {
   const user = await getCurrentUser();
@@ -324,10 +330,6 @@ function parseReportMetric(value: unknown): ReportMetric {
 function parseCrewLaborTypes(value: unknown): CrewLaborType[] {
   const selectedTypes = readStringList(value).filter(isCrewLaborType);
   return selectedTypes.length > 0 ? selectedTypes : DEFAULT_CREW_LABOR_TYPES;
-}
-
-function isCrewLaborType(value: string): value is CrewLaborType {
-  return value === "chinchor_employee" || value === "temp_employee" || value === "subcontractor";
 }
 
 function parseIsoDate(value: unknown) {
