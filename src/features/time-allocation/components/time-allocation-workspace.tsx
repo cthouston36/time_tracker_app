@@ -113,6 +113,7 @@ import { useFieldProjectAssignments } from "@/features/time-allocation/hooks/use
 import { useJobImages } from "@/features/time-allocation/hooks/use-job-images";
 import { useMobileInstallPrompt } from "@/features/time-allocation/hooks/use-mobile-install-prompt";
 import { useNetSuiteVendors } from "@/features/time-allocation/hooks/use-netsuite-vendors";
+import { useProjectSelectionGuards } from "@/features/time-allocation/hooks/use-project-selection-guards";
 import { useProjectSync } from "@/features/time-allocation/hooks/use-project-sync";
 import { useRetiredViewRedirect } from "@/features/time-allocation/hooks/use-retired-view-redirect";
 import { useUnsavedChangesWarning } from "@/features/time-allocation/hooks/use-unsaved-changes-warning";
@@ -536,6 +537,21 @@ export function TimeAllocationWorkspace() {
     dailyReportModalOpen ||
     queuedJobImages.length > 0;
   const currentUserCanManageMyProjects = currentUser?.role === "admin";
+  const clearInvalidProjectEntryState = useCallback(() => {
+    setMobileSelectedPayItemId("");
+    cancelEditingEntry();
+    clearCrewForms();
+    setDraftsByPayItem({});
+  }, [cancelEditingEntry, clearCrewForms]);
+
+  useProjectSelectionGuards({
+    enabled: Boolean(currentUser),
+    jobPickerProjects,
+    onSelectionInvalid: clearInvalidProjectEntryState,
+    projects,
+    selectedProjectId,
+    setSelectedProjectId
+  });
   useRetiredViewRedirect({
     enabled: Boolean(currentUser),
     setViewMode,
@@ -746,45 +762,6 @@ export function TimeAllocationWorkspace() {
       setAdminMaintenanceNotice(null);
     }
   }, [currentUser?.role]);
-
-  useEffect(() => {
-    if (!currentUser) {
-      return;
-    }
-
-    if (projects.length === 0) {
-      if (selectedProjectId) {
-        setSelectedProjectId("");
-        setMobileSelectedPayItemId("");
-        cancelEditingEntry();
-        clearCrewForms();
-        setDraftsByPayItem({});
-      }
-      return;
-    }
-
-    if (!projects.some((project) => project.id === selectedProjectId)) {
-      setSelectedProjectId(projects[0].id);
-      setMobileSelectedPayItemId("");
-      cancelEditingEntry();
-      clearCrewForms();
-      setDraftsByPayItem({});
-    }
-  }, [cancelEditingEntry, clearCrewForms, currentUser, projects, selectedProjectId]);
-
-  useEffect(() => {
-    if (!currentUser || jobPickerProjects.length === 0) {
-      return;
-    }
-
-    if (!jobPickerProjects.some((project) => project.id === selectedProjectId)) {
-      setSelectedProjectId(jobPickerProjects[0].id);
-      setMobileSelectedPayItemId("");
-      cancelEditingEntry();
-      clearCrewForms();
-      setDraftsByPayItem({});
-    }
-  }, [cancelEditingEntry, clearCrewForms, currentUser, jobPickerProjects, selectedProjectId]);
 
   useEffect(() => {
     if (currentUserMyJobIds.length === 0 && showOnlyMyProjects) {
